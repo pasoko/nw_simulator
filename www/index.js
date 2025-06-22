@@ -22,12 +22,9 @@ let lastMouseY = 0;
 
 async function run() {
     try {
-        console.log('Starting initialization...');
         await init();
-        console.log('WASM initialized');
         
         simulator = new NetworkSimulator();
-        console.log('NetworkSimulator created');
         
         canvas = document.getElementById('network-canvas');
         if (!canvas) {
@@ -43,7 +40,6 @@ async function run() {
         render();
         
         log('Network Simulator initialized');
-        console.log('Application ready');
     } catch (error) {
         console.error('Error during initialization:', error);
         log(`Error: ${error.message}`);
@@ -68,8 +64,6 @@ function setupCanvas() {
 }
 
 function setupEventListeners() {
-    console.log('Setting up event listeners...');
-    
     canvas.addEventListener('click', handleCanvasClick);
     canvas.addEventListener('mousemove', (event) => {
         const rect = canvas.getBoundingClientRect();
@@ -84,28 +78,20 @@ function setupEventListeners() {
     const addRouterBtn = document.getElementById('add-router-btn');
     if (addRouterBtn) {
         addRouterBtn.addEventListener('click', () => {
-            console.log('Add router button clicked');
             setMode('add-router');
         });
-    } else {
-        console.error('Add router button not found!');
     }
     
     const connectBtn = document.getElementById('connect-routers-btn');
     if (connectBtn) {
         connectBtn.addEventListener('click', () => {
-            console.log('Connect routers button clicked');
             setMode('connect-routers');
         });
-    } else {
-        console.error('Connect routers button not found!');
     }
     
     const simulateBtn = document.getElementById('simulate-btn');
     if (simulateBtn) {
         simulateBtn.addEventListener('click', startSimulation);
-    } else {
-        console.error('Simulate button not found!');
     }
     
     const exportBtn = document.getElementById('export-log-btn');
@@ -126,28 +112,19 @@ function setupEventListeners() {
     const deleteBtn = document.getElementById('delete-router-btn');
     if (deleteBtn) {
         deleteBtn.addEventListener('click', () => {
-            console.log('Delete router button clicked');
             setMode('delete-router');
         });
-    } else {
-        console.error('Delete router button not found!');
     }
     
     const disconnectBtn = document.getElementById('disconnect-routers-btn');
     if (disconnectBtn) {
         disconnectBtn.addEventListener('click', () => {
-            console.log('Disconnect routers button clicked');
             setMode('disconnect-routers');
         });
-    } else {
-        console.error('Disconnect routers button not found!');
     }
-    
-    console.log('Event listeners setup complete');
 }
 
 function setMode(newMode) {
-    console.log(`Setting mode to: ${newMode}`);
     mode = newMode;
     selectedRouters = [];
     const indicator = document.getElementById('mode-indicator');

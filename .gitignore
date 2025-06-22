@@ -1,1 +1,31 @@
-/target
+# Rust
+/target/
+**/*.rs.bk
+Cargo.lock
+
+# WebAssembly build outputs
+/www/pkg/
+/www/dist/
+
+# Node.js
+/www/node_modules/
+/www/npm-debug.log*
+/www/yarn-debug.log*
+/www/yarn-error.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+/simulation_logs/
+
+# Docker
+.dockerignore
