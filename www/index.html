@@ -12,10 +12,11 @@
             height: 100vh;
         }
         #sidebar {
-            width: 300px;
+            width: 400px;
             background-color: #f0f0f0;
             padding: 20px;
             overflow-y: auto;
+            overflow-x: hidden;
         }
         #main {
             flex: 1;
@@ -75,6 +76,75 @@
         .router-item.ospf-enabled {
             border-left: 4px solid #4CAF50;
         }
+        .router-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .router-details {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #ddd;
+            font-size: 12px;
+        }
+        .router-interfaces {
+            margin: 5px 0;
+        }
+        .interface-item {
+            margin-left: 15px;
+            font-size: 11px;
+            color: #666;
+            padding: 2px 0;
+        }
+        .routing-table {
+            margin-top: 5px;
+            width: 100%;
+            font-size: 11px;
+            border-collapse: collapse;
+            table-layout: fixed;
+        }
+        .routing-table th, .routing-table td {
+            padding: 3px 5px;
+            border: 1px solid #ddd;
+            text-align: left;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .routing-table th {
+            background-color: #f5f5f5;
+            font-weight: bold;
+        }
+        .routing-table th:nth-child(1),
+        .routing-table td:nth-child(1) {
+            width: 35%;
+        }
+        .routing-table th:nth-child(2),
+        .routing-table td:nth-child(2) {
+            width: 35%;
+        }
+        .routing-table th:nth-child(3),
+        .routing-table td:nth-child(3) {
+            width: 15%;
+        }
+        .routing-table th:nth-child(4),
+        .routing-table td:nth-child(4) {
+            width: 15%;
+        }
+        .ospf-status {
+            margin: 5px 0;
+            padding: 5px;
+            background-color: #f0f0f0;
+            border-radius: 3px;
+        }
+        .detail-section {
+            margin-bottom: 10px;
+        }
+        .detail-section h5 {
+            margin: 0 0 5px 0;
+            font-size: 12px;
+            color: #333;
+        }
         #log-container {
             height: 200px;
             background-color: #2b2b2b;
@@ -124,25 +194,6 @@
             max-height: 400px;
             overflow-y: auto;
         }
-        .routing-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 10px;
-        }
-        .routing-table th,
-        .routing-table td {
-            border: 1px solid #ddd;
-            padding: 8px;
-            text-align: left;
-            font-size: 12px;
-        }
-        .routing-table th {
-            background-color: #4CAF50;
-            color: white;
-        }
-        .routing-table tr:nth-child(even) {
-            background-color: #f2f2f2;
-        }
         .interface-list {
             margin: 10px 0;
         }
@@ -176,11 +227,6 @@
         <h3>OSPF Configuration</h3>
         <div id="ospf-config"></div>
         
-        <h3>Router Details</h3>
-        <select id="router-select">
-            <option value="">Select a router...</option>
-        </select>
-        <div id="router-details"></div>
     </div>
     
     <div id="main">

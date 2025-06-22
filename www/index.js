@@ -22,6 +22,7 @@ let lastMouseY = 0;
 let draggingRouter = null;
 let dragOffset = { x: 0, y: 0 };
 let simulationPaused = false;
+let updateInterval = null;
 
 async function run() {
     try {
@@ -41,6 +42,13 @@ async function run() {
         packetVisualizer = new PacketVisualizer(canvas, ctx);
         
         render();
+        
+        // Start periodic updates for router details
+        updateInterval = setInterval(() => {
+            if (!simulationRunning) {
+                updateRoutersList();
+            }
+        }, 1000); // Update every second when not simulating
         
         log('Network Simulator initialized');
     } catch (error) {
@@ -110,10 +118,6 @@ function setupEventListeners() {
         clearBtn.addEventListener('click', clearLog);
     }
     
-    const routerSelect = document.getElementById('router-select');
-    if (routerSelect) {
-        routerSelect.addEventListener('change', handleRouterSelect);
-    }
     
     const deleteBtn = document.getElementById('delete-router-btn');
     if (deleteBtn) {
@@ -362,34 +366,82 @@ function updateRoutersList() {
     const list = document.getElementById('routers-list');
     list.innerHTML = '';
     
-    // Update router select dropdown
-    const select = document.getElementById('router-select');
-    const currentValue = select.value;
-    select.innerHTML = '<option value="">Select a router...</option>';
-    
     routers.forEach(router => {
         const item = document.createElement('div');
         item.className = 'router-item' + (router.ospf_enabled ? ' ospf-enabled' : '');
+        item.dataset.routerId = router.id;
+        
+        // Get detailed router information
+        const detailsJson = simulator.get_router_details_json(router.id);
+        const details = detailsJson ? JSON.parse(detailsJson) : {};
+        
         item.innerHTML = `
-            <strong>${router.name}</strong> (ID: ${router.id})
-            <button class="button" onclick="toggleOSPF(${router.id})">
+            <div class="router-header">
+                <div>
+                    <strong>${router.name}</strong> (ID: ${router.id})
+                    ${router.ospf_enabled ? 
+                        `<span style="color: #4CAF50; font-size: 11px;"> • OSPF: ${details.ospf_neighbors || 0} neighbors</span>` : 
+                        '<span style="color: #999; font-size: 11px;"> • OSPF Disabled</span>'
+                    }
+                </div>
+            </div>
+            <button class="button" onclick="toggleOSPF(${router.id})" style="margin-top: 5px;">
                 ${router.ospf_enabled ? 'Disable' : 'Enable'} OSPF
             </button>
+            <div class="router-details" style="display: block;">
+                ${renderRouterDetails(details)}
+            </div>
         `;
         list.appendChild(item);
-        
-        // Add to select dropdown
-        const option = document.createElement('option');
-        option.value = router.id;
-        option.textContent = `${router.name} (ID: ${router.id})`;
-        select.appendChild(option);
     });
-    
-    // Restore selection if it still exists
-    if (currentValue && Array.from(select.options).some(opt => opt.value === currentValue)) {
-        select.value = currentValue;
-    }
 }
+
+function renderRouterDetails(details) {
+    let html = '';
+    
+    // Interfaces section
+    if (details.interfaces && Object.keys(details.interfaces).length > 0) {
+        html += '<div class="detail-section"><h5>Interfaces:</h5><div class="router-interfaces">';
+        Object.values(details.interfaces).forEach(iface => {
+            html += `<div class="interface-item">
+                Interface ${iface.id}: ${iface.ip_address}/${iface.netmask}
+                ${iface.connected_router_id ? ` → Router ${iface.connected_router_id}` : ''}
+                (Cost: ${iface.cost})
+            </div>`;
+        });
+        html += '</div></div>';
+    }
+    
+    // Routing table section
+    if (details.routing_table && details.routing_table.length > 0) {
+        html += '<div class="detail-section"><h5>Routing Table:</h5>';
+        html += '<table class="routing-table">';
+        html += '<thead><tr><th>Destination</th><th>Next Hop</th><th>Interface</th><th>Metric</th></tr></thead>';
+        html += '<tbody>';
+        details.routing_table.forEach(entry => {
+            html += `<tr>
+                <td>${entry.destination}/${entry.netmask}</td>
+                <td>${entry.next_hop}</td>
+                <td>if${entry.interface_id}</td>
+                <td>${entry.metric}</td>
+            </tr>`;
+        });
+        html += '</tbody></table></div>';
+    } else if (details.ospf_enabled) {
+        html += '<div class="detail-section"><p style="color: #666; font-style: italic;">No routes in routing table</p></div>';
+    }
+    
+    // OSPF Status
+    if (details.ospf_enabled) {
+        html += `<div class="detail-section ospf-status">
+            <h5>OSPF Status:</h5>
+            <div>Neighbors: ${details.ospf_neighbors || 0}</div>
+        </div>`;
+    }
+    
+    return html;
+}
+
 
 window.toggleOSPF = function(routerId) {
     simulator.enable_ospf(routerId);
@@ -733,6 +785,9 @@ function startSimulation() {
         // Update packet positions
         packetVisualizer.update(simulationTime);
         render();
+        
+        // Update router details in real-time
+        updateRoutersList();
     }, 100);
 }
 
@@ -815,66 +870,7 @@ function updateSimulationDisplay() {
     }
 }
 
-function handleRouterSelect(event) {
-    const routerId = parseInt(event.target.value);
-    if (!routerId) {
-        document.getElementById('router-details').innerHTML = '';
-        return;
-    }
-    
-    const detailsJson = simulator.get_router_details_json(routerId);
-    if (detailsJson) {
-        const details = JSON.parse(detailsJson);
-        displayRouterDetails(details);
-    }
-}
 
-function displayRouterDetails(details) {
-    const container = document.getElementById('router-details');
-    let html = `<h4>${details.name} (ID: ${details.id})</h4>`;
-    
-    // Display interfaces
-    if (details.interfaces && Object.keys(details.interfaces).length > 0) {
-        html += '<h5>Interfaces:</h5><div class="interface-list">';
-        Object.values(details.interfaces).forEach(iface => {
-            html += `<div class="interface-item">
-                Interface ${iface.id}: ${iface.ip_address}/${iface.netmask}
-                ${iface.connected_router_id ? ` → Router ${iface.connected_router_id}` : ''}
-                (Cost: ${iface.cost})
-            </div>`;
-        });
-        html += '</div>';
-    }
-    
-    // Display routing table
-    if (details.routing_table && details.routing_table.length > 0) {
-        html += '<h5>Routing Table:</h5>';
-        html += '<table class="routing-table">';
-        html += '<thead><tr><th>Destination</th><th>Next Hop</th><th>Interface</th><th>Metric</th><th>Protocol</th></tr></thead>';
-        html += '<tbody>';
-        details.routing_table.forEach(entry => {
-            html += `<tr>
-                <td>${entry.destination}/${entry.netmask}</td>
-                <td>${entry.next_hop}</td>
-                <td>Interface ${entry.interface_id}</td>
-                <td>${entry.metric}</td>
-                <td>${entry.protocol}</td>
-            </tr>`;
-        });
-        html += '</tbody></table>';
-    } else {
-        html += '<p>No routes in routing table</p>';
-    }
-    
-    // Display OSPF status
-    html += `<h5>OSPF Status:</h5>`;
-    html += `<p>OSPF Enabled: ${details.ospf_enabled ? 'Yes' : 'No'}</p>`;
-    if (details.ospf_enabled) {
-        html += `<p>Number of Neighbors: ${details.ospf_neighbors}</p>`;
-    }
-    
-    container.innerHTML = html;
-}
 
 // Wait for DOM to be fully loaded
 if (document.readyState === 'loading') {
