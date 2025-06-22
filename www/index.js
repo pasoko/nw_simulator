@@ -80,6 +80,13 @@ function setupEventListeners() {
         });
     }
     
+    const moveRouterBtn = document.getElementById('move-router-btn');
+    if (moveRouterBtn) {
+        moveRouterBtn.addEventListener('click', () => {
+            setMode('move-router');
+        });
+    }
+    
     const connectBtn = document.getElementById('connect-routers-btn');
     if (connectBtn) {
         connectBtn.addEventListener('click', () => {
@@ -133,6 +140,11 @@ function setMode(newMode) {
             indicator.style.backgroundColor = '#ffc107';
             canvas.style.cursor = 'crosshair';
             break;
+        case 'move-router':
+            indicator.textContent = 'Mode: Move Router - Drag router to new position';
+            indicator.style.backgroundColor = '#17a2b8';
+            canvas.style.cursor = 'grab';
+            break;
         case 'connect-routers':
             indicator.textContent = 'Mode: Connect Routers - Select first router';
             indicator.style.backgroundColor = '#17a2b8';
@@ -158,9 +170,9 @@ function handleMouseDown(event) {
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
     
-    // Check if clicking on a router for dragging
+    // Check if clicking on a router for dragging (only in move-router mode)
     const clickedRouter = findRouterAt(x, y);
-    if (clickedRouter && mode !== 'delete-router' && mode !== 'connect-routers' && mode !== 'disconnect-routers') {
+    if (clickedRouter && mode === 'move-router') {
         draggingRouter = clickedRouter;
         dragOffset.x = x - clickedRouter.x;
         dragOffset.y = y - clickedRouter.y;
@@ -189,7 +201,7 @@ function handleMouseMove(event) {
     } else {
         // Update cursor based on hover
         const hoverRouter = findRouterAt(x, y);
-        if (hoverRouter && mode !== 'delete-router' && mode !== 'connect-routers' && mode !== 'disconnect-routers') {
+        if (hoverRouter && mode === 'move-router') {
             canvas.style.cursor = 'grab';
         } else if (mode === 'delete-router' && hoverRouter) {
             canvas.style.cursor = 'pointer';
@@ -197,6 +209,8 @@ function handleMouseMove(event) {
             canvas.style.cursor = 'pointer';
         } else if (mode === 'add-router') {
             canvas.style.cursor = 'crosshair';
+        } else if (mode === 'move-router') {
+            canvas.style.cursor = hoverRouter ? 'grab' : 'default';
         } else {
             canvas.style.cursor = 'default';
         }
