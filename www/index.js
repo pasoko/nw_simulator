@@ -21,6 +21,7 @@ let lastMouseX = 0;
 let lastMouseY = 0;
 let draggingRouter = null;
 let dragOffset = { x: 0, y: 0 };
+let simulationPaused = false;
 
 async function run() {
     try {
@@ -400,16 +401,62 @@ window.toggleOSPF = function(routerId) {
 function render() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
-    // Draw connections
+    // Draw connections with bidirectional arrows
     ctx.strokeStyle = '#666';
     ctx.lineWidth = 2;
     connections.forEach(conn => {
         const from = routers.find(r => r.id === conn.from_router_id);
         const to = routers.find(r => r.id === conn.to_router_id);
         if (from && to) {
+            // Calculate direction vector
+            const dx = to.x - from.x;
+            const dy = to.y - from.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            const unitX = dx / distance;
+            const unitY = dy / distance;
+            
+            // Adjust start and end points to not overlap with router circles (radius 20)
+            const startX = from.x + unitX * 20;
+            const startY = from.y + unitY * 20;
+            const endX = to.x - unitX * 20;
+            const endY = to.y - unitY * 20;
+            
+            // Draw main line
             ctx.beginPath();
-            ctx.moveTo(from.x, from.y);
-            ctx.lineTo(to.x, to.y);
+            ctx.moveTo(startX, startY);
+            ctx.lineTo(endX, endY);
+            ctx.stroke();
+            
+            // Draw arrows at both ends to show bidirectional connection
+            const arrowLength = 10;
+            const arrowAngle = Math.PI / 6; // 30 degrees
+            
+            // Arrow at 'to' end
+            ctx.beginPath();
+            ctx.moveTo(endX, endY);
+            ctx.lineTo(
+                endX - arrowLength * Math.cos(Math.atan2(dy, dx) - arrowAngle),
+                endY - arrowLength * Math.sin(Math.atan2(dy, dx) - arrowAngle)
+            );
+            ctx.moveTo(endX, endY);
+            ctx.lineTo(
+                endX - arrowLength * Math.cos(Math.atan2(dy, dx) + arrowAngle),
+                endY - arrowLength * Math.sin(Math.atan2(dy, dx) + arrowAngle)
+            );
+            ctx.stroke();
+            
+            // Arrow at 'from' end
+            ctx.beginPath();
+            ctx.moveTo(startX, startY);
+            ctx.lineTo(
+                startX + arrowLength * Math.cos(Math.atan2(dy, dx) - arrowAngle),
+                startY + arrowLength * Math.sin(Math.atan2(dy, dx) - arrowAngle)
+            );
+            ctx.moveTo(startX, startY);
+            ctx.lineTo(
+                startX + arrowLength * Math.cos(Math.atan2(dy, dx) + arrowAngle),
+                startY + arrowLength * Math.sin(Math.atan2(dy, dx) + arrowAngle)
+            );
             ctx.stroke();
             
             // Draw cost label
@@ -487,7 +534,7 @@ function render() {
         ctx.fillText(router.name, router.x, router.y);
     });
     
-    // Draw packet statistics
+    // Draw packet statistics (moved down to avoid overlap with timer)
     if (packetVisualizer && simulationRunning) {
         const stats = packetVisualizer.getPacketsByType();
         const activeCount = packetVisualizer.getActivePacketCount();
@@ -495,9 +542,9 @@ function render() {
         ctx.fillStyle = '#000';
         ctx.font = '12px Arial';
         ctx.textAlign = 'left';
-        ctx.fillText(`Active Packets: ${activeCount}`, 10, 20);
+        ctx.fillText(`Active Packets: ${activeCount}`, 10, 50);
         
-        let y = 40;
+        let y = 70;
         Object.entries(stats).forEach(([type, count]) => {
             ctx.fillStyle = packetVisualizer.packetColors[type] || '#666';
             ctx.fillText(`${type}: ${count}`, 10, y);
@@ -568,11 +615,19 @@ function startSimulation() {
         return;
     }
     
-    log('Starting OSPF simulation...');
+    if (!simulationPaused) {
+        // First time starting - reset time
+        simulationTime = 0;
+        packetVisualizer.clear();
+        log('Starting OSPF simulation...');
+    } else {
+        // Resuming from pause
+        log(`Resuming simulation from ${simulationTime.toFixed(1)}s...`);
+    }
+    
     simulator.start_simulation();
     simulationRunning = true;
-    simulationTime = 0;
-    packetVisualizer.clear();
+    simulationPaused = false;
     
     const btn = document.getElementById('simulate-btn');
     btn.textContent = 'Stop Simulation';
@@ -599,17 +654,18 @@ function startSimulation() {
 function stopSimulation() {
     if (!simulationRunning) return;
     
-    log('Stopping simulation...');
+    log(`Pausing simulation at ${simulationTime.toFixed(1)}s...`);
     simulator.stop_simulation();
     simulationRunning = false;
+    simulationPaused = true;
     
     const btn = document.getElementById('simulate-btn');
-    btn.textContent = 'Start Simulation';
+    btn.textContent = 'Resume Simulation';
     btn.classList.remove('running');
     
-    // Hide timer
+    // Keep timer visible to show paused time
     const timer = document.getElementById('simulation-timer');
-    timer.style.display = 'none';
+    timer.textContent = `Time: ${simulationTime.toFixed(1)}s (Paused)`;
     
     if (simulationInterval) {
         clearInterval(simulationInterval);
