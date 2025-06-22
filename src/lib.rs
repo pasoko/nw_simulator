@@ -90,6 +90,17 @@ impl NetworkSimulator {
             false
         }
     }
+    
+    pub fn update_router_position(&mut self, router_id: u32, x: f64, y: f64) -> bool {
+        if self.simulation.topology.routers.contains_key(&router_id) {
+            self.router_positions.insert(router_id, (x, y));
+            console_log!("Updated position for router {} to ({}, {})", router_id, x, y);
+            true
+        } else {
+            console_log!("Failed to update position for router {}", router_id);
+            false
+        }
+    }
 
     pub fn enable_ospf(&mut self, router_id: u32) {
         match self.simulation.enable_ospf(router_id) {

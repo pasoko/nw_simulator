@@ -19,6 +19,8 @@ let simulationTime = 0;
 let logEntries = [];
 let lastMouseX = 0;
 let lastMouseY = 0;
+let draggingRouter = null;
+let dragOffset = { x: 0, y: 0 };
 
 async function run() {
     try {
@@ -65,14 +67,10 @@ function setupCanvas() {
 
 function setupEventListeners() {
     canvas.addEventListener('click', handleCanvasClick);
-    canvas.addEventListener('mousemove', (event) => {
-        const rect = canvas.getBoundingClientRect();
-        lastMouseX = event.clientX - rect.left;
-        lastMouseY = event.clientY - rect.top;
-        if (mode === 'delete-router') {
-            render(); // Re-render to update hover effect
-        }
-    });
+    canvas.addEventListener('mousedown', handleMouseDown);
+    canvas.addEventListener('mousemove', handleMouseMove);
+    canvas.addEventListener('mouseup', handleMouseUp);
+    canvas.addEventListener('mouseleave', handleMouseUp); // Stop dragging when mouse leaves canvas
     
     // Check if buttons exist before adding listeners
     const addRouterBtn = document.getElementById('add-router-btn');
@@ -155,7 +153,72 @@ function setMode(newMode) {
     render();
 }
 
+function handleMouseDown(event) {
+    const rect = canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    
+    // Check if clicking on a router for dragging
+    const clickedRouter = findRouterAt(x, y);
+    if (clickedRouter && mode !== 'delete-router' && mode !== 'connect-routers' && mode !== 'disconnect-routers') {
+        draggingRouter = clickedRouter;
+        dragOffset.x = x - clickedRouter.x;
+        dragOffset.y = y - clickedRouter.y;
+        canvas.style.cursor = 'grabbing';
+        event.preventDefault(); // Prevent text selection
+    }
+}
+
+function handleMouseMove(event) {
+    const rect = canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    
+    lastMouseX = x;
+    lastMouseY = y;
+    
+    if (draggingRouter) {
+        // Update router position
+        draggingRouter.x = Math.max(20, Math.min(canvas.width - 20, x - dragOffset.x));
+        draggingRouter.y = Math.max(20, Math.min(canvas.height - 20, y - dragOffset.y));
+        
+        // Update position in simulator
+        simulator.update_router_position(draggingRouter.id, draggingRouter.x, draggingRouter.y);
+        
+        render();
+    } else {
+        // Update cursor based on hover
+        const hoverRouter = findRouterAt(x, y);
+        if (hoverRouter && mode !== 'delete-router' && mode !== 'connect-routers' && mode !== 'disconnect-routers') {
+            canvas.style.cursor = 'grab';
+        } else if (mode === 'delete-router' && hoverRouter) {
+            canvas.style.cursor = 'pointer';
+        } else if ((mode === 'connect-routers' || mode === 'disconnect-routers') && hoverRouter) {
+            canvas.style.cursor = 'pointer';
+        } else if (mode === 'add-router') {
+            canvas.style.cursor = 'crosshair';
+        } else {
+            canvas.style.cursor = 'default';
+        }
+        
+        // Re-render for hover effects
+        if (mode === 'delete-router') {
+            render();
+        }
+    }
+}
+
+function handleMouseUp(event) {
+    if (draggingRouter) {
+        draggingRouter = null;
+        canvas.style.cursor = 'default';
+    }
+}
+
 function handleCanvasClick(event) {
+    // Ignore clicks if we're dragging
+    if (draggingRouter) return;
+    
     const rect = canvas.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
@@ -189,6 +252,18 @@ function handleCanvasClick(event) {
                 } else if (selectedRouters.length === 2) {
                     const cost = parseInt(prompt('Enter link cost:', '1') || '1');
                     simulator.connect_routers(selectedRouters[0], selectedRouters[1], cost);
+                    
+                    // Add connection to local state immediately
+                    connections.push({
+                        from_router_id: selectedRouters[0],
+                        to_router_id: selectedRouters[1],
+                        cost: cost
+                    });
+                    
+                    const from = routers.find(r => r.id === selectedRouters[0]);
+                    const to = routers.find(r => r.id === selectedRouters[1]);
+                    log(`Connected routers ${from.name} and ${to.name} with cost ${cost}`);
+                    
                     selectedRouters = [];
                     indicator.textContent = 'Mode: Connect Routers - Connection created! Select first router for next connection';
                     indicator.style.backgroundColor = '#17a2b8';
@@ -339,6 +414,16 @@ function render() {
     // Draw routers
     routers.forEach(router => {
         const isSelected = selectedRouters.includes(router.id);
+        const isDragging = draggingRouter && draggingRouter.id === router.id;
+        
+        // Draw dragging highlight
+        if (isDragging) {
+            ctx.beginPath();
+            ctx.arc(router.x, router.y, 25, 0, 2 * Math.PI);
+            ctx.strokeStyle = '#2196F3';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+        }
         
         // Draw selection ring for various modes
         if (isSelected && (mode === 'connect-routers' || mode === 'disconnect-routers')) {
