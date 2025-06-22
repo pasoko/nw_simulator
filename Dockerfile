@@ -1,5 +1,5 @@
 # Build stage for Rust/WebAssembly
-FROM rust:1.75-slim as rust-builder
+FROM rust:1.79-slim AS rust-builder
 
 # Install required dependencies
 RUN apt-get update && apt-get install -y \
@@ -14,22 +14,25 @@ RUN curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 WORKDIR /app
 
 # Copy Rust source files
-COPY Cargo.toml Cargo.lock ./
+COPY Cargo.toml ./
 COPY src ./src
+
+# Generate Cargo.lock if needed
+RUN cargo generate-lockfile
 
 # Build WebAssembly module
 RUN wasm-pack build --target web --out-dir pkg
 
 # Frontend build stage
-FROM node:20-alpine as frontend-builder
+FROM node:20-alpine AS frontend-builder
 
 WORKDIR /app
 
 # Copy package files
-COPY www/package.json www/package-lock.json ./
+COPY www/package.json www/package-lock.json* ./
 
 # Install dependencies
-RUN npm ci --only=production
+RUN npm install
 
 # Copy frontend source and WebAssembly output
 COPY www ./

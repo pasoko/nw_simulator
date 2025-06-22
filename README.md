@@ -16,6 +16,17 @@ A WebAssembly-based network simulator for visualizing OSPFv2 protocol operations
 - Docker
 - Docker Compose
 
+### Docker Permission Setup (Linux)
+
+If you encounter permission errors when running Docker commands, add your user to the docker group:
+
+```bash
+sudo usermod -aG docker $USER
+newgrp docker
+```
+
+After running these commands, log out and log back in for the changes to take effect.
+
 ### Running the Simulator
 
 1. Clone the repository:

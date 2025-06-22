@@ -2,11 +2,9 @@ target/
 www/node_modules/
 www/dist/
 www/pkg/
-Cargo.lock
 *.log
 .git/
 .gitignore
-README.md
 *.swp
 *.swo
 *~

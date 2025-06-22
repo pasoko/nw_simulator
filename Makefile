@@ -17,36 +17,36 @@ help:
 
 # Build Docker image
 build:
-	docker build -t ospf-network-simulator:latest .
+	sudo docker build -t ospf-network-simulator:latest .
 
 # Run in production mode
 run:
-	docker-compose up -d
+	sudo docker-compose up -d
 
 # Run in development mode
 dev:
-	docker-compose -f docker-compose.dev.yml up
+	sudo docker-compose -f docker-compose.dev.yml up
 
 # Stop containers
 stop:
-	docker-compose down
-	docker-compose -f docker-compose.dev.yml down
+	sudo docker-compose down
+	sudo docker-compose -f docker-compose.dev.yml down
 
 # Clean up
 clean: stop
-	docker rmi ospf-network-simulator:latest || true
-	docker system prune -f
+	sudo docker rmi ospf-network-simulator:latest || true
+	sudo docker system prune -f
 
 # Show logs
 logs:
-	docker-compose logs -f
+	sudo docker-compose logs -f
 
 # Push to registry
 push:
 	@echo "Tagging image..."
-	docker tag ospf-network-simulator:latest $(DOCKER_REGISTRY)/ospf-network-simulator:$(IMAGE_TAG)
+	sudo docker tag ospf-network-simulator:latest $(DOCKER_REGISTRY)/ospf-network-simulator:$(IMAGE_TAG)
 	@echo "Pushing to registry..."
-	docker push $(DOCKER_REGISTRY)/ospf-network-simulator:$(IMAGE_TAG)
+	sudo docker push $(DOCKER_REGISTRY)/ospf-network-simulator:$(IMAGE_TAG)
 
 # Deploy to Kubernetes
 deploy:
@@ -54,7 +54,7 @@ deploy:
 
 # Build for multiple platforms (requires Docker Buildx)
 build-multiarch:
-	docker buildx build --platform linux/amd64,linux/arm64 -t ospf-network-simulator:latest .
+	sudo docker buildx build --platform linux/amd64,linux/arm64 -t ospf-network-simulator:latest .
 
 # Health check
 health:
