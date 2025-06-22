@@ -1,0 +1,84 @@
+<!doctype html><html lang="ja"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Network Simulator - OSPFv2</title><style>body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            display: flex;
+            height: 100vh;
+        }
+        #sidebar {
+            width: 300px;
+            background-color: #f0f0f0;
+            padding: 20px;
+            overflow-y: auto;
+        }
+        #main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        #canvas-container {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+        }
+        #network-canvas {
+            border: 1px solid #ccc;
+            cursor: crosshair;
+        }
+        #controls {
+            background-color: #e0e0e0;
+            padding: 10px;
+        }
+        .button {
+            padding: 8px 16px;
+            margin: 5px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .button:hover {
+            background-color: #45a049;
+        }
+        .button.secondary {
+            background-color: #008CBA;
+        }
+        .button.secondary:hover {
+            background-color: #007399;
+        }
+        .button.running {
+            background-color: #f44336;
+        }
+        .button.running:hover {
+            background-color: #da190b;
+        }
+        .router-item {
+            padding: 10px;
+            margin: 5px 0;
+            background-color: white;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .router-item.ospf-enabled {
+            border-left: 4px solid #4CAF50;
+        }
+        #log-container {
+            height: 200px;
+            background-color: #2b2b2b;
+            color: #00ff00;
+            padding: 10px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .log-entry {
+            margin: 2px 0;
+        }
+        .mode-indicator {
+            padding: 5px 10px;
+            margin: 10px 0;
+            background-color: #ffc107;
+            color: #000;
+            border-radius: 4px;
+            text-align: center;
+        }</style><script defer="defer" src="bundle.js"></script></head><body><div id="sidebar"><h2>Network Simulator</h2><div class="mode-indicator" id="mode-indicator">Mode: Add Router</div><h3>Controls</h3><button class="button" id="add-router-btn">Add Router</button> <button class="button secondary" id="connect-routers-btn">Connect Routers</button> <button class="button secondary" id="simulate-btn">Start Simulation</button><h3>Routers</h3><div id="routers-list"></div><h3>OSPF Configuration</h3><div id="ospf-config"></div></div><div id="main"><div id="canvas-container"><canvas id="network-canvas"></canvas></div><div id="log-container"><div id="log-content"></div></div></div><script src="bundle.js"></script></body></html>

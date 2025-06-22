@@ -1,0 +1,129 @@
+use std::collections::HashMap;
+use serde::{Serialize, Deserialize};
+use crate::router::{RouterState, RouterInterface};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NetworkLink {
+    pub id: u32,
+    pub router1_id: u32,
+    pub router1_interface_id: u32,
+    pub router2_id: u32,
+    pub router2_interface_id: u32,
+    pub cost: u32,
+    pub bandwidth: u64,
+    pub delay: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NetworkTopology {
+    pub routers: HashMap<u32, RouterState>,
+    pub links: HashMap<u32, NetworkLink>,
+    next_router_id: u32,
+    next_link_id: u32,
+    next_interface_id: u32,
+}
+
+impl NetworkTopology {
+    pub fn new() -> Self {
+        NetworkTopology {
+            routers: HashMap::new(),
+            links: HashMap::new(),
+            next_router_id: 1,
+            next_link_id: 1,
+            next_interface_id: 1,
+        }
+    }
+
+    pub fn add_router(&mut self, name: String) -> u32 {
+        let id = self.next_router_id;
+        self.next_router_id += 1;
+        let router = RouterState::new(id, name);
+        self.routers.insert(id, router);
+        id
+    }
+
+    pub fn connect_routers(
+        &mut self,
+        router1_id: u32,
+        router2_id: u32,
+        cost: u32,
+    ) -> Result<u32, String> {
+        if !self.routers.contains_key(&router1_id) {
+            return Err(format!("Router {} not found", router1_id));
+        }
+        if !self.routers.contains_key(&router2_id) {
+            return Err(format!("Router {} not found", router2_id));
+        }
+
+        let link_id = self.next_link_id;
+        self.next_link_id += 1;
+
+        let interface1_id = self.next_interface_id;
+        self.next_interface_id += 1;
+        let interface2_id = self.next_interface_id;
+        self.next_interface_id += 1;
+
+        let interface1 = RouterInterface {
+            id: interface1_id,
+            ip_address: format!("10.0.{}.1", link_id),
+            netmask: "255.255.255.252".to_string(),
+            connected_router_id: Some(router2_id),
+            cost,
+            enabled: true,
+        };
+
+        let interface2 = RouterInterface {
+            id: interface2_id,
+            ip_address: format!("10.0.{}.2", link_id),
+            netmask: "255.255.255.252".to_string(),
+            connected_router_id: Some(router1_id),
+            cost,
+            enabled: true,
+        };
+
+        if let Some(router1) = self.routers.get_mut(&router1_id) {
+            router1.add_interface(interface1);
+        }
+
+        if let Some(router2) = self.routers.get_mut(&router2_id) {
+            router2.add_interface(interface2);
+        }
+
+        let link = NetworkLink {
+            id: link_id,
+            router1_id,
+            router1_interface_id: interface1_id,
+            router2_id,
+            router2_interface_id: interface2_id,
+            cost,
+            bandwidth: 100_000_000,
+            delay: 10,
+        };
+
+        self.links.insert(link_id, link);
+        Ok(link_id)
+    }
+
+    pub fn enable_ospf_on_router(&mut self, router_id: u32) -> Result<(), String> {
+        if let Some(router) = self.routers.get_mut(&router_id) {
+            let router_ip = format!("{}.{}.{}.{}", 
+                1, 1, 1, router_id);
+            router.enable_ospf(router_ip, "0.0.0.0".to_string());
+            Ok(())
+        } else {
+            Err(format!("Router {} not found", router_id))
+        }
+    }
+
+    pub fn get_neighbors(&self, router_id: u32) -> Vec<u32> {
+        let mut neighbors = Vec::new();
+        for link in self.links.values() {
+            if link.router1_id == router_id {
+                neighbors.push(link.router2_id);
+            } else if link.router2_id == router_id {
+                neighbors.push(link.router1_id);
+            }
+        }
+        neighbors
+    }
+}
