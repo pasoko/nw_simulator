@@ -23,49 +23,53 @@ impl OSPFEngine {
     }
 
     pub fn process_hello_packet(&mut self, packet: &HelloPacket, from_router_id: u32, interface_id: u32) -> Vec<PacketEvent> {
-        let mut events = Vec::new();
+        let events = Vec::new();
         
         // Check if we already know this neighbor
-        let neighbor_state = if let Some(neighbor) = self.neighbors.get_mut(&from_router_id) {
+        let (current_state, _is_new) = if let Some(neighbor) = self.neighbors.get_mut(&from_router_id) {
             // Update last seen time
-            neighbor.state.clone()
+            (neighbor.state.clone(), false)
         } else {
             // New neighbor discovered
             let new_neighbor = OSPFNeighbor {
-                router_id: from_router_id.to_string(),
-                state: OSPFNeighborState::Init,
+                router_id: format!("{}.{}.{}.{}", 1, 1, 1, from_router_id),
+                state: OSPFNeighborState::Down,
                 interface_id,
                 priority: packet.router_priority,
             };
             self.neighbors.insert(from_router_id, new_neighbor);
-            OSPFNeighborState::Down
+            (OSPFNeighborState::Down, true)
         };
 
         // State machine progression
-        match neighbor_state {
+        match current_state {
             OSPFNeighborState::Down => {
-                // Move to Init state
+                // Move to Init state - we heard from them
                 if let Some(neighbor) = self.neighbors.get_mut(&from_router_id) {
                     neighbor.state = OSPFNeighborState::Init;
                 }
             }
             OSPFNeighborState::Init => {
                 // Check if we are in neighbor's hello packet
-                if packet.neighbors.contains(&self.router_id) {
+                let our_router_id = format!("{}.{}.{}.{}", 1, 1, 1, self.router_id.parse::<u32>().unwrap_or(0));
+                if packet.neighbors.contains(&our_router_id) || packet.neighbors.contains(&self.router_id) {
                     if let Some(neighbor) = self.neighbors.get_mut(&from_router_id) {
                         neighbor.state = OSPFNeighborState::TwoWay;
                         
-                        // Start DD exchange if priority > 0
-                        if neighbor.priority > 0 {
-                            neighbor.state = OSPFNeighborState::ExStart;
-                            // Generate DD packet
-                            events.push(self.create_dd_packet_event(from_router_id));
-                        }
+                        // For simplicity, immediately move to Full state
+                        // In real OSPF, there would be DD, LS Request/Update exchange
+                        neighbor.state = OSPFNeighborState::Full;
                     }
                 }
             }
+            OSPFNeighborState::TwoWay => {
+                // For simplicity, move directly to Full
+                if let Some(neighbor) = self.neighbors.get_mut(&from_router_id) {
+                    neighbor.state = OSPFNeighborState::Full;
+                }
+            }
             _ => {
-                // Handle other states
+                // Maintain current state
             }
         }
 
@@ -108,9 +112,9 @@ impl OSPFEngine {
             router_dead_interval: self.dead_interval,
             designated_router: "0.0.0.0".to_string(),
             backup_designated_router: "0.0.0.0".to_string(),
-            neighbors: self.neighbors.values()
-                .filter(|n| matches!(n.state, OSPFNeighborState::TwoWay | OSPFNeighborState::Full))
-                .map(|n| n.router_id.clone())
+            neighbors: self.neighbors.iter()
+                .filter(|(_, n)| matches!(n.state, OSPFNeighborState::Init | OSPFNeighborState::TwoWay | OSPFNeighborState::Full))
+                .map(|(id, _)| format!("{}.{}.{}.{}", 1, 1, 1, id))
                 .collect(),
         }
     }

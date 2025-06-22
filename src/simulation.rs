@@ -2,7 +2,7 @@ use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 use crate::network::NetworkTopology;
 use crate::protocol::{ProtocolEngine, PacketEvent, ProtocolPacket};
-use crate::ospf::{OSPFPacket, OSPFPacketType, OSPFPacketData};
+use crate::ospf::{OSPFPacket, OSPFPacketType, OSPFPacketData, HelloPacket};
 use crate::ospf_engine::OSPFEngine;
 use crate::spf::SPFCalculator;
 
@@ -155,11 +155,23 @@ impl NetworkSimulation {
         self.log_event(SimulationEvent {
             timestamp: self.simulation_time,
             event_type: SimulationEventType::OSPFEnabled { router_id },
-            description: format!("OSPF enabled on router {}", router_id),
+            description: format!("OSPF enabled on router {} at simulation time {}", router_id, self.simulation_time),
         });
         
+        // If simulation is running, schedule hello packets immediately
         if self.running {
-            self.schedule_hello_packets(router_id);
+            self.log_event(SimulationEvent {
+                timestamp: self.simulation_time,
+                event_type: SimulationEventType::OSPFEnabled { router_id },
+                description: format!("Scheduling initial hello packets for router {} (simulation running)", router_id),
+            });
+            self.schedule_initial_hello_packets(router_id);
+        } else {
+            self.log_event(SimulationEvent {
+                timestamp: self.simulation_time,
+                event_type: SimulationEventType::OSPFEnabled { router_id },
+                description: format!("Not scheduling hello packets for router {} (simulation not running)", router_id),
+            });
         }
         
         Ok(())
@@ -175,8 +187,77 @@ impl NetworkSimulation {
             .map(|(id, _)| *id)
             .collect();
         
+        // Schedule initial hello packets immediately
         for router_id in router_ids {
-            self.schedule_hello_packets(router_id);
+            self.schedule_initial_hello_packets(router_id);
+        }
+    }
+    
+    fn schedule_initial_hello_packets(&mut self, router_id: u32) {
+        // Send first hello packet immediately (0.1s delay)
+        // Make sure the time is in the future by checking against protocol engine's current time
+        let min_time = self.simulation_time.max(self.protocol_engine.current_time);
+        let initial_hello_time = min_time + 0.1;
+        
+        if let Some(router) = self.topology.routers.get(&router_id) {
+            if let Some(_ospf_state) = &router.ospf_state {
+                let neighbors = self.topology.get_neighbors(router_id);
+                
+                self.log_event(SimulationEvent {
+                    timestamp: self.simulation_time,
+                    event_type: SimulationEventType::OSPFEnabled { router_id },
+                    description: format!("Scheduling hello packets for router {} to {} neighbors at time {} (current sim time: {})", 
+                        router_id, neighbors.len(), initial_hello_time, self.simulation_time),
+                });
+                
+                for neighbor_id in neighbors {
+                    // Send hello packets to all neighbors regardless of their OSPF state
+                    // Real OSPF doesn't wait for neighbors to enable OSPF
+                    let packet = self.create_hello_packet(router_id);
+                    let event = PacketEvent {
+                        timestamp: initial_hello_time,
+                        from_router_id: router_id,
+                        to_router_id: neighbor_id,
+                        packet: ProtocolPacket::OSPF(packet),
+                    };
+                    
+                    self.protocol_engine.schedule_event(event.clone());
+                    
+                    self.log_event(SimulationEvent {
+                        timestamp: self.simulation_time,
+                        event_type: SimulationEventType::OSPFEnabled { router_id },
+                        description: format!("Scheduled hello from router {} to {} at time {} (event queue size: {})", 
+                            router_id, neighbor_id, initial_hello_time, self.protocol_engine.events.len()),
+                    });
+                }
+                
+                // Schedule regular hello packets to start after initial
+                let self_event = PacketEvent {
+                    timestamp: initial_hello_time,
+                    from_router_id: router_id,
+                    to_router_id: router_id,
+                    packet: ProtocolPacket::OSPF(OSPFPacket {
+                        version: 2,
+                        packet_type: OSPFPacketType::Hello,
+                        router_id: format!("{}.{}.{}.{}", 1, 1, 1, router_id),
+                        area_id: "0.0.0.0".to_string(),
+                        checksum: 0,
+                        auth_type: 0,
+                        authentication: 0,
+                        data: OSPFPacketData::Hello(HelloPacket {
+                            network_mask: "255.255.255.252".to_string(),
+                            hello_interval: 10,
+                            options: 0,
+                            router_priority: 1,
+                            router_dead_interval: 40,
+                            designated_router: "0.0.0.0".to_string(),
+                            backup_designated_router: "0.0.0.0".to_string(),
+                            neighbors: Vec::new(),
+                        }),
+                    }),
+                };
+                self.protocol_engine.schedule_event(self_event);
+            }
         }
     }
 
@@ -190,6 +271,17 @@ impl NetworkSimulation {
         }
 
         let target_time = self.simulation_time + time_delta;
+        let events_before = self.protocol_engine.events.len();
+        
+        // Log the current state
+        if events_before > 0 {
+            self.log_event(SimulationEvent {
+                timestamp: self.simulation_time,
+                event_type: SimulationEventType::OSPFEnabled { router_id: 0 },
+                description: format!("Processing events: current_time={:.2}, target_time={:.2}, queue_size={}", 
+                    self.simulation_time, target_time, events_before),
+            });
+        }
         
         while let Some(event) = self.protocol_engine.process_next_event() {
             if event.timestamp > target_time {
@@ -199,6 +291,15 @@ impl NetworkSimulation {
             
             self.simulation_time = event.timestamp;
             self.process_packet_event(event);
+        }
+        
+        let events_after = self.protocol_engine.events.len();
+        if events_before != events_after {
+            self.log_event(SimulationEvent {
+                timestamp: self.simulation_time,
+                event_type: SimulationEventType::OSPFEnabled { router_id: 0 },
+                description: format!("Event queue changed: {} -> {} events", events_before, events_after),
+            });
         }
         
         self.simulation_time = target_time;
@@ -213,20 +314,44 @@ impl NetworkSimulation {
                 let neighbors = self.topology.get_neighbors(router_id);
                 
                 for neighbor_id in neighbors {
-                    if self.topology.routers.get(&neighbor_id)
-                        .and_then(|r| r.ospf_state.as_ref()).is_some() {
-                        
-                        let packet = self.create_hello_packet(router_id);
-                        let event = PacketEvent {
-                            timestamp: next_hello_time,
-                            from_router_id: router_id,
-                            to_router_id: neighbor_id,
-                            packet: ProtocolPacket::OSPF(packet),
-                        };
-                        
-                        self.protocol_engine.schedule_event(event);
-                    }
+                    // Send hello packets to all neighbors regardless of their OSPF state
+                    let packet = self.create_hello_packet(router_id);
+                    let event = PacketEvent {
+                        timestamp: next_hello_time,
+                        from_router_id: router_id,
+                        to_router_id: neighbor_id,
+                        packet: ProtocolPacket::OSPF(packet),
+                    };
+                    
+                    self.protocol_engine.schedule_event(event);
                 }
+                
+                // Schedule a self-event to trigger next hello packet scheduling
+                let self_event = PacketEvent {
+                    timestamp: next_hello_time,
+                    from_router_id: router_id,
+                    to_router_id: router_id,
+                    packet: ProtocolPacket::OSPF(OSPFPacket {
+                        version: 2,
+                        packet_type: OSPFPacketType::Hello,
+                        router_id: format!("{}.{}.{}.{}", 1, 1, 1, router_id),
+                        area_id: "0.0.0.0".to_string(),
+                        checksum: 0,
+                        auth_type: 0,
+                        authentication: 0,
+                        data: OSPFPacketData::Hello(HelloPacket {
+                            network_mask: "255.255.255.252".to_string(),
+                            hello_interval: 10,
+                            options: 0,
+                            router_priority: 1,
+                            router_dead_interval: 40,
+                            designated_router: "0.0.0.0".to_string(),
+                            backup_designated_router: "0.0.0.0".to_string(),
+                            neighbors: Vec::new(),
+                        }),
+                    }),
+                };
+                self.protocol_engine.schedule_event(self_event);
             }
         }
     }
@@ -268,6 +393,19 @@ impl NetworkSimulation {
     }
 
     fn process_packet_event(&mut self, event: PacketEvent) {
+        // Check if this is a self-event to trigger hello packet scheduling
+        if event.from_router_id == event.to_router_id && 
+           self.topology.routers.contains_key(&event.from_router_id) {
+            self.log_event(SimulationEvent {
+                timestamp: event.timestamp,
+                event_type: SimulationEventType::OSPFEnabled { router_id: event.from_router_id },
+                description: format!("Self-event triggered for router {} - scheduling next hello packets", 
+                    event.from_router_id),
+            });
+            self.schedule_hello_packets(event.from_router_id);
+            return; // Don't process self-events as regular packets
+        }
+        
         match &event.packet {
             ProtocolPacket::OSPF(ospf_packet) => {
                 let packet_type = match &ospf_packet.packet_type {
@@ -305,11 +443,6 @@ impl NetworkSimulation {
                 // Process packet in OSPF engine
                 self.process_ospf_packet(ospf_packet.clone(), event.from_router_id, event.to_router_id);
             }
-        }
-        
-        if event.from_router_id == event.to_router_id && 
-           self.topology.routers.contains_key(&event.from_router_id) {
-            self.schedule_hello_packets(event.from_router_id);
         }
     }
     
