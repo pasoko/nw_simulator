@@ -41,7 +41,9 @@ pub struct Router {
 #[derive(Serialize, Deserialize)]
 pub struct Connection {
     from_router_id: u32,
+    from_interface_id: u32,
     to_router_id: u32,
+    to_interface_id: u32,
     cost: u32,
 }
 
@@ -141,7 +143,9 @@ impl NetworkSimulator {
         let connections: Vec<Connection> = self.simulation.topology.links.values().map(|link| {
             Connection {
                 from_router_id: link.router1_id,
+                from_interface_id: link.router1_interface_id,
                 to_router_id: link.router2_id,
+                to_interface_id: link.router2_interface_id,
                 cost: link.cost,
             }
         }).collect();
@@ -151,6 +155,39 @@ impl NetworkSimulator {
     pub fn get_recent_events_json(&self, count: usize) -> String {
         let events = self.simulation.get_recent_events(count);
         serde_json::to_string(&events).unwrap_or_default()
+    }
+    
+    pub fn get_router_summary_json(&self, router_id: u32) -> String {
+        if let Some(router) = self.simulation.topology.routers.get(&router_id) {
+            let neighbor_count = self.simulation.get_ospf_neighbor_count(router_id);
+            let route_count = router.routing_table.len();
+            
+            // Get latest OSPF event for this router
+            let recent_events = self.simulation.get_recent_events(20);
+            let latest_ospf_event = recent_events.iter()
+                .filter(|e| match &e.event_type {
+                    crate::simulation::SimulationEventType::OSPFEnabled { router_id: rid } => *rid == router_id,
+                    crate::simulation::SimulationEventType::NeighborStateChanged { router_id: rid, .. } => *rid == router_id,
+                    crate::simulation::SimulationEventType::RoutingTableUpdated { router_id: rid } => *rid == router_id,
+                    _ => false
+                })
+                .last()
+                .map(|e| e.description.clone())
+                .unwrap_or_else(|| "No recent OSPF events".to_string());
+            
+            let summary = serde_json::json!({
+                "id": router_id,
+                "name": router.name,
+                "ospf_enabled": router.ospf_state.is_some(),
+                "neighbor_count": neighbor_count,
+                "route_count": route_count,
+                "latest_event": latest_ospf_event
+            });
+            
+            serde_json::to_string(&summary).unwrap_or_default()
+        } else {
+            "{}".to_string()
+        }
     }
     
     pub fn get_all_events_json(&self) -> String {

@@ -269,9 +269,12 @@ function handleCanvasClick(event) {
                     simulator.connect_routers(selectedRouters[0], selectedRouters[1], cost);
                     
                     // Add connection to local state immediately
+                    // Note: Interface IDs will be updated when we get data from simulator
                     connections.push({
                         from_router_id: selectedRouters[0],
+                        from_interface_id: 0,
                         to_router_id: selectedRouters[1],
+                        to_interface_id: 0,
                         cost: cost
                     });
                     
@@ -401,6 +404,16 @@ window.toggleOSPF = function(routerId) {
 function render() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
+    // Update router summaries if not in simulation
+    if (!simulationRunning) {
+        routers.forEach(router => {
+            const summaryJson = simulator.get_router_summary_json(router.id);
+            if (summaryJson) {
+                router.summary = JSON.parse(summaryJson);
+            }
+        });
+    }
+    
     // Draw connections with bidirectional arrows
     ctx.strokeStyle = '#666';
     ctx.lineWidth = 2;
@@ -459,9 +472,51 @@ function render() {
             );
             ctx.stroke();
             
-            // Draw cost label
+            // Draw interface numbers near connection endpoints
+            ctx.font = 'bold 20px Arial';
+            ctx.fillStyle = '#000';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            
+            // Add background for better readability
+            const drawInterfaceLabel = (x, y, text) => {
+                // Measure text width
+                const metrics = ctx.measureText(text);
+                const padding = 4;
+                const boxWidth = metrics.width + padding * 2;
+                const boxHeight = 24;
+                
+                // Draw white background
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+                ctx.fillRect(x - boxWidth / 2, y - boxHeight / 2, boxWidth, boxHeight);
+                
+                // Draw border
+                ctx.strokeStyle = '#333';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(x - boxWidth / 2, y - boxHeight / 2, boxWidth, boxHeight);
+                
+                // Draw text
+                ctx.fillStyle = '#000';
+                ctx.fillText(text, x, y);
+            };
+            
+            // Interface number at 'from' end
+            const fromLabelX = from.x + unitX * 40;
+            const fromLabelY = from.y + unitY * 40;
+            drawInterfaceLabel(fromLabelX, fromLabelY, `if${conn.from_interface_id || '?'}`);
+            
+            // Interface number at 'to' end
+            const toLabelX = to.x - unitX * 40;
+            const toLabelY = to.y - unitY * 40;
+            drawInterfaceLabel(toLabelX, toLabelY, `if${conn.to_interface_id || '?'}`);
+            
+            // Reset line width for other drawing
+            ctx.lineWidth = 2;
+            
+            // Draw cost label in the middle
             const midX = (from.x + to.x) / 2;
             const midY = (from.y + to.y) / 2;
+            ctx.font = '12px Arial';
             ctx.fillStyle = '#000';
             ctx.fillText(`Cost: ${conn.cost}`, midX, midY);
         }
@@ -532,6 +587,36 @@ function render() {
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(router.name, router.x, router.y);
+        
+        // Draw router details below the icon
+        if (router.summary) {
+            ctx.fillStyle = '#000';
+            ctx.font = '10px Arial';
+            ctx.textAlign = 'center';
+            
+            let yOffset = 35;
+            
+            // OSPF status
+            if (router.summary.ospf_enabled) {
+                ctx.fillText(`Neighbors: ${router.summary.neighbor_count}`, router.x, router.y + yOffset);
+                yOffset += 12;
+                
+                ctx.fillText(`Routes: ${router.summary.route_count}`, router.x, router.y + yOffset);
+                yOffset += 12;
+                
+                // Latest event (truncate if too long)
+                const event = router.summary.latest_event;
+                const maxLength = 30;
+                const displayEvent = event.length > maxLength ? 
+                    event.substring(0, maxLength) + '...' : event;
+                ctx.font = '9px Arial';
+                ctx.fillStyle = '#666';
+                ctx.fillText(displayEvent, router.x, router.y + yOffset);
+            } else {
+                ctx.fillStyle = '#999';
+                ctx.fillText('OSPF Disabled', router.x, router.y + yOffset);
+            }
+        }
     });
     
     // Draw packet statistics (moved down to avoid overlap with timer)
@@ -695,6 +780,14 @@ function updateSimulationDisplay() {
     if (connectionsJson) {
         connections = JSON.parse(connectionsJson);
     }
+    
+    // Update router summaries for display
+    routers.forEach(router => {
+        const summaryJson = simulator.get_router_summary_json(router.id);
+        if (summaryJson) {
+            router.summary = JSON.parse(summaryJson);
+        }
+    });
     
     // Get recent events and display them
     const eventsJson = simulator.get_recent_events_json(10);
