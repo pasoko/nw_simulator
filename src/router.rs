@@ -55,30 +55,91 @@ pub struct OSPFNeighbor {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum OSPFNeighborState {
-    Down,
-    Init,
-    TwoWay,
-    ExStart,
-    Exchange,
-    Loading,
-    Full,
+    Down,      // Initial state, no information received
+    Init,      // Hello received, but not seen self in neighbor list
+    TwoWay,    // Bidirectional communication established
+    ExStart,   // Master/Slave negotiation for DD exchange
+    Exchange,  // Database Description packets being exchanged
+    Loading,   // LSAs being requested and received
+    Full,      // Databases synchronized, full adjacency
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LSAHeader {
+    pub ls_age: u16,                   // Time in seconds since LSA originated
+    pub ls_type: LSAType,              // Type of LSA
+    pub link_state_id: String,         // Depends on LSA type
+    pub advertising_router: String,    // Router that originated the LSA
+    pub ls_sequence_number: u32,       // For detecting old/duplicate LSAs
+    pub ls_checksum: u16,              // Fletcher checksum
+    pub length: u16,                   // Length of LSA including header
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LSA {
-    pub lsa_type: LSAType,
-    pub advertising_router: String,
-    pub sequence_number: u32,
-    pub age: u16,
-    pub data: String,
+    pub header: LSAHeader,
+    pub data: LSAData,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum LSAData {
+    Router(RouterLSA),
+    Network(NetworkLSA),
+    Summary(SummaryLSA),
+    ASExternal(ASExternalLSA),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RouterLSA {
+    pub flags: u8,                     // V, E, B bits
+    pub num_links: u16,
+    pub links: Vec<RouterLink>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RouterLink {
+    pub link_id: String,               // Depends on link type
+    pub link_data: String,             // Depends on link type
+    pub link_type: LinkType,
+    pub num_tos: u8,
+    pub metric: u16,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum LinkType {
+    PointToPoint = 1,
+    TransitNetwork = 2,
+    StubNetwork = 3,
+    VirtualLink = 4,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NetworkLSA {
+    pub network_mask: String,
+    pub attached_routers: Vec<String>, // Router IDs of attached routers
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SummaryLSA {
+    pub network_mask: String,
+    pub metric: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ASExternalLSA {
+    pub network_mask: String,
+    pub metric: u32,
+    pub forwarding_address: String,
+    pub external_route_tag: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum LSAType {
-    RouterLSA,
-    NetworkLSA,
-    SummaryLSA,
-    ASExternalLSA,
+    RouterLSA = 1,
+    NetworkLSA = 2,
+    SummaryLSA = 3,
+    SummaryASBR = 4,
+    ASExternalLSA = 5,
 }
 
 impl RouterState {

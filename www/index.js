@@ -436,6 +436,7 @@ function renderRouterDetails(details) {
         html += `<div class="detail-section ospf-status">
             <h5>OSPF Status:</h5>
             <div>Neighbors: ${details.ospf_neighbors || 0}</div>
+            <div>LSA Database: ${details.lsa_database_size || 0} entries</div>
         </div>`;
     }
     

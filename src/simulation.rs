@@ -63,7 +63,17 @@ impl NetworkSimulation {
     }
 
     pub fn connect_routers(&mut self, router1_id: u32, router2_id: u32, cost: u32) -> Result<(), String> {
-        self.topology.connect_routers(router1_id, router2_id, cost)?;
+        let link_id = self.topology.connect_routers(router1_id, router2_id, cost)?;
+        
+        // Update OSPF engines with new link information
+        if let Some(link) = self.topology.links.get(&link_id) {
+            if let Some(engine1) = self.ospf_engines.get_mut(&router1_id) {
+                engine1.add_router_link(router2_id, link.router1_interface_id, cost);
+            }
+            if let Some(engine2) = self.ospf_engines.get_mut(&router2_id) {
+                engine2.add_router_link(router1_id, link.router2_interface_id, cost);
+            }
+        }
         
         self.log_event(SimulationEvent {
             timestamp: self.simulation_time,
@@ -188,7 +198,17 @@ impl NetworkSimulation {
         
         // Create OSPF engine for this router
         let router_ip = format!("{}.{}.{}.{}", 1, 1, 1, router_id);
-        let ospf_engine = OSPFEngine::new(router_ip.clone(), "0.0.0.0".to_string());
+        let mut ospf_engine = OSPFEngine::new(router_ip.clone(), "0.0.0.0".to_string());
+        
+        // Add router links to OSPF engine
+        for link in self.topology.links.values() {
+            if link.router1_id == router_id {
+                ospf_engine.add_router_link(link.router2_id, link.router1_interface_id, link.cost);
+            } else if link.router2_id == router_id {
+                ospf_engine.add_router_link(link.router1_id, link.router2_interface_id, link.cost);
+            }
+        }
+        
         self.ospf_engines.insert(router_id, ospf_engine);
         
         self.log_event(SimulationEvent {
@@ -298,6 +318,11 @@ impl NetworkSimulation {
         }
         
         self.simulation_time = target_time;
+        
+        // Update all OSPF engines' time after processing events
+        for engine in self.ospf_engines.values_mut() {
+            engine.update_time(self.simulation_time);
+        }
     }
 
     fn schedule_hello_packets(&mut self, router_id: u32) {
@@ -468,6 +493,9 @@ impl NetworkSimulation {
     
     fn process_ospf_packet(&mut self, packet: OSPFPacket, from_router_id: u32, to_router_id: u32) {
         if let Some(engine) = self.ospf_engines.get_mut(&to_router_id) {
+            // Update engine time
+            engine.update_time(self.simulation_time);
+            
             let new_events = match &packet.data {
                 OSPFPacketData::Hello(hello) => {
                     // Get interface ID for this connection
@@ -490,7 +518,17 @@ impl NetworkSimulation {
                 OSPFPacketData::DatabaseDescription(dd) => {
                     engine.process_dd_packet(dd, from_router_id)
                 }
-                _ => Vec::new(),
+                OSPFPacketData::LinkStateRequest(_lsr) => {
+                    // Not implemented yet
+                    Vec::new()
+                }
+                OSPFPacketData::LinkStateUpdate(lsu) => {
+                    engine.process_lsu_packet(lsu, from_router_id)
+                }
+                OSPFPacketData::LinkStateAcknowledgment(_lsack) => {
+                    // Not implemented yet
+                    Vec::new()
+                }
             };
             
             // Schedule any response packets
@@ -499,23 +537,42 @@ impl NetworkSimulation {
                 self.protocol_engine.schedule_event(event);
             }
             
-            // Check for neighbor state changes
+            // Check for neighbor state changes and log them
             let neighbor_states = engine.get_neighbor_states();
             for (neighbor_id, state) in neighbor_states {
-                self.log_event(SimulationEvent {
-                    timestamp: self.simulation_time,
-                    event_type: SimulationEventType::NeighborStateChanged {
-                        router_id: to_router_id,
-                        neighbor_id,
-                        new_state: format!("{:?}", state),
-                    },
-                    description: format!("Router {} neighbor {} state changed to {:?}", 
-                        to_router_id, neighbor_id, state),
-                });
-                
-                // If neighbor reached Full state, recalculate routes
-                if matches!(state, crate::router::OSPFNeighborState::Full) {
-                    self.calculate_routes_for_router(to_router_id);
+                // Log significant state changes
+                match state {
+                    crate::router::OSPFNeighborState::Full => {
+                        self.log_event(SimulationEvent {
+                            timestamp: self.simulation_time,
+                            event_type: SimulationEventType::NeighborStateChanged {
+                                router_id: to_router_id,
+                                neighbor_id,
+                                new_state: "Full".to_string(),
+                            },
+                            description: format!("Router {} neighbor {} reached FULL adjacency", 
+                                to_router_id, neighbor_id),
+                        });
+                        
+                        // Recalculate routes when adjacency is established
+                        self.calculate_routes_for_router(to_router_id);
+                    }
+                    crate::router::OSPFNeighborState::Down => {
+                        self.log_event(SimulationEvent {
+                            timestamp: self.simulation_time,
+                            event_type: SimulationEventType::NeighborStateChanged {
+                                router_id: to_router_id,
+                                neighbor_id,
+                                new_state: "Down".to_string(),
+                            },
+                            description: format!("Router {} neighbor {} went DOWN", 
+                                to_router_id, neighbor_id),
+                        });
+                        
+                        // Recalculate routes when adjacency is lost
+                        self.calculate_routes_for_router(to_router_id);
+                    }
+                    _ => {}
                 }
             }
         }
@@ -549,6 +606,12 @@ impl NetworkSimulation {
     pub fn get_ospf_neighbor_count(&self, router_id: u32) -> usize {
         self.ospf_engines.get(&router_id)
             .map(|engine| engine.get_neighbor_count())
+            .unwrap_or(0)
+    }
+    
+    pub fn get_ospf_lsa_count(&self, router_id: u32) -> usize {
+        self.ospf_engines.get(&router_id)
+            .map(|engine| engine.get_lsa_count())
             .unwrap_or(0)
     }
 }

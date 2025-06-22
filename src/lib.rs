@@ -198,6 +198,7 @@ impl NetworkSimulator {
         if let Some(router) = self.simulation.topology.routers.get(&router_id) {
             // Get neighbor count from OSPF engine through public method
             let ospf_neighbor_count = self.simulation.get_ospf_neighbor_count(router_id);
+            let lsa_count = self.simulation.get_ospf_lsa_count(router_id);
             
             let details = serde_json::json!({
                 "id": router.id,
@@ -205,7 +206,8 @@ impl NetworkSimulator {
                 "interfaces": router.interfaces,
                 "routing_table": router.routing_table,
                 "ospf_enabled": router.ospf_state.is_some(),
-                "ospf_neighbors": ospf_neighbor_count
+                "ospf_neighbors": ospf_neighbor_count,
+                "lsa_database_size": lsa_count
             });
             serde_json::to_string(&details).unwrap_or_default()
         } else {

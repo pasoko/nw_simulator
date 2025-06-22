@@ -88,7 +88,7 @@ pub struct LSARequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LSA {
     pub header: LSAHeader,
-    pub data: LSAData,
+    pub data: String, // Serialized LSA data for simplicity
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
