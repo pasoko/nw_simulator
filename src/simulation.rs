@@ -128,6 +128,45 @@ impl NetworkSimulation {
         if let Some(link_id) = link_to_remove {
             self.topology.links.remove(&link_id);
             
+            // Notify OSPF engines about the link failure
+            if let Some(engine1) = self.ospf_engines.get_mut(&router1_id) {
+                if engine1.remove_neighbor(router2_id) {
+                    self.log_event(SimulationEvent {
+                        timestamp: self.simulation_time,
+                        event_type: SimulationEventType::NeighborStateChanged {
+                            router_id: router1_id,
+                            neighbor_id: router2_id,
+                            new_state: "Down".to_string(),
+                        },
+                        description: format!("Router {} removed neighbor {} due to link failure", router1_id, router2_id),
+                    });
+                }
+            }
+            
+            if let Some(engine2) = self.ospf_engines.get_mut(&router2_id) {
+                if engine2.remove_neighbor(router1_id) {
+                    self.log_event(SimulationEvent {
+                        timestamp: self.simulation_time,
+                        event_type: SimulationEventType::NeighborStateChanged {
+                            router_id: router2_id,
+                            neighbor_id: router1_id,
+                            new_state: "Down".to_string(),
+                        },
+                        description: format!("Router {} removed neighbor {} due to link failure", router2_id, router1_id),
+                    });
+                }
+            }
+            
+            // Remove any scheduled packet events between these routers
+            self.protocol_engine.events.retain(|event| {
+                !((event.from_router_id == router1_id && event.to_router_id == router2_id) ||
+                  (event.from_router_id == router2_id && event.to_router_id == router1_id))
+            });
+            
+            // Recalculate routes for affected routers
+            self.calculate_routes_for_router(router1_id);
+            self.calculate_routes_for_router(router2_id);
+            
             self.log_event(SimulationEvent {
                 timestamp: self.simulation_time,
                 event_type: SimulationEventType::LinkCreated { 
@@ -524,5 +563,11 @@ impl NetworkSimulation {
     pub fn get_recent_events(&self, count: usize) -> Vec<SimulationEvent> {
         let start = self.simulation_log.len().saturating_sub(count);
         self.simulation_log[start..].to_vec()
+    }
+    
+    pub fn get_ospf_neighbor_count(&self, router_id: u32) -> usize {
+        self.ospf_engines.get(&router_id)
+            .map(|engine| engine.get_neighbor_count())
+            .unwrap_or(0)
     }
 }

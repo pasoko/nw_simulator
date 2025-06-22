@@ -152,4 +152,12 @@ impl OSPFEngine {
             .map(|(id, neighbor)| (*id, neighbor.state.clone()))
             .collect()
     }
+    
+    pub fn remove_neighbor(&mut self, neighbor_id: u32) -> bool {
+        self.neighbors.remove(&neighbor_id).is_some()
+    }
+    
+    pub fn get_neighbor_count(&self) -> usize {
+        self.neighbors.len()
+    }
 }
