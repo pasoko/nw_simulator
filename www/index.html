@@ -83,6 +83,19 @@
             overflow-y: auto;
             font-family: monospace;
             font-size: 12px;
+            position: relative;
+        }
+        #simulation-timer {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: #00ff00;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 14px;
+            border: 1px solid #00ff00;
         }
         .log-entry {
             margin: 2px 0;
@@ -174,6 +187,7 @@
             <canvas id="network-canvas"></canvas>
         </div>
         <div id="log-container">
+            <div id="simulation-timer" style="display: none;">Time: 0.0s</div>
             <div id="log-content"></div>
         </div>
     </div>

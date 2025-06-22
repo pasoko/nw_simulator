@@ -578,11 +578,17 @@ function startSimulation() {
     btn.textContent = 'Stop Simulation';
     btn.classList.add('running');
     
+    // Show timer
+    const timer = document.getElementById('simulation-timer');
+    timer.style.display = 'block';
+    updateTimer();
+    
     // Update simulation every 100ms
     simulationInterval = setInterval(() => {
         simulator.step_simulation(0.1);
         simulationTime += 0.1;
         updateSimulationDisplay();
+        updateTimer();
         
         // Update packet positions
         packetVisualizer.update(simulationTime);
@@ -601,10 +607,19 @@ function stopSimulation() {
     btn.textContent = 'Start Simulation';
     btn.classList.remove('running');
     
+    // Hide timer
+    const timer = document.getElementById('simulation-timer');
+    timer.style.display = 'none';
+    
     if (simulationInterval) {
         clearInterval(simulationInterval);
         simulationInterval = null;
     }
+}
+
+function updateTimer() {
+    const timer = document.getElementById('simulation-timer');
+    timer.textContent = `Time: ${simulationTime.toFixed(1)}s`;
 }
 
 function updateSimulationDisplay() {
