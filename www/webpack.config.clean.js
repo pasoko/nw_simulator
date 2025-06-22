@@ -20,14 +20,12 @@ module.exports = {
     }),
     new CopyPlugin({
       patterns: [
-        { from: 'pkg', to: 'pkg' },
-        { from: 'direct-wasm-test.html', to: 'direct-wasm-test.html', noErrorOnMissing: true }
+        { from: 'pkg', to: 'pkg' }
       ],
     }),
   ],
-  // Disable webpack's WASM experiments to avoid hash issues
   experiments: {
-    asyncWebAssembly: false
+    asyncWebAssembly: true
   },
   optimization: {
     minimize: true

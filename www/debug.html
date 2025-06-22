@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug - Network Simulator</title>
+</head>
+<body>
+    <h1>Debug Console</h1>
+    <div id="status"></div>
+    <button id="test-btn">Test Button</button>
+    
+    <script type="module">
+        const status = document.getElementById('status');
+        
+        // Test basic button functionality
+        document.getElementById('test-btn').addEventListener('click', () => {
+            console.log('Test button clicked');
+            status.innerHTML += '<p>Test button works!</p>';
+        });
+        
+        // Test module loading
+        status.innerHTML = '<p>Loading modules...</p>';
+        
+        try {
+            // Test WebAssembly support
+            if (typeof WebAssembly === 'undefined') {
+                throw new Error('WebAssembly is not supported');
+            }
+            status.innerHTML += '<p>✓ WebAssembly is supported</p>';
+            
+            // Import the module
+            import('./pkg/nw_simulator.js').then(module => {
+                status.innerHTML += '<p>✓ WASM module loaded</p>';
+                
+                // Try to initialize
+                module.default().then(() => {
+                    status.innerHTML += '<p>✓ WASM initialized</p>';
+                    
+                    // Try to create simulator
+                    const simulator = new module.NetworkSimulator();
+                    status.innerHTML += '<p>✓ NetworkSimulator created</p>';
+                }).catch(err => {
+                    status.innerHTML += `<p style="color: red;">✗ WASM init failed: ${err}</p>`;
+                    console.error('WASM init error:', err);
+                });
+            }).catch(err => {
+                status.innerHTML += `<p style="color: red;">✗ Module import failed: ${err}</p>`;
+                console.error('Module import error:', err);
+            });
+            
+            // Test packet visualizer
+            import('./packet-visualizer.js').then(module => {
+                status.innerHTML += '<p>✓ PacketVisualizer module loaded</p>';
+            }).catch(err => {
+                status.innerHTML += `<p style="color: red;">✗ PacketVisualizer import failed: ${err}</p>`;
+                console.error('PacketVisualizer import error:', err);
+            });
+            
+        } catch (err) {
+            status.innerHTML += `<p style="color: red;">✗ Error: ${err.message}</p>`;
+            console.error('Error:', err);
+        }
+    </script>
+</body>
+</html>

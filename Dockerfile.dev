@@ -8,8 +8,8 @@ RUN curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
     apt-get install -y nodejs
 
-# Install watchexec for auto-rebuild
-RUN cargo install watchexec-cli
+# Install watchexec for auto-rebuild (use compatible version with locked dependencies)
+RUN cargo install watchexec-cli --version 1.20.6 --locked
 
 WORKDIR /app
 

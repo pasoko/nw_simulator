@@ -79,6 +79,71 @@ impl NetworkSimulation {
         Ok(())
     }
 
+    pub fn delete_router(&mut self, router_id: u32) -> bool {
+        // Stop simulation if running
+        if self.running {
+            self.running = false;
+        }
+        
+        // Remove router from topology
+        if self.topology.routers.remove(&router_id).is_some() {
+            // Remove all links connected to this router
+            let links_to_remove: Vec<u32> = self.topology.links
+                .iter()
+                .filter(|(_, link)| link.router1_id == router_id || link.router2_id == router_id)
+                .map(|(id, _)| *id)
+                .collect();
+            
+            for link_id in links_to_remove {
+                self.topology.links.remove(&link_id);
+            }
+            
+            // Remove OSPF engine
+            self.ospf_engines.remove(&router_id);
+            
+            self.log_event(SimulationEvent {
+                timestamp: self.simulation_time,
+                event_type: SimulationEventType::RouterAdded { 
+                    router_id, 
+                    name: format!("Deleted Router {}", router_id) 
+                },
+                description: format!("Router {} deleted", router_id),
+            });
+            
+            true
+        } else {
+            false
+        }
+    }
+    
+    pub fn disconnect_routers(&mut self, router1_id: u32, router2_id: u32) -> bool {
+        let link_to_remove = self.topology.links
+            .iter()
+            .find(|(_, link)| {
+                (link.router1_id == router1_id && link.router2_id == router2_id) ||
+                (link.router1_id == router2_id && link.router2_id == router1_id)
+            })
+            .map(|(id, _)| *id);
+        
+        if let Some(link_id) = link_to_remove {
+            self.topology.links.remove(&link_id);
+            
+            self.log_event(SimulationEvent {
+                timestamp: self.simulation_time,
+                event_type: SimulationEventType::LinkCreated { 
+                    from_router: router1_id, 
+                    to_router: router2_id, 
+                    cost: 0 
+                },
+                description: format!("Disconnected routers {} and {}", router1_id, router2_id),
+            });
+            
+            true
+        } else {
+            false
+        }
+    }
+    
     pub fn enable_ospf(&mut self, router_id: u32) -> Result<(), String> {
         self.topology.enable_ospf_on_router(router_id)?;
         

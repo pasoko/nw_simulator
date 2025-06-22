@@ -1,5 +1,9 @@
-import init, { NetworkSimulator } from './pkg/nw_simulator.js';
+// Import without bundling WASM
+import initWasm, { NetworkSimulator } from './pkg/nw_simulator.js';
 import { PacketVisualizer } from './packet-visualizer.js';
+
+// Override the default WASM path
+const init = () => initWasm('./pkg/nw_simulator_bg.wasm');
 
 let simulator;
 let canvas;
@@ -13,22 +17,42 @@ let simulationInterval = null;
 let packetVisualizer;
 let simulationTime = 0;
 let logEntries = [];
+let lastMouseX = 0;
+let lastMouseY = 0;
 
 async function run() {
-    await init();
-    
-    simulator = new NetworkSimulator();
-    canvas = document.getElementById('network-canvas');
-    ctx = canvas.getContext('2d');
-    
-    setupCanvas();
-    setupEventListeners();
-    
-    packetVisualizer = new PacketVisualizer(canvas, ctx);
-    
-    render();
-    
-    log('Network Simulator initialized');
+    try {
+        console.log('Starting initialization...');
+        await init();
+        console.log('WASM initialized');
+        
+        simulator = new NetworkSimulator();
+        console.log('NetworkSimulator created');
+        
+        canvas = document.getElementById('network-canvas');
+        if (!canvas) {
+            throw new Error('Canvas element not found');
+        }
+        ctx = canvas.getContext('2d');
+        
+        setupCanvas();
+        setupEventListeners();
+        
+        packetVisualizer = new PacketVisualizer(canvas, ctx);
+        
+        render();
+        
+        log('Network Simulator initialized');
+        console.log('Application ready');
+    } catch (error) {
+        console.error('Error during initialization:', error);
+        log(`Error: ${error.message}`);
+        // Show error in UI
+        const errorDiv = document.createElement('div');
+        errorDiv.style.cssText = 'position: fixed; top: 10px; left: 50%; transform: translateX(-50%); background: red; color: white; padding: 10px; border-radius: 5px; z-index: 9999;';
+        errorDiv.textContent = `Initialization Error: ${error.message}`;
+        document.body.appendChild(errorDiv);
+    }
 }
 
 function setupCanvas() {
@@ -44,34 +68,109 @@ function setupCanvas() {
 }
 
 function setupEventListeners() {
+    console.log('Setting up event listeners...');
+    
     canvas.addEventListener('click', handleCanvasClick);
-    
-    document.getElementById('add-router-btn').addEventListener('click', () => {
-        setMode('add-router');
+    canvas.addEventListener('mousemove', (event) => {
+        const rect = canvas.getBoundingClientRect();
+        lastMouseX = event.clientX - rect.left;
+        lastMouseY = event.clientY - rect.top;
+        if (mode === 'delete-router') {
+            render(); // Re-render to update hover effect
+        }
     });
     
-    document.getElementById('connect-routers-btn').addEventListener('click', () => {
-        setMode('connect-routers');
-    });
+    // Check if buttons exist before adding listeners
+    const addRouterBtn = document.getElementById('add-router-btn');
+    if (addRouterBtn) {
+        addRouterBtn.addEventListener('click', () => {
+            console.log('Add router button clicked');
+            setMode('add-router');
+        });
+    } else {
+        console.error('Add router button not found!');
+    }
     
-    document.getElementById('simulate-btn').addEventListener('click', startSimulation);
-    document.getElementById('export-log-btn').addEventListener('click', exportLog);
-    document.getElementById('clear-log-btn').addEventListener('click', clearLog);
-    document.getElementById('router-select').addEventListener('change', handleRouterSelect);
+    const connectBtn = document.getElementById('connect-routers-btn');
+    if (connectBtn) {
+        connectBtn.addEventListener('click', () => {
+            console.log('Connect routers button clicked');
+            setMode('connect-routers');
+        });
+    } else {
+        console.error('Connect routers button not found!');
+    }
+    
+    const simulateBtn = document.getElementById('simulate-btn');
+    if (simulateBtn) {
+        simulateBtn.addEventListener('click', startSimulation);
+    } else {
+        console.error('Simulate button not found!');
+    }
+    
+    const exportBtn = document.getElementById('export-log-btn');
+    if (exportBtn) {
+        exportBtn.addEventListener('click', exportLog);
+    }
+    
+    const clearBtn = document.getElementById('clear-log-btn');
+    if (clearBtn) {
+        clearBtn.addEventListener('click', clearLog);
+    }
+    
+    const routerSelect = document.getElementById('router-select');
+    if (routerSelect) {
+        routerSelect.addEventListener('change', handleRouterSelect);
+    }
+    
+    const deleteBtn = document.getElementById('delete-router-btn');
+    if (deleteBtn) {
+        deleteBtn.addEventListener('click', () => {
+            console.log('Delete router button clicked');
+            setMode('delete-router');
+        });
+    } else {
+        console.error('Delete router button not found!');
+    }
+    
+    const disconnectBtn = document.getElementById('disconnect-routers-btn');
+    if (disconnectBtn) {
+        disconnectBtn.addEventListener('click', () => {
+            console.log('Disconnect routers button clicked');
+            setMode('disconnect-routers');
+        });
+    } else {
+        console.error('Disconnect routers button not found!');
+    }
+    
+    console.log('Event listeners setup complete');
 }
 
 function setMode(newMode) {
+    console.log(`Setting mode to: ${newMode}`);
     mode = newMode;
     selectedRouters = [];
     const indicator = document.getElementById('mode-indicator');
     
     switch(mode) {
         case 'add-router':
-            indicator.textContent = 'Mode: Add Router';
+            indicator.textContent = 'Mode: Add Router - Click on canvas to place router';
+            indicator.style.backgroundColor = '#ffc107';
             canvas.style.cursor = 'crosshair';
             break;
         case 'connect-routers':
-            indicator.textContent = 'Mode: Connect Routers (Select 2)';
+            indicator.textContent = 'Mode: Connect Routers - Select first router';
+            indicator.style.backgroundColor = '#17a2b8';
+            canvas.style.cursor = 'pointer';
+            break;
+        case 'delete-router':
+            indicator.textContent = 'Mode: Delete Router - Click on router to delete';
+            indicator.style.backgroundColor = '#dc3545';
+            canvas.style.cursor = 'pointer';
+            break;
+        case 'disconnect-routers':
+            indicator.textContent = 'Mode: Disconnect Routers - Select first router';
+            indicator.style.backgroundColor = '#dc3545';
             canvas.style.cursor = 'pointer';
             break;
     }
@@ -95,22 +194,87 @@ function handleCanvasClick(event) {
     } else if (mode === 'connect-routers') {
         const clickedRouter = findRouterAt(x, y);
         if (clickedRouter) {
+            const indicator = document.getElementById('mode-indicator');
+            
             if (selectedRouters.includes(clickedRouter.id)) {
+                // Deselect if clicking the same router
                 selectedRouters = selectedRouters.filter(id => id !== clickedRouter.id);
+                if (selectedRouters.length === 0) {
+                    indicator.textContent = 'Mode: Connect Routers - Select first router';
+                } else {
+                    indicator.textContent = 'Mode: Connect Routers - Select second router';
+                }
             } else {
                 selectedRouters.push(clickedRouter.id);
-                if (selectedRouters.length === 2) {
+                if (selectedRouters.length === 1) {
+                    indicator.textContent = `Mode: Connect Routers - First router selected (${clickedRouter.name}). Select second router`;
+                    indicator.style.backgroundColor = '#28a745';
+                } else if (selectedRouters.length === 2) {
                     const cost = parseInt(prompt('Enter link cost:', '1') || '1');
                     simulator.connect_routers(selectedRouters[0], selectedRouters[1], cost);
-                    connections.push({
-                        from: selectedRouters[0],
-                        to: selectedRouters[1],
-                        cost
-                    });
                     selectedRouters = [];
-                    render();
+                    indicator.textContent = 'Mode: Connect Routers - Connection created! Select first router for next connection';
+                    indicator.style.backgroundColor = '#17a2b8';
                 }
             }
+            render();
+        }
+    } else if (mode === 'delete-router') {
+        const clickedRouter = findRouterAt(x, y);
+        if (clickedRouter) {
+            if (confirm(`Are you sure you want to delete router "${clickedRouter.name}"?`)) {
+                simulator.delete_router(clickedRouter.id);
+                // Update local state
+                routers = routers.filter(r => r.id !== clickedRouter.id);
+                connections = connections.filter(c => 
+                    c.from_router_id !== clickedRouter.id && c.to_router_id !== clickedRouter.id
+                );
+                updateRoutersList();
+                render();
+                log(`Router ${clickedRouter.name} deleted`);
+            }
+        }
+    } else if (mode === 'disconnect-routers') {
+        const clickedRouter = findRouterAt(x, y);
+        if (clickedRouter) {
+            const indicator = document.getElementById('mode-indicator');
+            
+            if (selectedRouters.includes(clickedRouter.id)) {
+                // Deselect if clicking the same router
+                selectedRouters = selectedRouters.filter(id => id !== clickedRouter.id);
+                if (selectedRouters.length === 0) {
+                    indicator.textContent = 'Mode: Disconnect Routers - Select first router';
+                } else {
+                    indicator.textContent = 'Mode: Disconnect Routers - Select second router';
+                }
+            } else {
+                selectedRouters.push(clickedRouter.id);
+                if (selectedRouters.length === 1) {
+                    indicator.textContent = `Mode: Disconnect Routers - First router selected (${clickedRouter.name}). Select second router`;
+                    indicator.style.backgroundColor = '#dc3545';
+                } else if (selectedRouters.length === 2) {
+                    // Check if connection exists
+                    const connectionExists = connections.some(c => 
+                        (c.from_router_id === selectedRouters[0] && c.to_router_id === selectedRouters[1]) ||
+                        (c.from_router_id === selectedRouters[1] && c.to_router_id === selectedRouters[0])
+                    );
+                    
+                    if (connectionExists) {
+                        simulator.disconnect_routers(selectedRouters[0], selectedRouters[1]);
+                        // Update local state
+                        connections = connections.filter(c => 
+                            !((c.from_router_id === selectedRouters[0] && c.to_router_id === selectedRouters[1]) ||
+                              (c.from_router_id === selectedRouters[1] && c.to_router_id === selectedRouters[0]))
+                        );
+                        indicator.textContent = 'Mode: Disconnect Routers - Connection removed! Select first router for next disconnection';
+                        log(`Disconnected routers ${selectedRouters[0]} and ${selectedRouters[1]}`);
+                    } else {
+                        indicator.textContent = 'Mode: Disconnect Routers - No connection exists between these routers';
+                    }
+                    selectedRouters = [];
+                }
+            }
+            render();
         }
     }
 }
@@ -199,14 +363,44 @@ function render() {
     routers.forEach(router => {
         const isSelected = selectedRouters.includes(router.id);
         
+        // Draw selection ring for various modes
+        if (isSelected && (mode === 'connect-routers' || mode === 'disconnect-routers')) {
+            ctx.beginPath();
+            ctx.arc(router.x, router.y, 25, 0, 2 * Math.PI);
+            if (mode === 'connect-routers') {
+                ctx.strokeStyle = selectedRouters.indexOf(router.id) === 0 ? '#ff9800' : '#4caf50';
+            } else {
+                ctx.strokeStyle = selectedRouters.indexOf(router.id) === 0 ? '#dc3545' : '#f44336';
+            }
+            ctx.lineWidth = 4;
+            ctx.stroke();
+        }
+        
+        // Highlight router on hover in delete mode
+        if (mode === 'delete-router') {
+            const mouseX = lastMouseX || 0;
+            const mouseY = lastMouseY || 0;
+            const dx = router.x - mouseX;
+            const dy = router.y - mouseY;
+            if (dx * dx + dy * dy < 400) { // 20px radius
+                ctx.beginPath();
+                ctx.arc(router.x, router.y, 25, 0, 2 * Math.PI);
+                ctx.strokeStyle = '#dc3545';
+                ctx.lineWidth = 3;
+                ctx.setLineDash([5, 5]);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+        }
+        
         ctx.beginPath();
         ctx.arc(router.x, router.y, 20, 0, 2 * Math.PI);
         ctx.fillStyle = router.ospf_enabled ? '#4CAF50' : '#2196F3';
         ctx.fill();
         
-        if (isSelected) {
-            ctx.strokeStyle = '#ff0000';
-            ctx.lineWidth = 3;
+        if (isSelected && mode === 'connect-routers') {
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 2;
             ctx.stroke();
         }
         
@@ -343,8 +537,12 @@ function updateSimulationDisplay() {
     const connectionsJson = simulator.get_connections_json();
     
     if (routersJson) {
-        routers = JSON.parse(routersJson);
-        updateRoutersList();
+        const newRouters = JSON.parse(routersJson);
+        // Only update if there's a change in routers
+        if (JSON.stringify(routers) !== JSON.stringify(newRouters)) {
+            routers = newRouters;
+            updateRoutersList();
+        }
     }
     
     if (connectionsJson) {
@@ -438,4 +636,10 @@ function displayRouterDetails(details) {
     container.innerHTML = html;
 }
 
-run();
+// Wait for DOM to be fully loaded
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', run);
+} else {
+    // DOM is already loaded
+    run();
+}

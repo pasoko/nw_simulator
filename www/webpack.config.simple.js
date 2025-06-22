@@ -8,28 +8,29 @@ module.exports = {
     path: path.resolve(__dirname, 'dist'),
     filename: 'bundle.js',
     clean: true,
-    publicPath: '/',
   },
   mode: 'production',
-  devtool: false,
   plugins: [
     new HtmlWebpackPlugin({
       template: './index.html',
       inject: 'body',
-      minify: false
+      minify: false,
+      scriptLoading: 'blocking' // 'defer' から 'blocking' に変更
     }),
     new CopyPlugin({
       patterns: [
-        { from: 'pkg', to: 'pkg' },
-        { from: 'direct-wasm-test.html', to: 'direct-wasm-test.html', noErrorOnMissing: true }
+        { from: 'pkg', to: 'pkg' }
       ],
     }),
   ],
-  // Disable webpack's WASM experiments to avoid hash issues
   experiments: {
-    asyncWebAssembly: false
+    asyncWebAssembly: true
   },
-  optimization: {
-    minimize: true
-  }
+  devServer: {
+    static: {
+      directory: path.join(__dirname, 'dist'),
+    },
+    compress: true,
+    port: 8080,
+  },
 };

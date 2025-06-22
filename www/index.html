@@ -59,6 +59,12 @@
         .button.running:hover {
             background-color: #da190b;
         }
+        .button.danger {
+            background-color: #dc3545;
+        }
+        .button.danger:hover {
+            background-color: #c82333;
+        }
         .router-item {
             padding: 10px;
             margin: 5px 0;
@@ -143,6 +149,8 @@
         <h3>Controls</h3>
         <button class="button" id="add-router-btn">Add Router</button>
         <button class="button secondary" id="connect-routers-btn">Connect Routers</button>
+        <button class="button danger" id="delete-router-btn">Delete Router</button>
+        <button class="button danger" id="disconnect-routers-btn">Disconnect Routers</button>
         <button class="button secondary" id="simulate-btn">Start Simulation</button>
         <button class="button secondary" id="export-log-btn">Export Log</button>
         <button class="button secondary" id="clear-log-btn">Clear Log</button>
@@ -168,7 +176,5 @@
             <div id="log-content"></div>
         </div>
     </div>
-    
-    <script src="bundle.js"></script>
 </body>
 </html>

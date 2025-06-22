@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Test</title>
+</head>
+<body>
+    <h1>Simple Button Test</h1>
+    
+    <button id="test1">Test Button 1 (inline)</button>
+    <button id="test2">Test Button 2 (addEventListener)</button>
+    <button id="test3">Test Button 3 (module)</button>
+    
+    <div id="output" style="margin-top: 20px; padding: 10px; background: #f0f0f0;"></div>
+    
+    <!-- Inline onclick test -->
+    <script>
+        document.getElementById('test1').onclick = function() {
+            document.getElementById('output').innerHTML += '<p>Test 1 clicked!</p>';
+        };
+    </script>
+    
+    <!-- addEventListener test -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('test2').addEventListener('click', function() {
+                document.getElementById('output').innerHTML += '<p>Test 2 clicked!</p>';
+            });
+        });
+    </script>
+    
+    <!-- Module test -->
+    <script type="module">
+        // Test if modules work
+        document.getElementById('test3').addEventListener('click', async function() {
+            try {
+                document.getElementById('output').innerHTML += '<p>Test 3 clicked - Loading module...</p>';
+                
+                // Try to load WASM module
+                const wasmModule = await import('./pkg/nw_simulator.js');
+                document.getElementById('output').innerHTML += '<p>Module loaded!</p>';
+                
+                // Try to initialize
+                await wasmModule.default();
+                document.getElementById('output').innerHTML += '<p>WASM initialized!</p>';
+                
+                // Try to create simulator
+                const simulator = new wasmModule.NetworkSimulator();
+                document.getElementById('output').innerHTML += '<p>Simulator created!</p>';
+                
+            } catch (err) {
+                document.getElementById('output').innerHTML += `<p style="color: red;">Error: ${err.message}</p>`;
+                console.error(err);
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Direct WASM Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        #output { background: #f0f0f0; padding: 10px; margin: 10px 0; }
+        .success { color: green; }
+        .error { color: red; }
+        button { margin: 5px; padding: 10px; }
+    </style>
+</head>
+<body>
+    <h1>Direct WASM Loading Test</h1>
+    <p>This page loads WASM directly from the pkg directory without webpack processing.</p>
+    
+    <button id="test-btn">Test WASM Loading</button>
+    <button id="create-router-btn">Create Test Router</button>
+    
+    <div id="output"></div>
+    
+    <script type="module">
+        const output = document.getElementById('output');
+        
+        function log(message, type = 'info') {
+            const entry = document.createElement('div');
+            entry.className = type;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            output.appendChild(entry);
+            console.log(message);
+        }
+        
+        let simulator = null;
+        
+        document.getElementById('test-btn').addEventListener('click', async () => {
+            try {
+                log('Loading WASM module...');
+                
+                // Import the JS wrapper
+                const wasmModule = await import('./pkg/nw_simulator.js');
+                log('JS module loaded', 'success');
+                
+                // Initialize with explicit WASM path
+                await wasmModule.default('./pkg/nw_simulator_bg.wasm');
+                log('WASM initialized', 'success');
+                
+                // Create simulator
+                simulator = new wasmModule.NetworkSimulator();
+                log('NetworkSimulator created', 'success');
+                
+                log('✓ WASM loading successful!', 'success');
+                
+            } catch (err) {
+                log(`Error: ${err.message}`, 'error');
+                console.error(err);
+            }
+        });
+        
+        document.getElementById('create-router-btn').addEventListener('click', () => {
+            if (!simulator) {
+                log('Please load WASM first!', 'error');
+                return;
+            }
+            
+            try {
+                const routerId = simulator.add_router('TestRouter', 100, 100);
+                log(`Router created with ID: ${routerId}`, 'success');
+                
+                // Enable OSPF
+                simulator.enable_ospf(routerId);
+                log('OSPF enabled on router', 'success');
+                
+            } catch (err) {
+                log(`Error creating router: ${err.message}`, 'error');
+            }
+        });
+        
+        // Initial message
+        log('Click "Test WASM Loading" to start');
+    </script>
+</body>
+</html>

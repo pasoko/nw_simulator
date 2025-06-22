@@ -69,6 +69,27 @@ impl NetworkSimulator {
             Err(e) => console_log!("Error connecting routers: {}", e),
         }
     }
+    
+    pub fn delete_router(&mut self, router_id: u32) -> bool {
+        if self.simulation.delete_router(router_id) {
+            self.router_positions.remove(&router_id);
+            console_log!("Router {} deleted", router_id);
+            true
+        } else {
+            console_log!("Failed to delete router {}", router_id);
+            false
+        }
+    }
+    
+    pub fn disconnect_routers(&mut self, from_id: u32, to_id: u32) -> bool {
+        if self.simulation.disconnect_routers(from_id, to_id) {
+            console_log!("Disconnected router {} from router {}", from_id, to_id);
+            true
+        } else {
+            console_log!("Failed to disconnect routers {} and {}", from_id, to_id);
+            false
+        }
+    }
 
     pub fn enable_ospf(&mut self, router_id: u32) {
         match self.simulation.enable_ospf(router_id) {

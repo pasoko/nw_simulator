@@ -41,11 +41,20 @@ COPY www/packet-visualizer.js ./
 COPY www/webpack.config.js ./
 COPY www/health.html ./
 
+# Debug: Check index.html content
+RUN echo "=== Checking index.html content ===" && \
+    grep -E "(Delete Router|Disconnect Routers)" index.html || echo "Buttons not found in source"
+
 # Copy WebAssembly output from rust builder
 COPY --from=rust-builder /app/pkg ./pkg
 
 # Build frontend
 RUN npm run build
+
+# Debug: Check built files
+RUN echo "=== Checking built files ===" && \
+    ls -la dist/ && \
+    grep -E "(Delete Router|Disconnect Routers)" dist/index.html || echo "Buttons not found in dist"
 
 # Production stage with nginx
 FROM nginx:alpine
@@ -58,6 +67,11 @@ COPY --from=frontend-builder /app/www/dist /usr/share/nginx/html
 
 # Copy health check file
 COPY --from=frontend-builder /app/www/health.html /usr/share/nginx/html/
+
+# Debug: Final check
+RUN echo "=== Final check ===" && \
+    ls -la /usr/share/nginx/html/ && \
+    grep -E "(Delete Router|Disconnect Routers)" /usr/share/nginx/html/index.html || echo "Buttons not found in final output"
 
 # Expose port 80
 EXPOSE 80

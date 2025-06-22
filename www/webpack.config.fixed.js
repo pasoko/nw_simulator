@@ -8,7 +8,6 @@ module.exports = {
     path: path.resolve(__dirname, 'dist'),
     filename: 'bundle.js',
     clean: true,
-    publicPath: '/',
   },
   mode: 'production',
   devtool: false,
@@ -16,18 +15,24 @@ module.exports = {
     new HtmlWebpackPlugin({
       template: './index.html',
       inject: 'body',
-      minify: false
+      minify: {
+        collapseWhitespace: false,
+        removeComments: false,
+        removeRedundantAttributes: false,
+        removeScriptTypeAttributes: false,
+        removeStyleLinkTypeAttributes: false,
+        useShortDoctype: false
+      }
     }),
     new CopyPlugin({
       patterns: [
         { from: 'pkg', to: 'pkg' },
-        { from: 'direct-wasm-test.html', to: 'direct-wasm-test.html', noErrorOnMissing: true }
+        { from: 'simple-test.html', to: 'simple-test.html', noErrorOnMissing: true }
       ],
     }),
   ],
-  // Disable webpack's WASM experiments to avoid hash issues
   experiments: {
-    asyncWebAssembly: false
+    asyncWebAssembly: true
   },
   optimization: {
     minimize: true

@@ -40,6 +40,8 @@ COPY www/index.js ./
 COPY www/packet-visualizer.js ./
 COPY www/webpack.config.js ./
 COPY www/health.html ./
+COPY www/test.html ./
+COPY www/debug.html ./
 
 # Copy WebAssembly output from rust builder
 COPY --from=rust-builder /app/pkg ./pkg
@@ -50,8 +52,8 @@ RUN npm run build
 # Production stage with nginx
 FROM nginx:alpine
 
-# Copy nginx configuration
-COPY nginx.conf /etc/nginx/nginx.conf
+# Copy simple nginx configuration (without CSP)
+COPY nginx-simple.conf /etc/nginx/nginx.conf
 
 # Copy built files from frontend builder stage
 COPY --from=frontend-builder /app/www/dist /usr/share/nginx/html
