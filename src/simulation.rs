@@ -499,9 +499,12 @@ impl NetworkSimulation {
     }
     
     fn process_ospf_packet(&mut self, packet: OSPFPacket, from_router_id: u32, to_router_id: u32) {
-        let (new_events, lsa_updated, lsa_count, state_transitions) = if let Some(engine) = self.ospf_engines.get_mut(&to_router_id) {
+        let (new_events, lsa_updated, lsa_count, lsa_database_changed, state_transitions) = if let Some(engine) = self.ospf_engines.get_mut(&to_router_id) {
             // Update engine time before processing packet
             engine.update_time(self.simulation_time);
+            
+            // Get LSA count before processing
+            let lsa_count_before = engine.get_lsa_count();
             
             let new_events = match &packet.data {
                 OSPFPacketData::Hello(hello) => {
@@ -536,12 +539,15 @@ impl NetworkSimulation {
                 }
             };
             
-            // Check if LSA database was updated (for LSU packets)
-            let lsa_updated = matches!(&packet.data, OSPFPacketData::LinkStateUpdate(_));
+            // Check if LSA database was updated
+            let lsa_updated = matches!(&packet.data, OSPFPacketData::LinkStateUpdate(_)) 
+                || matches!(&packet.data, OSPFPacketData::DatabaseDescription(_));
             let lsa_count = engine.get_lsa_count();
+            // Also check if LSA count changed
+            let lsa_database_changed = lsa_count != lsa_count_before;
             let state_transitions = engine.get_neighbor_state_transitions();
             
-            (new_events, lsa_updated, lsa_count, state_transitions)
+            (new_events, lsa_updated, lsa_count, lsa_database_changed, state_transitions)
         } else {
             return;
         };
@@ -553,7 +559,8 @@ impl NetworkSimulation {
         }
         
         // If LSAs were updated, recalculate routes
-        if lsa_updated && lsa_count > 0 {
+        if (lsa_updated || lsa_database_changed) && lsa_count > 0 {
+            console_log!("Router {} LSA database changed, running SPF calculation", to_router_id);
             self.calculate_routes_for_router(to_router_id);
         }
         

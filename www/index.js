@@ -244,14 +244,32 @@ function handleCanvasClick(event) {
     
     if (mode === 'add-router') {
         const name = prompt('Enter router name:');
-        if (name) {
-            const id = simulator.add_router(name, x, y);
+        if (name && name.trim()) {
+            // Validate router name
+            const trimmedName = name.trim();
+            if (trimmedName.length > 20) {
+                alert('Router name must be 20 characters or less');
+                return;
+            }
+            if (!/^[a-zA-Z0-9\-_]+$/.test(trimmedName)) {
+                alert('Router name can only contain letters, numbers, hyphens, and underscores');
+                return;
+            }
+            
+            const id = simulator.add_router(trimmedName, x, y);
+            console.log(`Added router with ID: ${id}`);
+            
             // Automatically enable OSPF on new routers
             simulator.enable_ospf(id);
-            routers.push({ id, name, x, y, ospf_enabled: true });
+            routers.push({ id, name: trimmedName, x, y, ospf_enabled: true });
+            
+            // Verify router was added to simulator
+            const verifyJson = simulator.get_routers_json();
+            console.log('Routers after add:', verifyJson);
+            
             updateRoutersList();
             render();
-            log(`Router ${name} created with OSPF enabled`);
+            log(`Router ${trimmedName} created with OSPF enabled`);
         }
     } else if (mode === 'connect-routers') {
         const clickedRouter = findRouterAt(x, y);
@@ -272,22 +290,38 @@ function handleCanvasClick(event) {
                     indicator.textContent = `Mode: Connect Routers - First router selected (${clickedRouter.name}). Select second router`;
                     indicator.style.backgroundColor = '#28a745';
                 } else if (selectedRouters.length === 2) {
-                    const cost = parseInt(prompt('Enter link cost:', '1') || '1');
-                    simulator.connect_routers(selectedRouters[0], selectedRouters[1], cost);
-                    
-                    // Add connection to local state immediately
-                    // Note: Interface IDs will be updated when we get data from simulator
-                    connections.push({
-                        from_router_id: selectedRouters[0],
-                        from_interface_id: 0,
-                        to_router_id: selectedRouters[1],
-                        to_interface_id: 0,
-                        cost: cost
-                    });
-                    
+                    // Check if both routers still exist
                     const from = routers.find(r => r.id === selectedRouters[0]);
                     const to = routers.find(r => r.id === selectedRouters[1]);
-                    log(`Connected routers ${from.name} and ${to.name} with cost ${cost}`);
+                    
+                    if (!from || !to) {
+                        alert('One or both selected routers no longer exist');
+                        selectedRouters = [];
+                        indicator.textContent = 'Mode: Connect Routers - Select first router';
+                        indicator.style.backgroundColor = '#17a2b8';
+                        render();
+                        return;
+                    }
+                    
+                    const cost = parseInt(prompt('Enter link cost:', '1') || '1');
+                    try {
+                        simulator.connect_routers(selectedRouters[0], selectedRouters[1], cost);
+                        
+                        // Add connection to local state immediately
+                        // Note: Interface IDs will be updated when we get data from simulator
+                        connections.push({
+                            from_router_id: selectedRouters[0],
+                            from_interface_id: 0,
+                            to_router_id: selectedRouters[1],
+                            to_interface_id: 0,
+                            cost: cost
+                        });
+                        
+                        log(`Connected routers ${from.name} and ${to.name} with cost ${cost}`);
+                    } catch (error) {
+                        console.error('Error connecting routers:', error);
+                        alert('Failed to connect routers: ' + error.message);
+                    }
                     
                     selectedRouters = [];
                     indicator.textContent = 'Mode: Connect Routers - Connection created! Select first router for next connection';
@@ -306,6 +340,15 @@ function handleCanvasClick(event) {
                 connections = connections.filter(c => 
                     c.from_router_id !== clickedRouter.id && c.to_router_id !== clickedRouter.id
                 );
+                
+                // Clear selected routers if deleted router was selected
+                selectedRouters = selectedRouters.filter(id => id !== clickedRouter.id);
+                if (mode === 'connect-routers' && selectedRouters.length === 0) {
+                    const indicator = document.getElementById('mode-indicator');
+                    indicator.textContent = 'Mode: Connect Routers - Select first router';
+                    indicator.style.backgroundColor = '#17a2b8';
+                }
+                
                 updateRoutersList();
                 render();
                 log(`Router ${clickedRouter.name} deleted`);
@@ -764,6 +807,26 @@ function startSimulation() {
         
         // Reset event tracking
         window.lastEventTime = -1;
+        window.processedEvents = new Set();
+        
+        // Sync routers and connections with simulator before starting
+        const routersJson = simulator.get_routers_json();
+        const connectionsJson = simulator.get_connections_json();
+        
+        console.log('Initial routers:', routersJson);
+        console.log('Initial connections:', connectionsJson);
+        
+        if (routersJson) {
+            routers = JSON.parse(routersJson);
+            console.log('Loaded routers:', routers);
+        }
+        
+        if (connectionsJson) {
+            connections = JSON.parse(connectionsJson);
+            console.log('Loaded connections:', connections);
+        }
+        
+        updateRoutersList();
     } else {
         // Resuming from pause
         log(`Resuming simulation from ${simulationTime.toFixed(1)}s...`);
@@ -830,10 +893,14 @@ function updateSimulationDisplay() {
     const routersJson = simulator.get_routers_json();
     const connectionsJson = simulator.get_connections_json();
     
+    console.log('Routers from simulator:', routersJson);
+    console.log('Connections from simulator:', connectionsJson);
+    
     if (routersJson) {
         const newRouters = JSON.parse(routersJson);
         // Only update if there's a change in routers
         if (JSON.stringify(routers) !== JSON.stringify(newRouters)) {
+            console.log('Updating routers:', newRouters);
             routers = newRouters;
             updateRoutersList();
         }
@@ -852,12 +919,22 @@ function updateSimulationDisplay() {
     });
     
     // Get recent events and display them
-    const eventsJson = simulator.get_recent_events_json(10);
+    const eventsJson = simulator.get_recent_events_json(50); // Get more events to avoid missing any
     if (eventsJson) {
         const events = JSON.parse(eventsJson);
-        // Only log events that are newer than the last displayed time
+        
+        // Initialize event tracking if not exists
+        if (!window.processedEvents) {
+            window.processedEvents = new Set();
+        }
+        
+        // Process only new events
         events.forEach(event => {
-            if (event.timestamp > (window.lastEventTime || -1) && event.description) {
+            // Create unique event key based on timestamp and description
+            const eventKey = `${event.timestamp.toFixed(4)}_${event.description}`;
+            
+            if (!window.processedEvents.has(eventKey) && event.description) {
+                window.processedEvents.add(eventKey);
                 log(`[${event.timestamp.toFixed(2)}s] ${event.description}`);
                 
                 // Add packet visualization for packet events
@@ -875,9 +952,12 @@ function updateSimulationDisplay() {
                 }
             }
         });
-        // Update last event time
-        if (events.length > 0) {
-            window.lastEventTime = Math.max(...events.map(e => e.timestamp));
+        
+        // Keep set size manageable by removing old events
+        if (window.processedEvents.size > 1000) {
+            const sortedEvents = Array.from(window.processedEvents).sort();
+            const toRemove = sortedEvents.slice(0, sortedEvents.length - 500);
+            toRemove.forEach(key => window.processedEvents.delete(key));
         }
     }
 }
