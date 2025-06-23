@@ -232,6 +232,7 @@ impl OSPFEngine {
                         // Check if DD exchange is complete
                         let more_flag = packet.flags & 0x02 != 0;  // M bit
                         if !more_flag && dd_state.lsa_headers_to_request.is_empty() {
+                            console_log!("Router {} moving neighbor {} to Full state", self.router_id, from_router_id);
                             neighbor.state = OSPFNeighborState::Full;
                             
                             // Generate Router LSA when adjacency forms
@@ -251,6 +252,7 @@ impl OSPFEngine {
                             self.update_lsa_database(router_lsa);
                             
                             // Flood the new LSA to neighbors
+                            console_log!("Router {} flooding LSA to neighbors", self.router_id);
                             let flood_events = self.flood_lsa(&lsa_clone);
                             events.extend(flood_events);
                         } else if !dd_state.lsa_headers_to_request.is_empty() {
@@ -274,6 +276,15 @@ impl OSPFEngine {
     }
 
     pub fn generate_hello_packet(&self) -> HelloPacket {
+        // Include all neighbors that are not Down in the hello packet
+        let neighbor_list: Vec<String> = self.neighbors.iter()
+            .filter(|(_, n)| n.state != OSPFNeighborState::Down)
+            .map(|(id, _)| format!("{}.{}.{}.{}", 1, 1, 1, id))
+            .collect();
+        
+        console_log!("Router {} generating Hello packet with {} neighbors: {:?}", 
+            self.router_id, neighbor_list.len(), neighbor_list);
+        
         HelloPacket {
             network_mask: "255.255.255.252".to_string(),
             hello_interval: self.hello_interval,
@@ -282,10 +293,7 @@ impl OSPFEngine {
             router_dead_interval: self.dead_interval,
             designated_router: "0.0.0.0".to_string(),
             backup_designated_router: "0.0.0.0".to_string(),
-            neighbors: self.neighbors.iter()
-                .filter(|(_, n)| matches!(n.state, OSPFNeighborState::Init | OSPFNeighborState::TwoWay | OSPFNeighborState::Full))
-                .map(|(id, _)| format!("{}.{}.{}.{}", 1, 1, 1, id))
-                .collect(),
+            neighbors: neighbor_list,
         }
     }
 

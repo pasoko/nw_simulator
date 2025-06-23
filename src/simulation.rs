@@ -246,8 +246,8 @@ impl NetworkSimulation {
     }
     
     fn schedule_initial_hello_packets(&mut self, router_id: u32) {
-        // Send first hello packet immediately (0.1s delay)
-        let initial_hello_time = self.simulation_time + 0.1;
+        // Send first hello packet with minimal delay
+        let initial_hello_time = self.simulation_time + 0.01;
         
         if let Some(router) = self.topology.routers.get(&router_id) {
             if let Some(_ospf_state) = &router.ospf_state {
@@ -500,7 +500,7 @@ impl NetworkSimulation {
     
     fn process_ospf_packet(&mut self, packet: OSPFPacket, from_router_id: u32, to_router_id: u32) {
         let (new_events, lsa_updated, lsa_count, state_transitions) = if let Some(engine) = self.ospf_engines.get_mut(&to_router_id) {
-            // Update engine time
+            // Update engine time before processing packet
             engine.update_time(self.simulation_time);
             
             let new_events = match &packet.data {
