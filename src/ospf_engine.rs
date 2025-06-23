@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use serde_json;
 use crate::ospf::{OSPFPacket, OSPFPacketType, OSPFPacketData, HelloPacket, DatabaseDescriptionPacket, LSA, LSAHeader, LinkStateUpdatePacket, LinkStateRequestPacket, LSARequest, LinkStateAcknowledgmentPacket};
 use crate::router::{OSPFNeighbor, OSPFNeighborState, RouterLSA, RouterLink, LinkType, LSAType, LSAData, LSAHeader as RouterLSAHeader};
 use crate::protocol::{ProtocolPacket, PacketEvent};
@@ -527,24 +526,7 @@ impl OSPFEngine {
                 checksum: lsa.header.ls_checksum,
                 length: lsa.header.length,
             },
-            data: {
-                // Serialize only the inner Router LSA data, not the entire enum
-                match &lsa.data {
-                    LSAData::Router(router_lsa) => {
-                        match serde_json::to_string(router_lsa) {
-                            Ok(json) => {
-                                console_log!("  Serialized Router LSA with {} links to: {}", router_lsa.links.len(), json);
-                                json
-                            },
-                            Err(e) => {
-                                console_log!("  ERROR: Failed to serialize Router LSA: {}", e);
-                                "{}".to_string()
-                            }
-                        }
-                    },
-                    _ => "{}".to_string()
-                }
-            }
+            data: lsa.data.clone()
         };
         
         let lsu_packet = LinkStateUpdatePacket {
@@ -653,24 +635,7 @@ impl OSPFEngine {
                         checksum: lsa.header.ls_checksum,
                         length: lsa.header.length,
                     },
-                    data: {
-                // Serialize only the inner Router LSA data, not the entire enum
-                match &lsa.data {
-                    LSAData::Router(router_lsa) => {
-                        match serde_json::to_string(router_lsa) {
-                            Ok(json) => {
-                                console_log!("  Serialized Router LSA with {} links to: {}", router_lsa.links.len(), json);
-                                json
-                            },
-                            Err(e) => {
-                                console_log!("  ERROR: Failed to serialize Router LSA: {}", e);
-                                "{}".to_string()
-                            }
-                        }
-                    },
-                    _ => "{}".to_string()
-                }
-            }
+                    data: lsa.data.clone()
                 };
                 lsas_to_send.push(lsa_for_packet);
             }
@@ -758,58 +723,22 @@ impl OSPFEngine {
                     length: lsa.header.length,
                 };
                 
-                // Parse LSA data from JSON
-                let lsa_data = match lsa.header.lsa_type {
-                    1 => {
-                        // Router LSA
-                        console_log!("  Attempting to deserialize Router LSA...");
-                        console_log!("  Raw LSA data: {}", lsa.data);
-                        
-                        // Try to parse the entire LSAData enum
-                        match serde_json::from_str::<LSAData>(&lsa.data) {
-                            Ok(data) => {
-                                console_log!("  Successfully deserialized Router LSA data");
-                                if let LSAData::Router(ref rlsa) = data {
-                                    console_log!("    Router LSA has {} links", rlsa.links.len());
-                                    for link in &rlsa.links {
-                                        console_log!("      Link: {} -> {} (metric {})", 
-                                            link.link_id, link.link_data, link.metric);
-                                    }
-                                }
-                                data
-                            },
-                            Err(e) => {
-                                console_log!("  ERROR: Failed to deserialize LSAData: {}", e);
-                                
-                                // Try parsing just the RouterLSA struct
-                                match serde_json::from_str::<RouterLSA>(&lsa.data) {
-                                    Ok(router_lsa) => {
-                                        console_log!("  Successfully parsed RouterLSA directly, {} links", router_lsa.links.len());
-                                        LSAData::Router(router_lsa)
-                                    },
-                                    Err(e2) => {
-                                        console_log!("  ERROR: Failed to parse RouterLSA: {}", e2);
-                                        // Create empty LSA as fallback
-                                        LSAData::Router(RouterLSA {
-                                            flags: 0,
-                                            num_links: 0,
-                                            links: Vec::new(),
-                                        })
-                                    }
-                                }
-                            }
+                // LSA data is already properly typed
+                let lsa_data = lsa.data.clone();
+                
+                // Debug logging
+                match &lsa_data {
+                    LSAData::Router(router_lsa) => {
+                        console_log!("  Router LSA with {} links", router_lsa.links.len());
+                        for link in &router_lsa.links {
+                            console_log!("    Link: {} -> {} (metric {})", 
+                                link.link_id, link.link_data, link.metric);
                         }
                     },
-                    _ => {
-                        // Other LSA types - default to Router LSA for now
-                        console_log!("  Non-Router LSA type {}, creating empty", lsa.header.lsa_type);
-                        LSAData::Router(RouterLSA {
-                            flags: 0,
-                            num_links: 0,
-                            links: Vec::new(),
-                        })
-                    }
-                };
+                    LSAData::Network(_) => console_log!("  Network LSA"),
+                    LSAData::Summary(_) => console_log!("  Summary LSA"),
+                    LSAData::ASExternal(_) => console_log!("  AS-External LSA"),
+                }
                 
                 let router_lsa = crate::router::LSA {
                     header: router_lsa_header,

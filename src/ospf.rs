@@ -1,4 +1,5 @@
 use serde::{Serialize, Deserialize};
+use crate::router::LSAData;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OSPFPacket {
@@ -88,57 +89,7 @@ pub struct LSARequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LSA {
     pub header: LSAHeader,
-    pub data: String, // Serialized LSA data for simplicity
+    pub data: LSAData, // Using LSAData from router module
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum LSAData {
-    RouterLSA(RouterLSAData),
-    NetworkLSA(NetworkLSAData),
-    SummaryLSA(SummaryLSAData),
-    ASExternalLSA(ASExternalLSAData),
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RouterLSAData {
-    pub flags: u8,
-    pub num_links: u16,
-    pub links: Vec<RouterLink>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RouterLink {
-    pub link_id: String,
-    pub link_data: String,
-    pub link_type: RouterLinkType,
-    pub num_tos: u8,
-    pub metric: u16,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum RouterLinkType {
-    PointToPoint = 1,
-    TransitNetwork = 2,
-    StubNetwork = 3,
-    VirtualLink = 4,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NetworkLSAData {
-    pub network_mask: String,
-    pub attached_routers: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SummaryLSAData {
-    pub network_mask: String,
-    pub metric: u32,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ASExternalLSAData {
-    pub network_mask: String,
-    pub external_route_tag: u32,
-    pub metric: u32,
-    pub forwarding_address: String,
-}
+// LSA-related types are now imported from router module
