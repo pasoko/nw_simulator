@@ -170,28 +170,38 @@ impl OSPFEngine {
     pub fn process_dd_packet(&mut self, packet: &DatabaseDescriptionPacket, from_router_id: u32) -> Vec<PacketEvent> {
         let mut events = Vec::new();
         
-        if let Some(neighbor) = self.neighbors.get_mut(&from_router_id) {
-            match neighbor.state {
-                OSPFNeighborState::ExStart => {
-                    // Master/Slave negotiation
-                    let our_router_id_num = self.router_id.split('.').last().unwrap_or("0").parse::<u32>().unwrap_or(0);
-                    let is_master = our_router_id_num > from_router_id;
-                    
-                    // Initialize DD exchange state
-                    let dd_state = DDExchangeState {
-                        dd_seq_num: if is_master { self.dd_sequence_number } else { packet.dd_sequence_number },
-                        is_master,
-                        last_received_dd_seq: packet.dd_sequence_number,
-                        lsa_headers_to_request: Vec::new(),
-                    };
-                    self.neighbor_dd_state.insert(from_router_id, dd_state);
-                    
+        // Get neighbor state first
+        let neighbor_state = self.neighbors.get(&from_router_id).map(|n| n.state.clone());
+        
+        match neighbor_state {
+            Some(OSPFNeighborState::ExStart) => {
+                // Master/Slave negotiation
+                let our_router_id_num = self.router_id.split('.').last().unwrap_or("0").parse::<u32>().unwrap_or(0);
+                let is_master = our_router_id_num > from_router_id;
+                
+                // Initialize DD exchange state
+                let dd_state = DDExchangeState {
+                    dd_seq_num: if is_master { self.dd_sequence_number } else { packet.dd_sequence_number },
+                    is_master,
+                    last_received_dd_seq: packet.dd_sequence_number,
+                    lsa_headers_to_request: Vec::new(),
+                };
+                self.neighbor_dd_state.insert(from_router_id, dd_state);
+                
+                // Update neighbor state
+                if let Some(neighbor) = self.neighbors.get_mut(&from_router_id) {
                     neighbor.state = OSPFNeighborState::Exchange;
-                    
-                    // Send our database summary
-                    events.push(self.create_dd_packet_event(from_router_id));
                 }
-                OSPFNeighborState::Exchange => {
+                
+                // Send our database summary
+                events.push(self.create_dd_packet_event(from_router_id));
+            }
+            Some(OSPFNeighborState::Exchange) => {
+                    // Variables to track state changes outside of borrow
+                    let mut should_send_dd = false;
+                    let mut should_move_to_full = false;
+                    let mut should_move_to_loading = false;
+                    
                     // Process received LSA headers
                     if let Some(dd_state) = self.neighbor_dd_state.get_mut(&from_router_id) {
                         // Check for LSAs we don't have
@@ -231,45 +241,68 @@ impl OSPFEngine {
                         
                         // Check if DD exchange is complete
                         let more_flag = packet.flags & 0x02 != 0;  // M bit
-                        if !more_flag && dd_state.lsa_headers_to_request.is_empty() {
+                        let init_flag = packet.flags & 0x04 != 0;  // I bit
+                        
+                        console_log!("Router {} received DD from {}: M={}, I={}, seq={}", 
+                            self.router_id, from_router_id, more_flag, init_flag, packet.dd_sequence_number);
+                        
+                        // Send our DD packet in response (if we're slave or need to acknowledge)
+                        should_send_dd = !dd_state.is_master || (dd_state.is_master && more_flag);
+                        
+                        // If this is the final DD packet from neighbor
+                        if !more_flag && !init_flag && dd_state.lsa_headers_to_request.is_empty() {
                             console_log!("Router {} moving neighbor {} to Full state", self.router_id, from_router_id);
-                            neighbor.state = OSPFNeighborState::Full;
-                            
-                            // Generate Router LSA when adjacency forms
-                            let router_lsa = self.generate_router_lsa();
-                            
-                            // Debug: Log LSA generation details
-                            if let LSAData::Router(ref rlsa) = router_lsa.data {
-                                console_log!("Router {} generated Router LSA with {} links", 
-                                    self.router_id, rlsa.links.len());
-                                for link in &rlsa.links {
-                                    console_log!("  Link to {} via interface {}, metric {}", 
-                                        link.link_id, link.link_data, link.metric);
-                                }
-                            }
-                            
-                            let lsa_clone = router_lsa.clone();
-                            self.update_lsa_database(router_lsa);
-                            
-                            // Flood the new LSA to neighbors
-                            console_log!("Router {} flooding LSA to neighbors", self.router_id);
-                            let flood_events = self.flood_lsa(&lsa_clone);
-                            events.extend(flood_events);
-                        } else if !dd_state.lsa_headers_to_request.is_empty() {
-                            // Move to Loading state to request LSAs
-                            neighbor.state = OSPFNeighborState::Loading;
-                            
-                            // Send Link State Request
-                            events.push(self.create_lsr_packet_event(from_router_id));
+                            should_move_to_full = true;
+                        } else if !more_flag && !dd_state.lsa_headers_to_request.is_empty() {
+                            should_move_to_loading = true;
                         }
                     }
-                }
-                OSPFNeighborState::Loading => {
-                    // Continue processing while in Loading state
-                    // In real implementation, would track which LSAs are still needed
-                }
-                _ => {}
+                    
+                    // Apply state changes outside of borrow
+                    if should_send_dd {
+                        events.push(self.create_dd_packet_event(from_router_id));
+                    }
+                    
+                    if should_move_to_full {
+                        if let Some(neighbor) = self.neighbors.get_mut(&from_router_id) {
+                            neighbor.state = OSPFNeighborState::Full;
+                        }
+                        
+                        // Generate Router LSA when adjacency forms
+                        let router_lsa = self.generate_router_lsa();
+                        
+                        // Debug: Log LSA generation details
+                        if let LSAData::Router(ref rlsa) = router_lsa.data {
+                            console_log!("Router {} generated Router LSA with {} links", 
+                                self.router_id, rlsa.links.len());
+                            for link in &rlsa.links {
+                                console_log!("  Link to {} via interface {}, metric {}", 
+                                    link.link_id, link.link_data, link.metric);
+                            }
+                        }
+                        
+                        let lsa_clone = router_lsa.clone();
+                        self.update_lsa_database(router_lsa);
+                        
+                        // Flood the new LSA to neighbors
+                        console_log!("Router {} flooding LSA to neighbors", self.router_id);
+                        let flood_events = self.flood_lsa(&lsa_clone);
+                        events.extend(flood_events);
+                    } else if should_move_to_loading {
+                        // Move to Loading state to request LSAs
+                        if let Some(neighbor) = self.neighbors.get_mut(&from_router_id) {
+                            neighbor.state = OSPFNeighborState::Loading;
+                        }
+                        
+                        // Send Link State Request
+                        events.push(self.create_lsr_packet_event(from_router_id));
+                    }
             }
+            Some(OSPFNeighborState::Loading) => {
+                // Continue processing while in Loading state
+                // In real implementation, would track which LSAs are still needed
+            }
+            _ => {}
         }
         
         events
