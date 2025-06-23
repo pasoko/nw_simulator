@@ -238,6 +238,5 @@
             <div id="log-content"></div>
         </div>
     </div>
-    <script type="module" src="index-refactored.js"></script>
 </body>
 </html>
