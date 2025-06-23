@@ -246,9 +246,12 @@ function handleCanvasClick(event) {
         const name = prompt('Enter router name:');
         if (name) {
             const id = simulator.add_router(name, x, y);
-            routers.push({ id, name, x, y, ospf_enabled: false });
+            // Automatically enable OSPF on new routers
+            simulator.enable_ospf(id);
+            routers.push({ id, name, x, y, ospf_enabled: true });
             updateRoutersList();
             render();
+            log(`Router ${name} created with OSPF enabled`);
         }
     } else if (mode === 'connect-routers') {
         const clickedRouter = findRouterAt(x, y);
@@ -758,6 +761,9 @@ function startSimulation() {
         simulationTime = 0;
         packetVisualizer.clear();
         log('Starting OSPF simulation...');
+        
+        // Reset event tracking
+        window.lastEventTime = -1;
     } else {
         // Resuming from pause
         log(`Resuming simulation from ${simulationTime.toFixed(1)}s...`);
@@ -849,8 +855,9 @@ function updateSimulationDisplay() {
     const eventsJson = simulator.get_recent_events_json(10);
     if (eventsJson) {
         const events = JSON.parse(eventsJson);
+        // Only log events that are newer than the last displayed time
         events.forEach(event => {
-            if (event.description) {
+            if (event.timestamp > (window.lastEventTime || -1) && event.description) {
                 log(`[${event.timestamp.toFixed(2)}s] ${event.description}`);
                 
                 // Add packet visualization for packet events
@@ -868,6 +875,10 @@ function updateSimulationDisplay() {
                 }
             }
         });
+        // Update last event time
+        if (events.length > 0) {
+            window.lastEventTime = Math.max(...events.map(e => e.timestamp));
+        }
     }
 }
 

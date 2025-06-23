@@ -5,6 +5,7 @@ use crate::protocol::{ProtocolEngine, PacketEvent, ProtocolPacket};
 use crate::ospf::{OSPFPacket, OSPFPacketType, OSPFPacketData, HelloPacket};
 use crate::ospf_engine::OSPFEngine;
 use crate::spf::SPFCalculator;
+use crate::console_log;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SimulationEvent {
@@ -235,42 +236,26 @@ impl NetworkSimulation {
             .map(|(id, _)| *id)
             .collect();
         
+        console_log!("Starting simulation with {} OSPF-enabled routers", router_ids.len());
+        
         // Schedule initial hello packets immediately
         for router_id in router_ids {
+            console_log!("Scheduling initial hello packets for router {}", router_id);
             self.schedule_initial_hello_packets(router_id);
         }
     }
     
     fn schedule_initial_hello_packets(&mut self, router_id: u32) {
         // Send first hello packet immediately (0.1s delay)
-        // Make sure the time is in the future by checking against protocol engine's current time
-        let min_time = self.simulation_time.max(self.protocol_engine.current_time);
-        let initial_hello_time = min_time + 0.1;
+        let initial_hello_time = self.simulation_time + 0.1;
         
         if let Some(router) = self.topology.routers.get(&router_id) {
             if let Some(_ospf_state) = &router.ospf_state {
-                let neighbors = self.topology.get_neighbors(router_id);
-                
-                
-                for neighbor_id in neighbors {
-                    // Send hello packets to all neighbors regardless of their OSPF state
-                    // Real OSPF doesn't wait for neighbors to enable OSPF
-                    let packet = self.create_hello_packet(router_id);
-                    let event = PacketEvent {
-                        timestamp: initial_hello_time,
-                        from_router_id: router_id,
-                        to_router_id: neighbor_id,
-                        packet: ProtocolPacket::OSPF(packet),
-                    };
-                    
-                    self.protocol_engine.schedule_event(event);
-                }
-                
-                // Schedule regular hello packets to start after initial
-                let self_event = PacketEvent {
+                // Schedule the first hello timer event (not an actual packet)
+                let timer_event = PacketEvent {
                     timestamp: initial_hello_time,
                     from_router_id: router_id,
-                    to_router_id: router_id,
+                    to_router_id: router_id,  // Self-event for timer
                     packet: ProtocolPacket::OSPF(OSPFPacket {
                         version: 2,
                         packet_type: OSPFPacketType::Hello,
@@ -291,7 +276,7 @@ impl NetworkSimulation {
                         }),
                     }),
                 };
-                self.protocol_engine.schedule_event(self_event);
+                self.protocol_engine.schedule_event(timer_event);
             }
         }
     }
@@ -333,21 +318,33 @@ impl NetworkSimulation {
             if let Some(_ospf_state) = &router.ospf_state {
                 let neighbors = self.topology.get_neighbors(router_id);
                 
+                console_log!("Router {} scheduling hello packets at time {:.1}s for {} neighbors",
+                    router_id, self.simulation_time, neighbors.len());
+                
                 for neighbor_id in neighbors {
-                    // Send hello packets to all neighbors regardless of their OSPF state
-                    let packet = self.create_hello_packet(router_id);
-                    let event = PacketEvent {
-                        timestamp: next_hello_time,
-                        from_router_id: router_id,
-                        to_router_id: neighbor_id,
-                        packet: ProtocolPacket::OSPF(packet),
-                    };
-                    
-                    self.protocol_engine.schedule_event(event);
+                    // Only send hello packets to neighbors that have OSPF enabled
+                    if let Some(neighbor_router) = self.topology.routers.get(&neighbor_id) {
+                        if neighbor_router.ospf_state.is_some() {
+                            let packet = self.create_hello_packet(router_id);
+                            let event = PacketEvent {
+                                timestamp: next_hello_time,
+                                from_router_id: router_id,
+                                to_router_id: neighbor_id,
+                                packet: ProtocolPacket::OSPF(packet),
+                            };
+                            
+                            self.protocol_engine.schedule_event(event);
+                            console_log!("  Scheduled hello to router {} at time {:.1}s",
+                                neighbor_id, next_hello_time);
+                        } else {
+                            console_log!("  Skipping hello to router {} - OSPF not enabled",
+                                neighbor_id);
+                        }
+                    }
                 }
                 
-                // Schedule a self-event to trigger next hello packet scheduling
-                let self_event = PacketEvent {
+                // Schedule next hello timer event
+                let timer_event = PacketEvent {
                     timestamp: next_hello_time,
                     from_router_id: router_id,
                     to_router_id: router_id,
@@ -371,7 +368,7 @@ impl NetworkSimulation {
                         }),
                     }),
                 };
-                self.protocol_engine.schedule_event(self_event);
+                self.protocol_engine.schedule_event(timer_event);
             }
         }
     }
@@ -413,11 +410,15 @@ impl NetworkSimulation {
     }
 
     fn process_packet_event(&mut self, event: PacketEvent) {
-        // Check if this is a self-event to trigger hello packet scheduling
+        // Check if this is a timer event for hello packet scheduling
         if event.from_router_id == event.to_router_id && 
            self.topology.routers.contains_key(&event.from_router_id) {
-            self.schedule_hello_packets(event.from_router_id);
-            return; // Don't process self-events as regular packets
+            if let ProtocolPacket::OSPF(ref ospf_packet) = event.packet {
+                if matches!(ospf_packet.packet_type, OSPFPacketType::Hello) {
+                    self.schedule_hello_packets(event.from_router_id);
+                    return; // Don't process timer events as regular packets
+                }
+            }
         }
         
         match &event.packet {
@@ -430,19 +431,22 @@ impl NetworkSimulation {
                     OSPFPacketType::LinkStateAcknowledgment => "Link State Acknowledgment",
                 };
                 
-                self.log_event(SimulationEvent {
-                    timestamp: event.timestamp,
-                    event_type: SimulationEventType::PacketSent {
-                        from_router: event.from_router_id,
-                        to_router: event.to_router_id,
-                        packet_type: packet_type.to_string(),
-                    },
-                    description: format!("OSPF {} packet sent from router {} to router {}", 
-                        packet_type, event.from_router_id, event.to_router_id),
-                });
+                // Only log and visualize actual packets (not timer events)
+                if event.from_router_id != event.to_router_id {
+                    self.log_event(SimulationEvent {
+                        timestamp: event.timestamp,
+                        event_type: SimulationEventType::PacketSent {
+                            from_router: event.from_router_id,
+                            to_router: event.to_router_id,
+                            packet_type: packet_type.to_string(),
+                        },
+                        description: format!("OSPF {} packet sent from router {} to router {}", 
+                            packet_type, event.from_router_id, event.to_router_id),
+                    });
+                }
                 
                 // Simulate packet delivery delay
-                let delivery_time = event.timestamp + 0.05; // 50ms delay
+                let delivery_time = event.timestamp + 0.01; // 10ms delay for faster visualization
                 
                 // Log detailed packet information
                 let packet_details = match &ospf_packet.data {
@@ -475,15 +479,18 @@ impl NetworkSimulation {
                     },
                 };
                 
-                self.log_event(SimulationEvent {
-                    timestamp: delivery_time,
-                    event_type: SimulationEventType::PacketReceived {
-                        router_id: event.to_router_id,
-                        packet_type: packet_type.to_string(),
-                    },
-                    description: format!("Router {} received OSPF {} from router {} - {}", 
-                        event.to_router_id, packet_type, event.from_router_id, packet_details),
-                });
+                // Only log reception of actual packets (not timer events)
+                if event.from_router_id != event.to_router_id {
+                    self.log_event(SimulationEvent {
+                        timestamp: delivery_time,
+                        event_type: SimulationEventType::PacketReceived {
+                            router_id: event.to_router_id,
+                            packet_type: packet_type.to_string(),
+                        },
+                        description: format!("Router {} received OSPF {} from router {} - {}", 
+                            event.to_router_id, packet_type, event.from_router_id, packet_details),
+                    });
+                }
                 
                 // Process packet in OSPF engine
                 self.process_ospf_packet(ospf_packet.clone(), event.from_router_id, event.to_router_id);
@@ -492,7 +499,7 @@ impl NetworkSimulation {
     }
     
     fn process_ospf_packet(&mut self, packet: OSPFPacket, from_router_id: u32, to_router_id: u32) {
-        if let Some(engine) = self.ospf_engines.get_mut(&to_router_id) {
+        let (new_events, lsa_updated, lsa_count, state_transitions) = if let Some(engine) = self.ospf_engines.get_mut(&to_router_id) {
             // Update engine time
             engine.update_time(self.simulation_time);
             
@@ -518,78 +525,205 @@ impl NetworkSimulation {
                 OSPFPacketData::DatabaseDescription(dd) => {
                     engine.process_dd_packet(dd, from_router_id)
                 }
-                OSPFPacketData::LinkStateRequest(_lsr) => {
-                    // Not implemented yet
-                    Vec::new()
+                OSPFPacketData::LinkStateRequest(lsr) => {
+                    engine.process_lsr_packet(lsr, from_router_id)
                 }
                 OSPFPacketData::LinkStateUpdate(lsu) => {
                     engine.process_lsu_packet(lsu, from_router_id)
                 }
-                OSPFPacketData::LinkStateAcknowledgment(_lsack) => {
-                    // Not implemented yet
-                    Vec::new()
+                OSPFPacketData::LinkStateAcknowledgment(lsack) => {
+                    engine.process_lsack_packet(lsack, from_router_id)
                 }
             };
             
-            // Schedule any response packets
-            for mut event in new_events {
-                event.timestamp = self.simulation_time + 0.1;
-                self.protocol_engine.schedule_event(event);
-            }
+            // Check if LSA database was updated (for LSU packets)
+            let lsa_updated = matches!(&packet.data, OSPFPacketData::LinkStateUpdate(_));
+            let lsa_count = engine.get_lsa_count();
+            let state_transitions = engine.get_neighbor_state_transitions();
             
-            // Check for neighbor state changes and log them
-            let neighbor_states = engine.get_neighbor_states();
-            for (neighbor_id, state) in neighbor_states {
-                // Log significant state changes
-                match state {
+            (new_events, lsa_updated, lsa_count, state_transitions)
+        } else {
+            return;
+        };
+        
+        // Schedule any response packets
+        for mut event in new_events {
+            event.timestamp = self.simulation_time + 0.1;
+            self.protocol_engine.schedule_event(event);
+        }
+        
+        // If LSAs were updated, recalculate routes
+        if lsa_updated && lsa_count > 0 {
+            self.calculate_routes_for_router(to_router_id);
+        }
+        
+        // Process state transitions
+            for (neighbor_id, (prev_state, new_state)) in state_transitions {
+                // Skip if state hasn't changed
+                if prev_state == new_state {
+                    continue;
+                }
+                
+                // Get state names
+                let prev_state_name = match prev_state {
+                    crate::router::OSPFNeighborState::Down => "Down",
+                    crate::router::OSPFNeighborState::Init => "Init",
+                    crate::router::OSPFNeighborState::TwoWay => "TwoWay",
+                    crate::router::OSPFNeighborState::ExStart => "ExStart",
+                    crate::router::OSPFNeighborState::Exchange => "Exchange",
+                    crate::router::OSPFNeighborState::Loading => "Loading",
+                    crate::router::OSPFNeighborState::Full => "Full",
+                };
+                
+                let new_state_name = match new_state {
+                    crate::router::OSPFNeighborState::Down => "Down",
+                    crate::router::OSPFNeighborState::Init => "Init",
+                    crate::router::OSPFNeighborState::TwoWay => "TwoWay",
+                    crate::router::OSPFNeighborState::ExStart => "ExStart",
+                    crate::router::OSPFNeighborState::Exchange => "Exchange",
+                    crate::router::OSPFNeighborState::Loading => "Loading",
+                    crate::router::OSPFNeighborState::Full => "Full",
+                };
+                
+                // Log state transition with from->to format
+                self.log_event(SimulationEvent {
+                    timestamp: self.simulation_time,
+                    event_type: SimulationEventType::NeighborStateChanged {
+                        router_id: to_router_id,
+                        neighbor_id,
+                        new_state: new_state_name.to_string(),
+                    },
+                    description: format!("Router {} neighbor {} state changed: {} → {}", 
+                        to_router_id, neighbor_id, prev_state_name, new_state_name),
+                });
+                
+                // Recalculate routes when adjacency is established or lost
+                match new_state {
                     crate::router::OSPFNeighborState::Full => {
-                        self.log_event(SimulationEvent {
-                            timestamp: self.simulation_time,
-                            event_type: SimulationEventType::NeighborStateChanged {
-                                router_id: to_router_id,
-                                neighbor_id,
-                                new_state: "Full".to_string(),
-                            },
-                            description: format!("Router {} neighbor {} reached FULL adjacency", 
-                                to_router_id, neighbor_id),
-                        });
-                        
-                        // Recalculate routes when adjacency is established
+                        // When Full adjacency is established, recalculate routes for both routers
                         self.calculate_routes_for_router(to_router_id);
+                        self.calculate_routes_for_router(from_router_id);
+                        
+                        // Also trigger route calculation for all other OSPF-enabled routers
+                        // since they may have received new LSAs
+                        let ospf_routers: Vec<u32> = self.ospf_engines.keys().cloned().collect();
+                        for router_id in ospf_routers {
+                            if router_id != to_router_id && router_id != from_router_id {
+                                self.calculate_routes_for_router(router_id);
+                            }
+                        }
                     }
                     crate::router::OSPFNeighborState::Down => {
-                        self.log_event(SimulationEvent {
-                            timestamp: self.simulation_time,
-                            event_type: SimulationEventType::NeighborStateChanged {
-                                router_id: to_router_id,
-                                neighbor_id,
-                                new_state: "Down".to_string(),
-                            },
-                            description: format!("Router {} neighbor {} went DOWN", 
-                                to_router_id, neighbor_id),
-                        });
-                        
-                        // Recalculate routes when adjacency is lost
                         self.calculate_routes_for_router(to_router_id);
                     }
                     _ => {}
                 }
             }
-        }
     }
     
     fn calculate_routes_for_router(&mut self, router_id: u32) {
-        let routes = SPFCalculator::calculate_routes(&self.topology, router_id);
+        // Debug: Log when route calculation is triggered
+        self.log_event(SimulationEvent {
+            timestamp: self.simulation_time,
+            event_type: SimulationEventType::RoutingTableUpdated { router_id },
+            description: format!("Router {} starting route calculation", router_id),
+        });
+        
+        // Get LSA database from OSPF engine
+        let (routes, lsa_count) = if let Some(engine) = self.ospf_engines.get(&router_id) {
+            let lsa_count = engine.get_lsa_count();
+            console_log!("Router {} has {} LSAs in database", router_id, lsa_count);
+            
+            let routes = SPFCalculator::calculate_routes_from_lsa(
+                engine.get_lsa_database(),
+                router_id,
+                &self.topology
+            );
+            
+            console_log!("SPF calculation for router {} returned {} routes", router_id, routes.len());
+            for (dest_id, route) in &routes {
+                console_log!("  Route to {}: {} -> {} (metric {})", 
+                    dest_id, route.destination, route.next_hop, route.metric);
+            }
+            
+            (routes, Some(lsa_count))
+        } else {
+            console_log!("Router {} has no OSPF engine, using topology-based routing", router_id);
+            // Fallback to topology-based calculation if no OSPF engine
+            (SPFCalculator::calculate_routes(&self.topology, router_id), None)
+        };
+        
+        // Log LSA count if OSPF is enabled
+        if let Some(count) = lsa_count {
+            self.log_event(SimulationEvent {
+                timestamp: self.simulation_time,
+                event_type: SimulationEventType::RoutingTableUpdated { router_id },
+                description: format!("Router {} has {} LSAs in database", router_id, count),
+            });
+        }
         
         if let Some(router) = self.topology.routers.get_mut(&router_id) {
-            for (_dest_id, route) in routes {
-                router.update_routing_table(route);
+            // Store old routing table for comparison
+            let old_routes = router.routing_table.clone();
+            
+            // Update routing table
+            for (_dest_id, route) in &routes {
+                router.update_routing_table(route.clone());
             }
+            
+            // Build detailed description of routing table changes
+            let mut route_details = Vec::new();
+            
+            // Check for new or updated routes
+            for (_dest_id, new_route) in &routes {
+                let is_new = !old_routes.iter().any(|r| 
+                    r.destination == new_route.destination && r.netmask == new_route.netmask
+                );
+                
+                if is_new {
+                    route_details.push(format!("  + Added: {}/{} via {} metric {}", 
+                        new_route.destination, new_route.netmask, 
+                        new_route.next_hop, new_route.metric));
+                } else {
+                    // Check if route changed
+                    if let Some(old_route) = old_routes.iter().find(|r| 
+                        r.destination == new_route.destination && r.netmask == new_route.netmask
+                    ) {
+                        if old_route.next_hop != new_route.next_hop || old_route.metric != new_route.metric {
+                            route_details.push(format!("  ≈ Updated: {}/{} via {} metric {} (was: via {} metric {})", 
+                                new_route.destination, new_route.netmask, 
+                                new_route.next_hop, new_route.metric,
+                                old_route.next_hop, old_route.metric));
+                        }
+                    }
+                }
+            }
+            
+            // Check for removed routes
+            for old_route in &old_routes {
+                let still_exists = router.routing_table.iter().any(|r| 
+                    r.destination == old_route.destination && r.netmask == old_route.netmask
+                );
+                
+                if !still_exists {
+                    route_details.push(format!("  - Removed: {}/{} via {} metric {}", 
+                        old_route.destination, old_route.netmask, 
+                        old_route.next_hop, old_route.metric));
+                }
+            }
+            
+            // Log routing table update with details
+            let description = if route_details.is_empty() {
+                format!("Router {} routing table recalculated (no changes)", router_id)
+            } else {
+                format!("Router {} routing table updated:\n{}", 
+                    router_id, route_details.join("\n"))
+            };
             
             self.log_event(SimulationEvent {
                 timestamp: self.simulation_time,
                 event_type: SimulationEventType::RoutingTableUpdated { router_id },
-                description: format!("Router {} routing table updated", router_id),
+                description,
             });
         }
     }

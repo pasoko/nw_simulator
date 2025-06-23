@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Direct OSPF Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        #log {
+            background: #f0f0f0;
+            padding: 10px;
+            min-height: 400px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+            overflow-y: auto;
+            max-height: 600px;
+        }
+        .control-panel {
+            margin-bottom: 20px;
+        }
+        button {
+            margin: 5px;
+            padding: 5px 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Direct OSPF Test</h1>
+    <div class="control-panel">
+        <button onclick="createNetwork()">Create Network</button>
+        <button onclick="enableOspf()">Enable OSPF</button>
+        <button onclick="startSimulation()">Start Simulation</button>
+        <button onclick="stepSimulation()">Step (1s)</button>
+        <button onclick="checkStatus()">Check Status</button>
+        <button onclick="clearLog()">Clear Log</button>
+    </div>
+    <div id="log">Ready...</div>
+
+    <script type="module">
+        const logEl = document.getElementById('log');
+        let sim = null;
+        let r1 = null, r2 = null, r3 = null;
+        
+        window.log = function(msg) {
+            const timestamp = new Date().toLocaleTimeString();
+            logEl.textContent += `[${timestamp}] ${msg}\n`;
+            logEl.scrollTop = logEl.scrollHeight;
+            console.log(msg);
+        };
+        
+        window.clearLog = function() {
+            logEl.textContent = '';
+        };
+        
+        // Override console.log to capture all output
+        const originalLog = console.log;
+        console.log = function(...args) {
+            window.log(args.join(' '));
+            originalLog.apply(console, args);
+        };
+        
+        import('./pkg/nw_simulator.js').then(async (module) => {
+            log('Loading WASM module...');
+            await module.default();
+            log('WASM initialized');
+            
+            window.sim = sim = new module.NetworkSimulator();
+            log('Simulator created');
+            
+            window.createNetwork = function() {
+                log('\n=== Creating Network ===');
+                
+                // Create 3 routers in a triangle
+                r1 = sim.add_router("R1", 100, 100);
+                r2 = sim.add_router("R2", 300, 100);
+                r3 = sim.add_router("R3", 200, 250);
+                
+                log(`Created routers: R1=${r1}, R2=${r2}, R3=${r3}`);
+                
+                // Connect them
+                sim.connect_routers(r1, r2, 10);
+                sim.connect_routers(r2, r3, 10);
+                sim.connect_routers(r3, r1, 10);
+                
+                log('Routers connected in triangle topology');
+            };
+            
+            window.enableOspf = function() {
+                log('\n=== Enabling OSPF ===');
+                
+                sim.enable_ospf(r1);
+                sim.enable_ospf(r2);
+                sim.enable_ospf(r3);
+                
+                log('OSPF enabled on all routers');
+            };
+            
+            window.startSimulation = function() {
+                log('\n=== Starting Simulation ===');
+                sim.start_simulation();
+                log('Simulation started');
+            };
+            
+            window.stepSimulation = function() {
+                log('\n=== Stepping Simulation (1s) ===');
+                
+                // Step 10 times (0.1s each)
+                for (let i = 0; i < 10; i++) {
+                    sim.step_simulation(0.1);
+                }
+                
+                // Check status after stepping
+                checkStatus();
+            };
+            
+            window.checkStatus = function() {
+                log('\n=== Router Status ===');
+                
+                for (let [name, id] of [['R1', r1], ['R2', r2], ['R3', r3]]) {
+                    try {
+                        const json = sim.get_router_summary_json(id);
+                        const summary = JSON.parse(json);
+                        
+                        log(`\n${name} (ID ${id}):`);
+                        log(`  OSPF: ${summary.ospf_enabled ? 'Enabled' : 'Disabled'}`);
+                        log(`  Neighbors: ${summary.neighbor_count}`);
+                        log(`  LSAs: ${summary.lsa_count}`);
+                        log(`  Routes: ${summary.routing_table ? summary.routing_table.length : 0}`);
+                        
+                        if (summary.routing_table && summary.routing_table.length > 0) {
+                            log('  Routing table:');
+                            summary.routing_table.forEach(route => {
+                                log(`    ${route.destination} -> ${route.next_hop} (metric ${route.metric})`);
+                            });
+                        }
+                    } catch (e) {
+                        log(`  Error getting status: ${e.message}`);
+                    }
+                }
+                
+                // Also get recent events
+                try {
+                    const eventsJson = sim.get_recent_events_json(10);
+                    const events = JSON.parse(eventsJson);
+                    
+                    if (events.length > 0) {
+                        log('\n=== Recent Events ===');
+                        events.forEach(event => {
+                            log(`[${event.timestamp.toFixed(2)}s] ${event.description}`);
+                        });
+                    }
+                } catch (e) {
+                    log(`Error getting events: ${e.message}`);
+                }
+            };
+            
+            log('Test controls ready. Click "Create Network" to start.');
+            
+        }).catch(err => {
+            log('Error loading module: ' + err.message);
+            console.error(err);
+        });
+    </script>
+</body>
+</html>

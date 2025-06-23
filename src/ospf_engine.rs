@@ -1,7 +1,9 @@
 use std::collections::HashMap;
-use crate::ospf::{OSPFPacket, OSPFPacketType, OSPFPacketData, HelloPacket, DatabaseDescriptionPacket, LSA, LSAHeader, LinkStateUpdatePacket};
+use serde_json;
+use crate::ospf::{OSPFPacket, OSPFPacketType, OSPFPacketData, HelloPacket, DatabaseDescriptionPacket, LSA, LSAHeader, LinkStateUpdatePacket, LinkStateRequestPacket, LSARequest, LinkStateAcknowledgmentPacket};
 use crate::router::{OSPFNeighbor, OSPFNeighborState, RouterLSA, RouterLink, LinkType, LSAType, LSAData, LSAHeader as RouterLSAHeader};
 use crate::protocol::{ProtocolPacket, PacketEvent};
+use crate::console_log;
 
 pub struct OSPFEngine {
     router_id: String,
@@ -14,6 +16,17 @@ pub struct OSPFEngine {
     lsa_database: HashMap<String, crate::router::LSA>,  // Key: LSA identifier (type:ls_id:adv_router)
     lsa_sequence_number: u32,  // Current sequence number for self-originated LSAs
     router_links: Vec<(u32, u32, u32)>,  // (neighbor_id, interface_id, cost) for Router LSA generation
+    dd_sequence_number: u32,  // DD sequence number for exchange
+    neighbor_dd_state: HashMap<u32, DDExchangeState>,  // Track DD exchange state per neighbor
+    neighbor_previous_state: HashMap<u32, OSPFNeighborState>,  // Track previous state for logging
+}
+
+#[derive(Clone)]
+struct DDExchangeState {
+    dd_seq_num: u32,
+    is_master: bool,
+    last_received_dd_seq: u32,
+    lsa_headers_to_request: Vec<crate::router::LSAHeader>,
 }
 
 impl OSPFEngine {
@@ -29,6 +42,9 @@ impl OSPFEngine {
             lsa_database: HashMap::new(),
             lsa_sequence_number: 0x80000001,  // Start with initial sequence number
             router_links: Vec::new(),
+            dd_sequence_number: 0x80000001,
+            neighbor_dd_state: HashMap::new(),
+            neighbor_previous_state: HashMap::new(),
         }
     }
     
@@ -63,13 +79,21 @@ impl OSPFEngine {
         let mut dead_neighbors = Vec::new();
         
         for (id, last_hello) in &self.neighbor_last_hello {
-            if self.current_time - last_hello > self.dead_interval as f64 {
+            let time_since_hello = self.current_time - last_hello;
+            if time_since_hello > self.dead_interval as f64 {
                 dead_neighbors.push(*id);
+                console_log!("Router {} marking neighbor {} as dead - last hello {:.1}s ago (dead interval: {}s)",
+                    self.router_id, id, time_since_hello, self.dead_interval);
             }
         }
         
         for id in dead_neighbors {
             if let Some(neighbor) = self.neighbors.get_mut(&id) {
+                // Only log if neighbor was not already Down
+                if neighbor.state != OSPFNeighborState::Down {
+                    console_log!("Router {} neighbor {} state changed to Down due to dead timer",
+                        self.router_id, id);
+                }
                 neighbor.state = OSPFNeighborState::Down;
             }
             self.neighbor_last_hello.remove(&id);
@@ -81,14 +105,19 @@ impl OSPFEngine {
         
         // Update last hello time
         self.neighbor_last_hello.insert(from_router_id, self.current_time);
+        console_log!("Router {} received Hello from router {} at time {:.1}s",
+            self.router_id, from_router_id, self.current_time);
         
         // Check if we already know this neighbor
-        let (current_state, _is_new) = if let Some(neighbor) = self.neighbors.get_mut(&from_router_id) {
-            // Update neighbor info
-            neighbor.priority = packet.router_priority;
-            (neighbor.state.clone(), false)
+        let (current_state, _is_new) = if let Some(neighbor) = self.neighbors.get(&from_router_id) {
+            // Store previous state before updating
+            let prev_state = neighbor.state.clone();
+            let neighbor_state = neighbor.state.clone();
+            self.neighbor_previous_state.insert(from_router_id, prev_state);
+            (neighbor_state, false)
         } else {
             // New neighbor discovered
+            self.neighbor_previous_state.insert(from_router_id, OSPFNeighborState::Down);
             let new_neighbor = OSPFNeighbor {
                 router_id: format!("{}.{}.{}.{}", 1, 1, 1, from_router_id),
                 state: OSPFNeighborState::Down,
@@ -98,6 +127,11 @@ impl OSPFEngine {
             self.neighbors.insert(from_router_id, new_neighbor);
             (OSPFNeighborState::Down, true)
         };
+        
+        // Update neighbor priority if exists
+        if let Some(neighbor) = self.neighbors.get_mut(&from_router_id) {
+            neighbor.priority = packet.router_priority;
+        }
 
         // State machine progression
         match current_state {
@@ -114,20 +148,16 @@ impl OSPFEngine {
                     if let Some(neighbor) = self.neighbors.get_mut(&from_router_id) {
                         neighbor.state = OSPFNeighborState::TwoWay;
                         
-                        // Start forming adjacency - move to ExStart
-                        neighbor.state = OSPFNeighborState::ExStart;
-                        
-                        // Send Database Description packet
-                        events.push(self.create_dd_packet_event(from_router_id));
+                        // Decide whether to form adjacency (for now, always form)
+                        // In real OSPF, this depends on network type and DR/BDR election
+                        self.decide_adjacency(from_router_id, &mut events);
                     }
                 }
             }
             OSPFNeighborState::TwoWay => {
-                // If not already forming adjacency, start now
-                if let Some(neighbor) = self.neighbors.get_mut(&from_router_id) {
-                    neighbor.state = OSPFNeighborState::ExStart;
-                    events.push(self.create_dd_packet_event(from_router_id));
-                }
+                // Stay in TwoWay unless we decide to form adjacency
+                // For point-to-point links, always form adjacency
+                self.decide_adjacency(from_router_id, &mut events);
             }
             _ => {
                 // Maintain current state
@@ -137,31 +167,104 @@ impl OSPFEngine {
         events
     }
 
-    pub fn process_dd_packet(&mut self, _packet: &DatabaseDescriptionPacket, from_router_id: u32) -> Vec<PacketEvent> {
+    pub fn process_dd_packet(&mut self, packet: &DatabaseDescriptionPacket, from_router_id: u32) -> Vec<PacketEvent> {
         let mut events = Vec::new();
         
         if let Some(neighbor) = self.neighbors.get_mut(&from_router_id) {
             match neighbor.state {
                 OSPFNeighborState::ExStart => {
-                    // Master/Slave negotiation - simplified
+                    // Master/Slave negotiation
+                    let our_router_id_num = self.router_id.split('.').last().unwrap_or("0").parse::<u32>().unwrap_or(0);
+                    let is_master = our_router_id_num > from_router_id;
+                    
+                    // Initialize DD exchange state
+                    let dd_state = DDExchangeState {
+                        dd_seq_num: if is_master { self.dd_sequence_number } else { packet.dd_sequence_number },
+                        is_master,
+                        last_received_dd_seq: packet.dd_sequence_number,
+                        lsa_headers_to_request: Vec::new(),
+                    };
+                    self.neighbor_dd_state.insert(from_router_id, dd_state);
+                    
                     neighbor.state = OSPFNeighborState::Exchange;
                     
-                    // Send our database summary (empty for now)
+                    // Send our database summary
                     events.push(self.create_dd_packet_event(from_router_id));
                 }
                 OSPFNeighborState::Exchange => {
-                    // For simplicity, immediately move to Full
-                    // In real OSPF, would exchange LSA headers
-                    neighbor.state = OSPFNeighborState::Full;
-                    
-                    // Generate Router LSA when adjacency forms
-                    let router_lsa = self.generate_router_lsa();
-                    let lsa_clone = router_lsa.clone();
-                    self.update_lsa_database(router_lsa);
-                    
-                    // Flood the new LSA to neighbors
-                    let flood_events = self.flood_lsa(&lsa_clone);
-                    events.extend(flood_events);
+                    // Process received LSA headers
+                    if let Some(dd_state) = self.neighbor_dd_state.get_mut(&from_router_id) {
+                        // Check for LSAs we don't have
+                        for lsa_header in &packet.lsa_headers {
+                            let key = format!("{}:{}:{}", 
+                                lsa_header.lsa_type, 
+                                lsa_header.link_state_id, 
+                                lsa_header.advertising_router
+                            );
+                            
+                            let need_lsa = if let Some(our_lsa) = self.lsa_database.get(&key) {
+                                lsa_header.sequence_number > our_lsa.header.ls_sequence_number
+                            } else {
+                                true
+                            };
+                            
+                            if need_lsa {
+                                // Convert OSPF LSA header to Router LSA header
+                                let router_lsa_header = crate::router::LSAHeader {
+                                    ls_age: lsa_header.age,
+                                    ls_type: match lsa_header.lsa_type {
+                                        1 => LSAType::RouterLSA,
+                                        2 => LSAType::NetworkLSA,
+                                        3 => LSAType::SummaryLSA,
+                                        5 => LSAType::ASExternalLSA,
+                                        _ => LSAType::RouterLSA,
+                                    },
+                                    link_state_id: lsa_header.link_state_id.clone(),
+                                    advertising_router: lsa_header.advertising_router.clone(),
+                                    ls_sequence_number: lsa_header.sequence_number,
+                                    ls_checksum: lsa_header.checksum,
+                                    length: lsa_header.length,
+                                };
+                                dd_state.lsa_headers_to_request.push(router_lsa_header);
+                            }
+                        }
+                        
+                        // Check if DD exchange is complete
+                        let more_flag = packet.flags & 0x02 != 0;  // M bit
+                        if !more_flag && dd_state.lsa_headers_to_request.is_empty() {
+                            neighbor.state = OSPFNeighborState::Full;
+                            
+                            // Generate Router LSA when adjacency forms
+                            let router_lsa = self.generate_router_lsa();
+                            
+                            // Debug: Log LSA generation details
+                            if let LSAData::Router(ref rlsa) = router_lsa.data {
+                                console_log!("Router {} generated Router LSA with {} links", 
+                                    self.router_id, rlsa.links.len());
+                                for link in &rlsa.links {
+                                    console_log!("  Link to {} via interface {}, metric {}", 
+                                        link.link_id, link.link_data, link.metric);
+                                }
+                            }
+                            
+                            let lsa_clone = router_lsa.clone();
+                            self.update_lsa_database(router_lsa);
+                            
+                            // Flood the new LSA to neighbors
+                            let flood_events = self.flood_lsa(&lsa_clone);
+                            events.extend(flood_events);
+                        } else if !dd_state.lsa_headers_to_request.is_empty() {
+                            // Move to Loading state to request LSAs
+                            neighbor.state = OSPFNeighborState::Loading;
+                            
+                            // Send Link State Request
+                            events.push(self.create_lsr_packet_event(from_router_id));
+                        }
+                    }
+                }
+                OSPFNeighborState::Loading => {
+                    // Continue processing while in Loading state
+                    // In real implementation, would track which LSAs are still needed
                 }
                 _ => {}
             }
@@ -201,10 +304,26 @@ impl OSPFEngine {
             }
         }).collect();
         
+        // Determine DD flags based on state
+        let mut flags = 0u8;
+        
+        // Check if we have DD state for this neighbor
+        if let Some(dd_state) = self.neighbor_dd_state.get(&to_router_id) {
+            // We're in Exchange state
+            if dd_state.is_master {
+                flags |= 0x01; // MS bit
+            }
+            // Don't set M bit since we have no more data to send
+            // Don't set I bit for subsequent DD packets
+        } else {
+            // First DD packet (ExStart state)
+            flags = 0x07; // I, M, MS bits all set for initial negotiation
+        }
+        
         let dd_packet = DatabaseDescriptionPacket {
             interface_mtu: 1500,
             options: 0x02,
-            flags: 0x07, // I, M, MS bits set
+            flags,
             dd_sequence_number: 1,
             lsa_headers,
         };
@@ -220,9 +339,14 @@ impl OSPFEngine {
             data: OSPFPacketData::DatabaseDescription(dd_packet),
         };
         
+        // Extract router ID from IP address (e.g., "1.1.1.5" -> 5)
+        let from_id = self.router_id.split('.').last()
+            .and_then(|s| s.parse::<u32>().ok())
+            .unwrap_or(1);
+        
         PacketEvent {
             timestamp: 0.0, // Will be set by scheduler
-            from_router_id: self.router_id.parse().unwrap_or(0),
+            from_router_id: from_id,
             to_router_id,
             packet: ProtocolPacket::OSPF(ospf_packet),
         }
@@ -234,12 +358,32 @@ impl OSPFEngine {
             .collect()
     }
     
+    pub fn get_neighbor_state_transitions(&self) -> HashMap<u32, (OSPFNeighborState, OSPFNeighborState)> {
+        self.neighbors.iter()
+            .filter_map(|(id, neighbor)| {
+                self.neighbor_previous_state.get(id)
+                    .map(|prev| (*id, (prev.clone(), neighbor.state.clone())))
+            })
+            .collect()
+    }
+    
     pub fn remove_neighbor(&mut self, neighbor_id: u32) -> bool {
         self.neighbors.remove(&neighbor_id).is_some()
     }
     
     pub fn get_neighbor_count(&self) -> usize {
         self.neighbors.len()
+    }
+    
+    fn decide_adjacency(&mut self, neighbor_id: u32, events: &mut Vec<PacketEvent>) {
+        // For point-to-point links, always form adjacency
+        // In real OSPF, this would depend on network type and DR/BDR election
+        if let Some(neighbor) = self.neighbors.get_mut(&neighbor_id) {
+            if neighbor.state == OSPFNeighborState::TwoWay {
+                neighbor.state = OSPFNeighborState::ExStart;
+                events.push(self.create_dd_packet_event(neighbor_id));
+            }
+        }
     }
     
     pub fn add_router_link(&mut self, neighbor_id: u32, interface_id: u32, cost: u32) {
@@ -251,21 +395,17 @@ impl OSPFEngine {
     pub fn generate_router_lsa(&mut self) -> crate::router::LSA {
         let mut links = Vec::new();
         
-        // Add point-to-point links for each neighbor in Full state
-        for (neighbor_id, neighbor) in &self.neighbors {
-            if neighbor.state == OSPFNeighborState::Full {
-                // Find the link info for this neighbor
-                if let Some((_, interface_id, cost)) = self.router_links.iter().find(|(n, _, _)| n == neighbor_id) {
-                    // Point-to-point link
-                    links.push(RouterLink {
-                        link_id: format!("1.1.1.{}", neighbor_id),
-                        link_data: format!("0.0.0.{}", interface_id),  // Interface ID
-                        link_type: LinkType::PointToPoint,
-                        num_tos: 0,
-                        metric: *cost as u16,
-                    });
-                }
-            }
+        // Add point-to-point links for ALL configured links
+        // Include all physical links in the LSA, regardless of OSPF neighbor state
+        for (neighbor_id, interface_id, cost) in &self.router_links {
+            // Always include the link - it's a physical connection
+            links.push(RouterLink {
+                link_id: format!("1.1.1.{}", neighbor_id),
+                link_data: format!("0.0.0.{}", interface_id),  // Interface ID
+                link_type: LinkType::PointToPoint,
+                num_tos: 0,
+                metric: *cost as u16,
+            });
         }
         
         // Create Router LSA
@@ -300,7 +440,15 @@ impl OSPFEngine {
             lsa.header.link_state_id.clone(), 
             lsa.header.advertising_router.clone()
         );
+        
+        // Debug: Log LSA database update
+        console_log!("Router {} updating LSA database with key: {}", self.router_id, key);
+        if let LSAData::Router(ref rlsa) = lsa.data {
+            console_log!("  Router LSA with {} links", rlsa.links.len());
+        }
+        
         self.lsa_database.insert(key, lsa);
+        console_log!("  LSA database now contains {} entries", self.lsa_database.len());
     }
     
     pub fn get_lsa_headers(&self) -> Vec<crate::router::LSAHeader> {
@@ -311,8 +459,20 @@ impl OSPFEngine {
         self.lsa_database.len()
     }
     
+    pub fn get_lsa_database(&self) -> &HashMap<String, crate::router::LSA> {
+        &self.lsa_database
+    }
+    
     pub fn flood_lsa(&self, lsa: &crate::router::LSA) -> Vec<PacketEvent> {
         let mut events = Vec::new();
+        
+        // Debug: Log LSA flooding
+        console_log!("Router {} flooding LSA: type={}, id={}, adv_router={}", 
+            self.router_id, 
+            lsa.header.ls_type.clone() as u8,
+            lsa.header.link_state_id,
+            lsa.header.advertising_router
+        );
         
         // Create Link State Update packet with the LSA
         let lsa_for_packet = LSA {
@@ -326,7 +486,24 @@ impl OSPFEngine {
                 checksum: lsa.header.ls_checksum,
                 length: lsa.header.length,
             },
-            data: format!("{:?}", lsa.data),  // Serialize LSA data for simplicity
+            data: {
+                // Serialize only the inner Router LSA data, not the entire enum
+                match &lsa.data {
+                    LSAData::Router(router_lsa) => {
+                        match serde_json::to_string(router_lsa) {
+                            Ok(json) => {
+                                console_log!("  Serialized Router LSA with {} links to: {}", router_lsa.links.len(), json);
+                                json
+                            },
+                            Err(e) => {
+                                console_log!("  ERROR: Failed to serialize Router LSA: {}", e);
+                                "{}".to_string()
+                            }
+                        }
+                    },
+                    _ => "{}".to_string()
+                }
+            }
         };
         
         let lsu_packet = LinkStateUpdatePacket {
@@ -334,6 +511,13 @@ impl OSPFEngine {
         };
         
         // Send to all neighbors in Exchange or Full state
+        let eligible_neighbors: Vec<u32> = self.neighbors.iter()
+            .filter(|(_, n)| matches!(n.state, OSPFNeighborState::Exchange | OSPFNeighborState::Full))
+            .map(|(id, _)| *id)
+            .collect();
+        
+        console_log!("  Flooding to {} eligible neighbors: {:?}", eligible_neighbors.len(), eligible_neighbors);
+        
         for (neighbor_id, neighbor) in &self.neighbors {
             if matches!(neighbor.state, OSPFNeighborState::Exchange | OSPFNeighborState::Full) {
                 let ospf_packet = OSPFPacket {
@@ -347,9 +531,14 @@ impl OSPFEngine {
                     data: OSPFPacketData::LinkStateUpdate(lsu_packet.clone()),
                 };
                 
+                // Extract router ID from IP address (e.g., "1.1.1.5" -> 5)
+                let from_id = self.router_id.split('.').last()
+                    .and_then(|s| s.parse::<u32>().ok())
+                    .unwrap_or(1);
+                
                 events.push(PacketEvent {
                     timestamp: 0.0,  // Will be set by scheduler
-                    from_router_id: self.router_id.parse::<f64>().unwrap_or(0.0) as u32,
+                    from_router_id: from_id,
                     to_router_id: *neighbor_id,
                     packet: ProtocolPacket::OSPF(ospf_packet),
                 });
@@ -359,9 +548,137 @@ impl OSPFEngine {
         events
     }
     
+    fn create_lsr_packet_event(&self, to_router_id: u32) -> PacketEvent {
+        let mut requests = Vec::new();
+        
+        if let Some(dd_state) = self.neighbor_dd_state.get(&to_router_id) {
+            for lsa_header in &dd_state.lsa_headers_to_request {
+                requests.push(LSARequest {
+                    lsa_type: lsa_header.ls_type.clone() as u8,
+                    link_state_id: lsa_header.link_state_id.clone(),
+                    advertising_router: lsa_header.advertising_router.clone(),
+                });
+            }
+        }
+        
+        let lsr_packet = LinkStateRequestPacket { requests };
+        
+        let ospf_packet = OSPFPacket {
+            version: 2,
+            packet_type: OSPFPacketType::LinkStateRequest,
+            router_id: self.router_id.clone(),
+            area_id: self.area_id.clone(),
+            checksum: 0,
+            auth_type: 0,
+            authentication: 0,
+            data: OSPFPacketData::LinkStateRequest(lsr_packet),
+        };
+        
+        // Extract router ID from IP address (e.g., "1.1.1.5" -> 5)
+        let from_id = self.router_id.split('.').last()
+            .and_then(|s| s.parse::<u32>().ok())
+            .unwrap_or(1);
+        
+        PacketEvent {
+            timestamp: 0.0,  // Will be set by scheduler
+            from_router_id: from_id,
+            to_router_id,
+            packet: ProtocolPacket::OSPF(ospf_packet),
+        }
+    }
+    
+    pub fn process_lsr_packet(&mut self, packet: &LinkStateRequestPacket, from_router_id: u32) -> Vec<PacketEvent> {
+        let mut events = Vec::new();
+        let mut lsas_to_send = Vec::new();
+        
+        // Find requested LSAs in our database
+        for request in &packet.requests {
+            let key = format!("{}:{}:{}", 
+                request.lsa_type, 
+                request.link_state_id, 
+                request.advertising_router
+            );
+            
+            if let Some(lsa) = self.lsa_database.get(&key) {
+                // Convert to OSPF packet LSA format
+                let lsa_for_packet = LSA {
+                    header: LSAHeader {
+                        age: lsa.header.ls_age,
+                        options: 0x02,
+                        lsa_type: lsa.header.ls_type.clone() as u8,
+                        link_state_id: lsa.header.link_state_id.clone(),
+                        advertising_router: lsa.header.advertising_router.clone(),
+                        sequence_number: lsa.header.ls_sequence_number,
+                        checksum: lsa.header.ls_checksum,
+                        length: lsa.header.length,
+                    },
+                    data: {
+                // Serialize only the inner Router LSA data, not the entire enum
+                match &lsa.data {
+                    LSAData::Router(router_lsa) => {
+                        match serde_json::to_string(router_lsa) {
+                            Ok(json) => {
+                                console_log!("  Serialized Router LSA with {} links to: {}", router_lsa.links.len(), json);
+                                json
+                            },
+                            Err(e) => {
+                                console_log!("  ERROR: Failed to serialize Router LSA: {}", e);
+                                "{}".to_string()
+                            }
+                        }
+                    },
+                    _ => "{}".to_string()
+                }
+            }
+                };
+                lsas_to_send.push(lsa_for_packet);
+            }
+        }
+        
+        // Send Link State Update with requested LSAs
+        if !lsas_to_send.is_empty() {
+            let lsu_packet = LinkStateUpdatePacket { lsas: lsas_to_send };
+            
+            let ospf_packet = OSPFPacket {
+                version: 2,
+                packet_type: OSPFPacketType::LinkStateUpdate,
+                router_id: self.router_id.clone(),
+                area_id: self.area_id.clone(),
+                checksum: 0,
+                auth_type: 0,
+                authentication: 0,
+                data: OSPFPacketData::LinkStateUpdate(lsu_packet),
+            };
+            
+            // Extract router ID from IP address (e.g., "1.1.1.5" -> 5)
+            let from_id = self.router_id.split('.').last()
+                .and_then(|s| s.parse::<u32>().ok())
+                .unwrap_or(1);
+            
+            events.push(PacketEvent {
+                timestamp: 0.0,
+                from_router_id: from_id,
+                to_router_id: from_router_id,
+                packet: ProtocolPacket::OSPF(ospf_packet),
+            });
+        }
+        
+        events
+    }
+    
+    pub fn process_lsack_packet(&mut self, packet: &LinkStateAcknowledgmentPacket, from_router_id: u32) -> Vec<PacketEvent> {
+        // Process acknowledgments - for now, just mark LSAs as acknowledged
+        // In a full implementation, would track retransmission timers
+        Vec::new()
+    }
+    
     pub fn process_lsu_packet(&mut self, packet: &LinkStateUpdatePacket, from_router_id: u32) -> Vec<PacketEvent> {
         let mut events = Vec::new();
         let mut updated_lsas = Vec::new();
+        let mut ack_headers = Vec::new();
+        
+        console_log!("Router {} processing LSU from router {} with {} LSAs", 
+            self.router_id, from_router_id, packet.lsas.len());
         
         for lsa in &packet.lsas {
             let key = format!("{}:{}:{}", 
@@ -372,9 +689,13 @@ impl OSPFEngine {
             
             let should_update = if let Some(existing_lsa) = self.lsa_database.get(&key) {
                 // Compare sequence numbers - higher is newer
-                lsa.header.sequence_number > existing_lsa.header.ls_sequence_number
+                let is_newer = lsa.header.sequence_number > existing_lsa.header.ls_sequence_number;
+                console_log!("  Existing LSA found with seq {}, new seq {} - update: {}", 
+                    existing_lsa.header.ls_sequence_number, lsa.header.sequence_number, is_newer);
+                is_newer
             } else {
                 // New LSA
+                console_log!("  New LSA (key: {})", key);
                 true
             };
             
@@ -396,20 +717,57 @@ impl OSPFEngine {
                     length: lsa.header.length,
                 };
                 
-                // For now, create a simple Router LSA
-                let lsa_data = if lsa.header.lsa_type == 1 {
-                    LSAData::Router(RouterLSA {
-                        flags: 0,
-                        num_links: 0,
-                        links: Vec::new(),
-                    })
-                } else {
-                    // Default to Router LSA for simplicity
-                    LSAData::Router(RouterLSA {
-                        flags: 0,
-                        num_links: 0,
-                        links: Vec::new(),
-                    })
+                // Parse LSA data from JSON
+                let lsa_data = match lsa.header.lsa_type {
+                    1 => {
+                        // Router LSA
+                        console_log!("  Attempting to deserialize Router LSA...");
+                        console_log!("  Raw LSA data: {}", lsa.data);
+                        
+                        // Try to parse the entire LSAData enum
+                        match serde_json::from_str::<LSAData>(&lsa.data) {
+                            Ok(data) => {
+                                console_log!("  Successfully deserialized Router LSA data");
+                                if let LSAData::Router(ref rlsa) = data {
+                                    console_log!("    Router LSA has {} links", rlsa.links.len());
+                                    for link in &rlsa.links {
+                                        console_log!("      Link: {} -> {} (metric {})", 
+                                            link.link_id, link.link_data, link.metric);
+                                    }
+                                }
+                                data
+                            },
+                            Err(e) => {
+                                console_log!("  ERROR: Failed to deserialize LSAData: {}", e);
+                                
+                                // Try parsing just the RouterLSA struct
+                                match serde_json::from_str::<RouterLSA>(&lsa.data) {
+                                    Ok(router_lsa) => {
+                                        console_log!("  Successfully parsed RouterLSA directly, {} links", router_lsa.links.len());
+                                        LSAData::Router(router_lsa)
+                                    },
+                                    Err(e2) => {
+                                        console_log!("  ERROR: Failed to parse RouterLSA: {}", e2);
+                                        // Create empty LSA as fallback
+                                        LSAData::Router(RouterLSA {
+                                            flags: 0,
+                                            num_links: 0,
+                                            links: Vec::new(),
+                                        })
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    _ => {
+                        // Other LSA types - default to Router LSA for now
+                        console_log!("  Non-Router LSA type {}, creating empty", lsa.header.lsa_type);
+                        LSAData::Router(RouterLSA {
+                            flags: 0,
+                            num_links: 0,
+                            links: Vec::new(),
+                        })
+                    }
                 };
                 
                 let router_lsa = crate::router::LSA {
@@ -419,6 +777,73 @@ impl OSPFEngine {
                 
                 self.update_lsa_database(router_lsa.clone());
                 updated_lsas.push(router_lsa);
+                ack_headers.push(lsa.header.clone());
+            }
+        }
+        
+        // Send Link State Acknowledgment
+        if !ack_headers.is_empty() {
+            let lsack_packet = LinkStateAcknowledgmentPacket { lsa_headers: ack_headers };
+            
+            let ospf_packet = OSPFPacket {
+                version: 2,
+                packet_type: OSPFPacketType::LinkStateAcknowledgment,
+                router_id: self.router_id.clone(),
+                area_id: self.area_id.clone(),
+                checksum: 0,
+                auth_type: 0,
+                authentication: 0,
+                data: OSPFPacketData::LinkStateAcknowledgment(lsack_packet),
+            };
+            
+            // Extract router ID from IP address (e.g., "1.1.1.5" -> 5)
+            let from_id = self.router_id.split('.').last()
+                .and_then(|s| s.parse::<u32>().ok())
+                .unwrap_or(1);
+            
+            events.push(PacketEvent {
+                timestamp: 0.0,
+                from_router_id: from_id,
+                to_router_id: from_router_id,
+                packet: ProtocolPacket::OSPF(ospf_packet),
+            });
+        }
+        
+        // Check if we were in Loading state and can now move to Full
+        if let Some(neighbor) = self.neighbors.get_mut(&from_router_id) {
+            if neighbor.state == OSPFNeighborState::Loading {
+                // Check if we have received all requested LSAs
+                if let Some(dd_state) = self.neighbor_dd_state.get_mut(&from_router_id) {
+                    // Remove received LSAs from request list
+                    for lsa in &packet.lsas {
+                        dd_state.lsa_headers_to_request.retain(|req| {
+                            !(req.ls_type.clone() as u8 == lsa.header.lsa_type &&
+                              req.link_state_id == lsa.header.link_state_id &&
+                              req.advertising_router == lsa.header.advertising_router)
+                        });
+                    }
+                    
+                    // If all LSAs received, move to Full
+                    if dd_state.lsa_headers_to_request.is_empty() {
+                        neighbor.state = OSPFNeighborState::Full;
+                        
+                        // Generate Router LSA when adjacency forms
+                        let router_lsa = self.generate_router_lsa();
+                        
+                        // Debug: Log LSA generation details
+                        if let LSAData::Router(ref rlsa) = router_lsa.data {
+                            console_log!("Router {} generated Router LSA (from Loading) with {} links", 
+                                self.router_id, rlsa.links.len());
+                        }
+                        
+                        let lsa_clone = router_lsa.clone();
+                        self.update_lsa_database(router_lsa);
+                        
+                        // Flood the new LSA to neighbors
+                        let flood_events = self.flood_lsa(&lsa_clone);
+                        events.extend(flood_events);
+                    }
+                }
             }
         }
         

@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Simple OSPF Test</title>
+    <script type="module">
+        import init, { NetworkSimulator } from './pkg/nw_simulator.js';
+        
+        async function testOSPF() {
+            await init();
+            console.log('WASM initialized');
+            
+            const sim = new NetworkSimulator();
+            
+            // Create 2 routers
+            const r1 = sim.add_router("R1", 100, 100);
+            const r2 = sim.add_router("R2", 300, 100);
+            console.log(`Created routers: ${r1}, ${r2}`);
+            
+            // Connect them
+            sim.connect_routers(r1, r2, 10);
+            console.log('Connected routers');
+            
+            // Enable OSPF
+            sim.enable_ospf(r1);
+            sim.enable_ospf(r2);
+            console.log('OSPF enabled');
+            
+            // Start simulation
+            sim.start_simulation();
+            console.log('Simulation started');
+            
+            // Step simulation and monitor
+            for (let i = 0; i < 50; i++) {
+                sim.step_simulation(0.2);
+                
+                if (i % 5 === 0) {
+                    const time = i * 0.2;
+                    console.log(`\n=== Time: ${time.toFixed(1)}s ===`);
+                    
+                    // Check each router
+                    [r1, r2].forEach(id => {
+                        const json = sim.get_router_summary_json(id);
+                        const summary = JSON.parse(json);
+                        console.log(`Router ${id}:`);
+                        console.log(`  Neighbors: ${summary.neighbor_count}`);
+                        console.log(`  LSAs: ${summary.lsa_count}`);
+                        console.log(`  Routes: ${summary.routing_table ? summary.routing_table.length : 0}`);
+                        
+                        if (summary.routing_table && summary.routing_table.length > 0) {
+                            summary.routing_table.forEach(route => {
+                                console.log(`    Route: ${route.destination} -> ${route.next_hop} (metric ${route.metric})`);
+                            });
+                        }
+                    });
+                }
+            }
+            
+            console.log('\n=== Final state after 10 seconds ===');
+            
+            // Get events
+            const eventsJson = sim.get_recent_events_json(100);
+            const events = JSON.parse(eventsJson);
+            
+            console.log('\nKey events:');
+            events.filter(e => 
+                e.description.includes('LSA') || 
+                e.description.includes('route') || 
+                e.description.includes('Full')
+            ).forEach(e => {
+                console.log(`[${e.timestamp.toFixed(2)}s] ${e.description}`);
+            });
+            
+            console.log('\nTest complete');
+        }
+        
+        testOSPF().catch(console.error);
+    </script>
+</head>
+<body>
+    <h1>Simple OSPF Test</h1>
+    <p>Check browser console for output</p>
+</body>
+</html>

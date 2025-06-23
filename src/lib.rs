@@ -18,8 +18,35 @@ extern "C" {
     fn log(s: &str);
 }
 
+#[macro_export]
 macro_rules! console_log {
-    ($($t:tt)*) => (log(&format_args!($($t)*).to_string()))
+    ($($t:tt)*) => (crate::log(&format_args!($($t)*).to_string()))
+}
+
+// Set up panic hook for better debugging
+use std::panic;
+
+fn set_panic_hook() {
+    panic::set_hook(Box::new(|info| {
+        console_log!("PANIC: {}", info);
+    }));
+}
+
+// Redirect println! to console.log
+use std::io::{self, Write};
+
+struct ConsoleWriter;
+
+impl Write for ConsoleWriter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let s = String::from_utf8_lossy(buf);
+        log(&s);
+        Ok(buf.len())
+    }
+    
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
 }
 
 #[wasm_bindgen]
@@ -51,7 +78,8 @@ pub struct Connection {
 impl NetworkSimulator {
     #[wasm_bindgen(constructor)]
     pub fn new() -> NetworkSimulator {
-        console_log!("NetworkSimulator initialized");
+        set_panic_hook();
+        console_log!("NetworkSimulator initialized with panic hook");
         NetworkSimulator {
             simulation: NetworkSimulation::new(),
             router_positions: std::collections::HashMap::new(),
