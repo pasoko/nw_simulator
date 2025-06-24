@@ -62,9 +62,6 @@ class CanvasRenderer {
     }
     
     drawConnections() {
-        this.ctx.strokeStyle = '#666';
-        this.ctx.lineWidth = 2;
-        
         stateManager.connections.forEach(conn => {
             const from = stateManager.findRouterById(conn.from_router_id);
             const to = stateManager.findRouterById(conn.to_router_id);
@@ -89,11 +86,27 @@ class CanvasRenderer {
         const endX = to.x - unitX * 20;
         const endY = to.y - unitY * 20;
         
+        // Save current context state
+        this.ctx.save();
+        
+        // Apply failure styling if connection is failed
+        if (conn.is_failed) {
+            this.ctx.strokeStyle = '#ff0000'; // Bright red for failed connection
+            this.ctx.lineWidth = 4; // Thicker line for failed connection
+            this.ctx.setLineDash([8, 4]); // Larger dash pattern
+        } else {
+            this.ctx.strokeStyle = '#666';
+            this.ctx.lineWidth = 2;
+        }
+        
         // Draw main line
         this.ctx.beginPath();
         this.ctx.moveTo(startX, startY);
         this.ctx.lineTo(endX, endY);
         this.ctx.stroke();
+        
+        // Restore context state
+        this.ctx.restore();
         
         // Draw bidirectional arrows
         this.drawArrows(startX, startY, endX, endY, dx, dy);
@@ -103,6 +116,13 @@ class CanvasRenderer {
         
         // Draw cost label
         this.drawCostLabel(from, to, conn);
+        
+        // Draw failure X mark if connection is failed
+        if (conn.is_failed) {
+            const midX = (from.x + to.x) / 2;
+            const midY = (from.y + to.y) / 2;
+            this.drawFailureX(midX, midY, 15);
+        }
     }
     
     drawArrows(startX, startY, endX, endY, dx, dy) {
@@ -238,8 +258,21 @@ class CanvasRenderer {
         // Draw router circle
         this.ctx.beginPath();
         this.ctx.arc(router.x, router.y, 20, 0, 2 * Math.PI);
-        this.ctx.fillStyle = router.ospf_enabled ? '#4CAF50' : '#2196F3';
+        
+        // Set fill color based on failure state and OSPF status
+        if (router.is_failed) {
+            this.ctx.fillStyle = '#ff0000'; // Bright red for failed router
+        } else {
+            this.ctx.fillStyle = router.ospf_enabled ? '#4CAF50' : '#2196F3';
+        }
         this.ctx.fill();
+        
+        // Draw failure indicator border
+        if (router.is_failed) {
+            this.ctx.strokeStyle = '#8b0000'; // Dark red border
+            this.ctx.lineWidth = 3;
+            this.ctx.stroke();
+        }
         
         if (isSelected && mode === 'connect-routers') {
             this.ctx.strokeStyle = '#000';
@@ -253,6 +286,11 @@ class CanvasRenderer {
         this.ctx.textAlign = 'center';
         this.ctx.textBaseline = 'middle';
         this.ctx.fillText(router.name, router.x, router.y);
+        
+        // Draw failure X mark if router is failed
+        if (router.is_failed) {
+            this.drawFailureX(router.x, router.y, 25);
+        }
         
         // Draw router details
         this.drawRouterDetails(router);
@@ -312,6 +350,41 @@ class CanvasRenderer {
         if (this.canvas) {
             this.canvas.style.cursor = cursor;
         }
+    }
+    
+    drawFailureX(x, y, size) {
+        this.ctx.save();
+        this.ctx.strokeStyle = '#ffffff'; // White color for better contrast
+        this.ctx.lineWidth = 5;
+        this.ctx.lineCap = 'round';
+        
+        // Draw white background X first
+        const offset = size / 2.5;
+        this.ctx.beginPath();
+        this.ctx.moveTo(x - offset, y - offset);
+        this.ctx.lineTo(x + offset, y + offset);
+        this.ctx.stroke();
+        
+        this.ctx.beginPath();
+        this.ctx.moveTo(x - offset, y + offset);
+        this.ctx.lineTo(x + offset, y - offset);
+        this.ctx.stroke();
+        
+        // Draw red X on top
+        this.ctx.strokeStyle = '#ff0000';
+        this.ctx.lineWidth = 3;
+        
+        this.ctx.beginPath();
+        this.ctx.moveTo(x - offset, y - offset);
+        this.ctx.lineTo(x + offset, y + offset);
+        this.ctx.stroke();
+        
+        this.ctx.beginPath();
+        this.ctx.moveTo(x - offset, y + offset);
+        this.ctx.lineTo(x + offset, y - offset);
+        this.ctx.stroke();
+        
+        this.ctx.restore();
     }
 }
 

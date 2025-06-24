@@ -21,6 +21,7 @@ pub struct OSPFEngine {
 }
 
 #[derive(Clone)]
+#[allow(dead_code)]
 struct DDExchangeState {
     dd_seq_num: u32,
     is_master: bool,
@@ -403,7 +404,28 @@ impl OSPFEngine {
     }
     
     pub fn remove_neighbor(&mut self, neighbor_id: u32) -> bool {
-        self.neighbors.remove(&neighbor_id).is_some()
+        if self.neighbors.remove(&neighbor_id).is_some() {
+            self.neighbor_last_hello.remove(&neighbor_id);
+            self.neighbor_dd_state.remove(&neighbor_id);
+            true
+        } else {
+            false
+        }
+    }
+    
+    pub fn remove_link(&mut self, neighbor_id: u32) {
+        // Remove the link from router_links
+        self.router_links.retain(|(id, _, _)| *id != neighbor_id);
+        console_log!("Router {} removed link to neighbor {}", self.router_id, neighbor_id);
+    }
+    
+    pub fn add_link(&mut self, neighbor_id: u32, interface_id: u32, cost: u32) {
+        // Add the link back to router_links
+        if !self.router_links.iter().any(|(id, _, _)| *id == neighbor_id) {
+            self.router_links.push((neighbor_id, interface_id, cost));
+            console_log!("Router {} added link to neighbor {} on interface {} with cost {}", 
+                self.router_id, neighbor_id, interface_id, cost);
+        }
     }
     
     pub fn get_neighbor_count(&self) -> usize {
@@ -820,5 +842,23 @@ impl OSPFEngine {
         }
         
         events
+    }
+    
+    /// Regenerate and flood Router LSA when topology changes
+    pub fn regenerate_router_lsa(&mut self) -> Vec<PacketEvent> {
+        // Generate new Router LSA with updated sequence number
+        self.lsa_sequence_number += 1;
+        let router_lsa = self.generate_router_lsa();
+        
+        console_log!("Router {} regenerating Router LSA due to topology change", self.router_id);
+        if let LSAData::Router(ref rlsa) = router_lsa.data {
+            console_log!("  New Router LSA has {} links", rlsa.links.len());
+        }
+        
+        let lsa_clone = router_lsa.clone();
+        self.update_lsa_database(router_lsa);
+        
+        // Flood the new LSA to all neighbors
+        self.flood_lsa(&lsa_clone)
     }
 }

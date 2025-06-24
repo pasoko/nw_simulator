@@ -140,11 +140,13 @@ impl SPFCalculator {
             
             console_log!("SPF: Building route to router {} via next hop {}", dest_router_id, next_hop);
             
-            // Find interface from topology
+            // Find interface from topology (excluding failed links)
             let interface_info = topology.links.values()
                 .find(|link| {
-                    (link.router1_id == source_router_id && link.router2_id == next_hop) ||
-                    (link.router2_id == source_router_id && link.router1_id == next_hop)
+                    !link.is_failed && (
+                        (link.router1_id == source_router_id && link.router2_id == next_hop) ||
+                        (link.router2_id == source_router_id && link.router1_id == next_hop)
+                    )
                 })
                 .and_then(|link| {
                     if link.router1_id == source_router_id {

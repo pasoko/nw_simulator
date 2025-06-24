@@ -35,6 +35,7 @@ pub struct RouterState {
     pub interfaces: HashMap<u32, RouterInterface>,
     pub routing_table: Vec<RoutingTableEntry>,
     pub ospf_state: Option<OSPFState>,
+    pub is_failed: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -150,6 +151,7 @@ impl RouterState {
             interfaces: HashMap::new(),
             routing_table: Vec::new(),
             ospf_state: None,
+            is_failed: false,
         }
     }
 

@@ -9,6 +9,7 @@ pub enum ProtocolPacket {
     // RIP(RIPPacket),
 }
 
+#[allow(dead_code)]
 pub trait RoutingProtocol: Send {
     fn process_packet(&mut self, packet: ProtocolPacket, from_router_id: u32) -> Vec<PacketEvent>;
     fn generate_packets(&mut self, current_time: f64) -> Vec<PacketEvent>;

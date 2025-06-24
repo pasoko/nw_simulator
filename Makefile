@@ -28,11 +28,14 @@ dev:
 
 # Stop containers
 stop:
-	sudo docker-compose down
-	sudo docker-compose -f docker-compose.dev.yml down
+	sudo docker-compose down 2>/dev/null || true
+	sudo docker-compose -f docker-compose.dev.yml down 2>/dev/null || true
 
 # Clean up
-clean: stop
+clean:
+	@echo "Cleaning up Docker resources..."
+	sudo docker-compose down 2>/dev/null || true
+	sudo docker-compose -f docker-compose.dev.yml down 2>/dev/null || true
 	sudo docker rmi ospf-network-simulator:latest || true
 	sudo docker system prune -f
 

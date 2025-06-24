@@ -12,6 +12,7 @@ pub struct NetworkLink {
     pub cost: u32,
     pub bandwidth: u64,
     pub delay: u32,
+    pub is_failed: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -98,6 +99,7 @@ impl NetworkTopology {
             cost,
             bandwidth: 100_000_000,
             delay: 10,
+            is_failed: false,
         };
 
         self.links.insert(link_id, link);

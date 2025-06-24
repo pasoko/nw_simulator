@@ -131,6 +131,7 @@ impl NetworkSimulator {
                 x,
                 y,
                 ospf_enabled: state.ospf_state.is_some(),
+                is_failed: state.is_failed,
             }
         }).collect();
         serde_json::to_string(&routers).unwrap_or_default()
@@ -144,6 +145,7 @@ impl NetworkSimulator {
                 to_router_id: link.router2_id,
                 to_interface_id: link.router2_interface_id,
                 cost: link.cost,
+                is_failed: link.is_failed,
             }
         }).collect();
         serde_json::to_string(&connections).unwrap_or_default()
@@ -222,5 +224,13 @@ impl NetworkSimulator {
             "total_events": self.simulation.simulation_log.len(),
         });
         serde_json::to_string(&stats).unwrap_or_default()
+    }
+    
+    pub fn toggle_link_failure(&mut self, from_id: u32, to_id: u32) -> bool {
+        self.simulation.toggle_link_failure(from_id, to_id)
+    }
+    
+    pub fn toggle_router_failure(&mut self, router_id: u32) -> bool {
+        self.simulation.toggle_router_failure(router_id)
     }
 }
