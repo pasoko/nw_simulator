@@ -1,0 +1,11 @@
+target/
+www/node_modules/
+www/dist/
+www/pkg/
+*.log
+.git/
+.gitignore
+*.swp
+*.swo
+*~
+.DS_Store

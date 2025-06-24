@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  nw-simulator-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: ospf-network-simulator-dev
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./src:/app/src:ro
+      - ./www:/app/www
+      - ./Cargo.toml:/app/Cargo.toml:ro
+      - ./build.sh:/app/build.sh:ro
+    environment:
+      - RUST_LOG=debug
+    command: >
+      sh -c "
+        ./build.sh &&
+        cd www &&
+        npm start -- --host 0.0.0.0
+      "
