@@ -1,5 +1,4 @@
 use wasm_bindgen::prelude::*;
-use serde::{Serialize, Deserialize};
 
 mod router;
 mod network;
@@ -8,8 +7,10 @@ mod protocol;
 mod simulation;
 mod ospf_engine;
 mod spf;
+mod ui_state;
 
 use simulation::NetworkSimulation;
+use ui_state::{UIState, RouterUI, ConnectionUI};
 use serde_json;
 
 #[wasm_bindgen]
@@ -32,47 +33,13 @@ fn set_panic_hook() {
     }));
 }
 
-// Redirect println! to console.log
-use std::io::{self, Write};
-
-struct ConsoleWriter;
-
-impl Write for ConsoleWriter {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let s = String::from_utf8_lossy(buf);
-        log(&s);
-        Ok(buf.len())
-    }
-    
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
-    }
-}
 
 #[wasm_bindgen]
 pub struct NetworkSimulator {
     simulation: NetworkSimulation,
-    router_positions: std::collections::HashMap<u32, (f64, f64)>,
+    ui_state: UIState,
 }
 
-#[wasm_bindgen]
-#[derive(Serialize, Deserialize)]
-pub struct Router {
-    id: u32,
-    name: String,
-    x: f64,
-    y: f64,
-    ospf_enabled: bool,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct Connection {
-    from_router_id: u32,
-    from_interface_id: u32,
-    to_router_id: u32,
-    to_interface_id: u32,
-    cost: u32,
-}
 
 #[wasm_bindgen]
 impl NetworkSimulator {
@@ -82,13 +49,13 @@ impl NetworkSimulator {
         console_log!("NetworkSimulator initialized with panic hook");
         NetworkSimulator {
             simulation: NetworkSimulation::new(),
-            router_positions: std::collections::HashMap::new(),
+            ui_state: UIState::new(),
         }
     }
 
     pub fn add_router(&mut self, name: String, x: f64, y: f64) -> u32 {
         let id = self.simulation.add_router(name.clone(), x, y);
-        self.router_positions.insert(id, (x, y));
+        self.ui_state.set_router_position(id, x, y);
         console_log!("Router {} added with id {}", name, id);
         id
     }
@@ -102,7 +69,7 @@ impl NetworkSimulator {
     
     pub fn delete_router(&mut self, router_id: u32) -> bool {
         if self.simulation.delete_router(router_id) {
-            self.router_positions.remove(&router_id);
+            self.ui_state.remove_router_position(&router_id);
             console_log!("Router {} deleted", router_id);
             true
         } else {
@@ -123,7 +90,7 @@ impl NetworkSimulator {
     
     pub fn update_router_position(&mut self, router_id: u32, x: f64, y: f64) -> bool {
         if self.simulation.topology.routers.contains_key(&router_id) {
-            self.router_positions.insert(router_id, (x, y));
+            self.ui_state.set_router_position(router_id, x, y);
             console_log!("Updated position for router {} to ({}, {})", router_id, x, y);
             true
         } else {
@@ -154,13 +121,15 @@ impl NetworkSimulator {
     }
 
     pub fn get_routers_json(&self) -> String {
-        let routers: Vec<Router> = self.simulation.topology.routers.iter().map(|(id, state)| {
-            let (x, y) = self.router_positions.get(id).unwrap_or(&(0.0, 0.0));
-            Router {
+        let routers: Vec<RouterUI> = self.simulation.topology.routers.iter().map(|(id, state)| {
+            let (x, y) = self.ui_state.get_router_position(id)
+                .copied()
+                .unwrap_or((0.0, 0.0));
+            RouterUI {
                 id: *id,
                 name: state.name.clone(),
-                x: *x,
-                y: *y,
+                x,
+                y,
                 ospf_enabled: state.ospf_state.is_some(),
             }
         }).collect();
@@ -168,8 +137,8 @@ impl NetworkSimulator {
     }
 
     pub fn get_connections_json(&self) -> String {
-        let connections: Vec<Connection> = self.simulation.topology.links.values().map(|link| {
-            Connection {
+        let connections: Vec<ConnectionUI> = self.simulation.topology.links.values().map(|link| {
+            ConnectionUI {
                 from_router_id: link.router1_id,
                 from_interface_id: link.router1_interface_id,
                 to_router_id: link.router2_id,
@@ -253,33 +222,5 @@ impl NetworkSimulator {
             "total_events": self.simulation.simulation_log.len(),
         });
         serde_json::to_string(&stats).unwrap_or_default()
-    }
-}
-
-#[wasm_bindgen]
-impl Router {
-    #[wasm_bindgen(getter)]
-    pub fn id(&self) -> u32 {
-        self.id
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn name(&self) -> String {
-        self.name.clone()
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn x(&self) -> f64 {
-        self.x
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn y(&self) -> f64 {
-        self.y
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn ospf_enabled(&self) -> bool {
-        self.ospf_enabled
     }
 }

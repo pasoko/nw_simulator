@@ -1,8 +1,7 @@
 use std::collections::{HashMap, BinaryHeap};
 use std::cmp::Ordering;
-use crate::router::{RoutingTableEntry, LSA, LSAData, RouterLSA};
+use crate::router::{RoutingTableEntry, LSA, LSAData};
 use crate::network::NetworkTopology;
-use crate::ospf_engine::OSPFEngine;
 use crate::console_log;
 
 #[derive(Debug, Clone)]
@@ -278,30 +277,4 @@ impl SPFCalculator {
         routing_table
     }
 
-    pub fn get_network_graph_json(topology: &NetworkTopology) -> String {
-        let mut graph = serde_json::json!({
-            "nodes": [],
-            "edges": []
-        });
-
-        // Add nodes
-        for (id, router) in &topology.routers {
-            graph["nodes"].as_array_mut().unwrap().push(serde_json::json!({
-                "id": id,
-                "name": router.name,
-                "ospf_enabled": router.ospf_state.is_some()
-            }));
-        }
-
-        // Add edges
-        for link in topology.links.values() {
-            graph["edges"].as_array_mut().unwrap().push(serde_json::json!({
-                "source": link.router1_id,
-                "target": link.router2_id,
-                "cost": link.cost
-            }));
-        }
-
-        graph.to_string()
-    }
 }

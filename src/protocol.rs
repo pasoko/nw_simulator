@@ -4,14 +4,21 @@ use crate::ospf::OSPFPacket;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ProtocolPacket {
     OSPF(OSPFPacket),
+    // Future protocols can be added here:
+    // BGP(BGPPacket),
+    // RIP(RIPPacket),
 }
 
-pub trait RoutingProtocol {
-    fn process_packet(&mut self, packet: ProtocolPacket, from_router_id: u32);
-    fn generate_packets(&mut self) -> Vec<(u32, ProtocolPacket)>;
+pub trait RoutingProtocol: Send {
+    fn process_packet(&mut self, packet: ProtocolPacket, from_router_id: u32) -> Vec<PacketEvent>;
+    fn generate_packets(&mut self, current_time: f64) -> Vec<PacketEvent>;
     fn get_protocol_name(&self) -> &str;
     fn start(&mut self);
     fn stop(&mut self);
+    fn update_time(&mut self, time: f64);
+    fn get_router_id(&self) -> u32;
+    fn as_any(&self) -> &dyn std::any::Any;
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -52,7 +59,4 @@ impl ProtocolEngine {
         Some(event)
     }
 
-    pub fn advance_time(&mut self, delta: f64) {
-        self.current_time += delta;
-    }
 }

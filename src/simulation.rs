@@ -30,7 +30,6 @@ pub struct NetworkSimulation {
     pub protocol_engine: ProtocolEngine,
     pub simulation_log: Vec<SimulationEvent>,
     pub simulation_time: f64,
-    pub time_scale: f64,
     pub running: bool,
     ospf_engines: HashMap<u32, OSPFEngine>,
 }
@@ -42,7 +41,6 @@ impl NetworkSimulation {
             protocol_engine: ProtocolEngine::new(),
             simulation_log: Vec::new(),
             simulation_time: 0.0,
-            time_scale: 1.0,
             running: false,
             ospf_engines: HashMap::new(),
         }
@@ -413,11 +411,10 @@ impl NetworkSimulation {
         // Check if this is a timer event for hello packet scheduling
         if event.from_router_id == event.to_router_id && 
            self.topology.routers.contains_key(&event.from_router_id) {
-            if let ProtocolPacket::OSPF(ref ospf_packet) = event.packet {
-                if matches!(ospf_packet.packet_type, OSPFPacketType::Hello) {
-                    self.schedule_hello_packets(event.from_router_id);
-                    return; // Don't process timer events as regular packets
-                }
+            let ProtocolPacket::OSPF(ref ospf_packet) = event.packet;
+            if matches!(ospf_packet.packet_type, OSPFPacketType::Hello) {
+                self.schedule_hello_packets(event.from_router_id);
+                return; // Don't process timer events as regular packets
             }
         }
         

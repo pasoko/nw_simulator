@@ -392,11 +392,6 @@ impl OSPFEngine {
         }
     }
 
-    pub fn get_neighbor_states(&self) -> HashMap<u32, OSPFNeighborState> {
-        self.neighbors.iter()
-            .map(|(id, neighbor)| (*id, neighbor.state.clone()))
-            .collect()
-    }
     
     pub fn get_neighbor_state_transitions(&self) -> HashMap<u32, (OSPFNeighborState, OSPFNeighborState)> {
         self.neighbors.iter()
@@ -491,9 +486,6 @@ impl OSPFEngine {
         console_log!("  LSA database now contains {} entries", self.lsa_database.len());
     }
     
-    pub fn get_lsa_headers(&self) -> Vec<crate::router::LSAHeader> {
-        self.lsa_database.values().map(|lsa| lsa.header.clone()).collect()
-    }
     
     pub fn get_lsa_count(&self) -> usize {
         self.lsa_database.len()
@@ -672,7 +664,7 @@ impl OSPFEngine {
         events
     }
     
-    pub fn process_lsack_packet(&mut self, packet: &LinkStateAcknowledgmentPacket, from_router_id: u32) -> Vec<PacketEvent> {
+    pub fn process_lsack_packet(&mut self, _packet: &LinkStateAcknowledgmentPacket, _from_router_id: u32) -> Vec<PacketEvent> {
         // Process acknowledgments - for now, just mark LSAs as acknowledged
         // In a full implementation, would track retransmission timers
         Vec::new()
