@@ -41,6 +41,7 @@ pub struct RouterUI {
     pub x: f64,
     pub y: f64,
     pub ospf_enabled: bool,
+    pub is_failed: bool,
 }
 
 /// Connection representation for UI/API
@@ -51,4 +52,5 @@ pub struct ConnectionUI {
     pub to_router_id: u32,
     pub to_interface_id: u32,
     pub cost: u32,
+    pub is_failed: bool,
 }

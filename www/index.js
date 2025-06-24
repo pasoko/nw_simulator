@@ -132,6 +132,13 @@ function setupEventListeners() {
             setMode('disconnect-routers');
         });
     }
+    
+    const toggleFailureBtn = document.getElementById('toggle-failure-btn');
+    if (toggleFailureBtn) {
+        toggleFailureBtn.addEventListener('click', () => {
+            setMode('toggle-failure');
+        });
+    }
 }
 
 function setMode(newMode) {
@@ -163,6 +170,11 @@ function setMode(newMode) {
         case 'disconnect-routers':
             indicator.textContent = 'Mode: Disconnect Routers - Select first router';
             indicator.style.backgroundColor = '#dc3545';
+            canvas.style.cursor = 'pointer';
+            break;
+        case 'toggle-failure':
+            indicator.textContent = 'Mode: Toggle Failure - Click router or connection';
+            indicator.style.backgroundColor = '#ff9800';
             canvas.style.cursor = 'pointer';
             break;
     }
@@ -396,7 +408,93 @@ function handleCanvasClick(event) {
             }
             render();
         }
+    } else if (mode === 'toggle-failure') {
+        // First check if we clicked on a router
+        const clickedRouter = findRouterAt(x, y);
+        if (clickedRouter) {
+            const result = simulator.toggle_router_failure(clickedRouter.id);
+            if (result) {
+                updateFromSimulator();
+                render();
+                // Get the updated router state
+                const updatedRouter = routers.find(r => r.id === clickedRouter.id);
+                const status = updatedRouter && updatedRouter.is_failed ? 'failed' : 'recovered';
+                log(`Router ${clickedRouter.name} ${status}`);
+            }
+        } else {
+            // Check if we clicked on a connection
+            const clickedConnection = findConnectionAt(x, y);
+            if (clickedConnection) {
+                const result = simulator.toggle_link_failure(
+                    clickedConnection.from_router_id, 
+                    clickedConnection.to_router_id
+                );
+                if (result) {
+                    updateFromSimulator();
+                    render();
+                    // Get the updated connection state
+                    const updatedConnection = connections.find(c => 
+                        (c.from_router_id === clickedConnection.from_router_id && c.to_router_id === clickedConnection.to_router_id) ||
+                        (c.from_router_id === clickedConnection.to_router_id && c.to_router_id === clickedConnection.from_router_id)
+                    );
+                    const status = updatedConnection && updatedConnection.is_failed ? 'failed' : 'recovered';
+                    const fromRouter = routers.find(r => r.id === clickedConnection.from_router_id);
+                    const toRouter = routers.find(r => r.id === clickedConnection.to_router_id);
+                    log(`Link between ${fromRouter?.name || clickedConnection.from_router_id} and ${toRouter?.name || clickedConnection.to_router_id} ${status}`);
+                }
+            }
+        }
     }
+}
+
+function findConnectionAt(x, y) {
+    // Check if click is near any connection line
+    for (const conn of connections) {
+        const from = routers.find(r => r.id === conn.from_router_id);
+        const to = routers.find(r => r.id === conn.to_router_id);
+        
+        if (from && to) {
+            // Calculate distance from point to line segment
+            const distance = pointToLineDistance(x, y, from.x, from.y, to.x, to.y);
+            if (distance < 10) { // 10px threshold
+                return conn;
+            }
+        }
+    }
+    return null;
+}
+
+function pointToLineDistance(px, py, x1, y1, x2, y2) {
+    const A = px - x1;
+    const B = py - y1;
+    const C = x2 - x1;
+    const D = y2 - y1;
+    
+    const dot = A * C + B * D;
+    const lenSq = C * C + D * D;
+    let param = -1;
+    
+    if (lenSq !== 0) {
+        param = dot / lenSq;
+    }
+    
+    let xx, yy;
+    
+    if (param < 0) {
+        xx = x1;
+        yy = y1;
+    } else if (param > 1) {
+        xx = x2;
+        yy = y2;
+    } else {
+        xx = x1 + param * C;
+        yy = y1 + param * D;
+    }
+    
+    const dx = px - xx;
+    const dy = py - yy;
+    
+    return Math.sqrt(dx * dx + dy * dy);
 }
 
 function findRouterAt(x, y) {
@@ -406,6 +504,30 @@ function findRouterAt(x, y) {
         const dy = router.y - y;
         return dx * dx + dy * dy < radius * radius;
     });
+}
+
+function updateFromSimulator() {
+    // Get updated data from simulator
+    const routersJson = simulator.get_routers_json();
+    const connectionsJson = simulator.get_connections_json();
+    
+    if (routersJson) {
+        routers = JSON.parse(routersJson);
+        // Debug: Check if any router has is_failed = true
+        const failedRouters = routers.filter(r => r.is_failed);
+        if (failedRouters.length > 0) {
+            console.log('Failed routers:', failedRouters);
+        }
+    }
+    
+    if (connectionsJson) {
+        connections = JSON.parse(connectionsJson);
+        // Debug: Check if any connection has is_failed = true
+        const failedConnections = connections.filter(c => c.is_failed);
+        if (failedConnections.length > 0) {
+            console.log('Failed connections:', failedConnections);
+        }
+    }
 }
 
 function updateRoutersList() {
@@ -500,6 +622,41 @@ window.toggleOSPF = function(routerId) {
     }
 };
 
+function drawFailureX(ctx, x, y, size) {
+    ctx.save();
+    ctx.strokeStyle = '#ffffff'; // White color for better contrast
+    ctx.lineWidth = 5;
+    ctx.lineCap = 'round';
+    
+    // Draw white background X first
+    const offset = size / 2.5;
+    ctx.beginPath();
+    ctx.moveTo(x - offset, y - offset);
+    ctx.lineTo(x + offset, y + offset);
+    ctx.stroke();
+    
+    ctx.beginPath();
+    ctx.moveTo(x - offset, y + offset);
+    ctx.lineTo(x + offset, y - offset);
+    ctx.stroke();
+    
+    // Draw red X on top
+    ctx.strokeStyle = '#ff0000';
+    ctx.lineWidth = 3;
+    
+    ctx.beginPath();
+    ctx.moveTo(x - offset, y - offset);
+    ctx.lineTo(x + offset, y + offset);
+    ctx.stroke();
+    
+    ctx.beginPath();
+    ctx.moveTo(x - offset, y + offset);
+    ctx.lineTo(x + offset, y - offset);
+    ctx.stroke();
+    
+    ctx.restore();
+}
+
 function render() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
@@ -514,8 +671,6 @@ function render() {
     }
     
     // Draw connections with bidirectional arrows
-    ctx.strokeStyle = '#666';
-    ctx.lineWidth = 2;
     connections.forEach(conn => {
         const from = routers.find(r => r.id === conn.from_router_id);
         const to = routers.find(r => r.id === conn.to_router_id);
@@ -533,11 +688,27 @@ function render() {
             const endX = to.x - unitX * 20;
             const endY = to.y - unitY * 20;
             
+            // Save context state
+            ctx.save();
+            
+            // Apply failure styling if connection is failed
+            if (conn.is_failed) {
+                ctx.strokeStyle = '#ff0000'; // Bright red for failed connection
+                ctx.lineWidth = 4; // Thicker line
+                ctx.setLineDash([8, 4]); // Dashed line
+            } else {
+                ctx.strokeStyle = '#666';
+                ctx.lineWidth = 2;
+            }
+            
             // Draw main line
             ctx.beginPath();
             ctx.moveTo(startX, startY);
             ctx.lineTo(endX, endY);
             ctx.stroke();
+            
+            // Restore context state
+            ctx.restore();
             
             // Draw arrows at both ends to show bidirectional connection
             const arrowLength = 10;
@@ -618,6 +789,11 @@ function render() {
             ctx.font = '12px Arial';
             ctx.fillStyle = '#000';
             ctx.fillText(`Cost: ${conn.cost}`, midX, midY);
+            
+            // Draw failure X mark if connection is failed
+            if (conn.is_failed) {
+                drawFailureX(ctx, midX, midY, 15);
+            }
         }
     });
     
@@ -672,8 +848,21 @@ function render() {
         
         ctx.beginPath();
         ctx.arc(router.x, router.y, 20, 0, 2 * Math.PI);
-        ctx.fillStyle = router.ospf_enabled ? '#4CAF50' : '#2196F3';
+        
+        // Set fill color based on failure state
+        if (router.is_failed) {
+            ctx.fillStyle = '#ff0000'; // Bright red for failed router
+        } else {
+            ctx.fillStyle = router.ospf_enabled ? '#4CAF50' : '#2196F3';
+        }
         ctx.fill();
+        
+        // Draw failure border if failed
+        if (router.is_failed) {
+            ctx.strokeStyle = '#8b0000'; // Dark red border
+            ctx.lineWidth = 3;
+            ctx.stroke();
+        }
         
         if (isSelected && mode === 'connect-routers') {
             ctx.strokeStyle = '#000';
@@ -686,6 +875,11 @@ function render() {
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(router.name, router.x, router.y);
+        
+        // Draw failure X mark if router is failed
+        if (router.is_failed) {
+            drawFailureX(ctx, router.x, router.y, 25);
+        }
         
         // Draw router details below the icon
         if (router.summary) {

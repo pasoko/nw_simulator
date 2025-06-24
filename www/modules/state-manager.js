@@ -12,6 +12,16 @@ class StateManager {
         this.routers = [];
         this.connections = [];
         
+        // Available modes
+        this.modes = {
+            ADD_ROUTER: 'add-router',
+            MOVE_ROUTER: 'move-router',
+            CONNECT_ROUTERS: 'connect-routers',
+            DELETE_ROUTER: 'delete-router',
+            DISCONNECT_ROUTERS: 'disconnect-routers',
+            TOGGLE_FAILURE: 'toggle-failure'
+        };
+        
         // Simulation state
         this.simulationRunning = false;
         this.simulationPaused = false;

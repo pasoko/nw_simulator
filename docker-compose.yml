@@ -1,10 +1,8 @@
 version: '3.8'
 
 services:
-  nw-simulator:
-    build:
-      context: .
-      dockerfile: Dockerfile
+  ospf-network-simulator:
+    image: ospf-network-simulator:latest
     container_name: ospf-network-simulator
     ports:
       - "8080:80"

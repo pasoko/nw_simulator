@@ -313,6 +313,12 @@ impl NetworkSimulation {
         let next_hello_time = self.simulation_time + hello_interval;
         
         if let Some(router) = self.topology.routers.get(&router_id) {
+            // Check if router is failed
+            if router.is_failed {
+                console_log!("Router {} is failed, not scheduling hello packets", router_id);
+                return;
+            }
+            
             if let Some(_ospf_state) = &router.ospf_state {
                 let neighbors = self.topology.get_neighbors(router_id);
                 
@@ -320,8 +326,25 @@ impl NetworkSimulation {
                     router_id, self.simulation_time, neighbors.len());
                 
                 for neighbor_id in neighbors {
-                    // Only send hello packets to neighbors that have OSPF enabled
+                    // Check if the link is failed
+                    let link_failed = self.topology.links.values().any(|link| {
+                        ((link.router1_id == router_id && link.router2_id == neighbor_id) ||
+                         (link.router1_id == neighbor_id && link.router2_id == router_id)) &&
+                        link.is_failed
+                    });
+                    
+                    if link_failed {
+                        console_log!("  Skipping hello to router {} - link is failed", neighbor_id);
+                        continue;
+                    }
+                    
+                    // Only send hello packets to neighbors that have OSPF enabled and are not failed
                     if let Some(neighbor_router) = self.topology.routers.get(&neighbor_id) {
+                        if neighbor_router.is_failed {
+                            console_log!("  Skipping hello to router {} - router is failed", neighbor_id);
+                            continue;
+                        }
+                        
                         if neighbor_router.ospf_state.is_some() {
                             let packet = self.create_hello_packet(router_id);
                             let event = PacketEvent {
@@ -416,6 +439,35 @@ impl NetworkSimulation {
                 self.schedule_hello_packets(event.from_router_id);
                 return; // Don't process timer events as regular packets
             }
+        }
+        
+        // Check if source router is failed
+        if let Some(router) = self.topology.routers.get(&event.from_router_id) {
+            if router.is_failed {
+                console_log!("Dropping packet from failed router {}", event.from_router_id);
+                return;
+            }
+        }
+        
+        // Check if destination router is failed
+        if let Some(router) = self.topology.routers.get(&event.to_router_id) {
+            if router.is_failed {
+                console_log!("Dropping packet to failed router {}", event.to_router_id);
+                return;
+            }
+        }
+        
+        // Check if the link is failed
+        let link_failed = self.topology.links.values().any(|link| {
+            ((link.router1_id == event.from_router_id && link.router2_id == event.to_router_id) ||
+             (link.router1_id == event.to_router_id && link.router2_id == event.from_router_id)) &&
+            link.is_failed
+        });
+        
+        if link_failed {
+            console_log!("Dropping packet on failed link between router {} and router {}", 
+                event.from_router_id, event.to_router_id);
+            return;
         }
         
         match &event.packet {
@@ -751,5 +803,240 @@ impl NetworkSimulation {
         self.ospf_engines.get(&router_id)
             .map(|engine| engine.get_lsa_count())
             .unwrap_or(0)
+    }
+    
+    pub fn toggle_link_failure(&mut self, from_id: u32, to_id: u32) -> bool {
+        // Find the link
+        let link_id = self.topology.links
+            .iter()
+            .find(|(_, link)| {
+                (link.router1_id == from_id && link.router2_id == to_id) ||
+                (link.router1_id == to_id && link.router2_id == from_id)
+            })
+            .map(|(id, _)| *id);
+        
+        if let Some(link_id) = link_id {
+            let (link_failed, link_cost) = if let Some(link) = self.topology.links.get_mut(&link_id) {
+                link.is_failed = !link.is_failed;
+                (link.is_failed, link.cost)
+            } else {
+                return false;
+            };
+            
+            // Log the event
+            let event_type = if link_failed {
+                "Link Failure"
+            } else {
+                "Link Recovery"
+            };
+            
+            self.log_event(SimulationEvent {
+                timestamp: self.simulation_time,
+                event_type: SimulationEventType::LinkCreated {
+                    from_router: from_id,
+                    to_router: to_id,
+                    cost: link_cost,
+                },
+                description: format!("{}: Link between Router {} and Router {}", 
+                    event_type, from_id, to_id),
+            });
+            
+            // If failed, trigger neighbor down events and remove links
+            if link_failed {
+                // Get link information before removing neighbors
+                let (link_info1, link_info2) = {
+                    let link = self.topology.links.get(&link_id).unwrap();
+                    (
+                        (link.router1_id, link.router2_id, link.router1_interface_id, link.cost),
+                        (link.router2_id, link.router1_id, link.router2_interface_id, link.cost)
+                    )
+                };
+                
+                // Notify OSPF engines about link failure
+                let mut events_to_log = Vec::new();
+                
+                if let Some(engine1) = self.ospf_engines.get_mut(&link_info1.0) {
+                    if engine1.remove_neighbor(link_info1.1) {
+                        events_to_log.push(SimulationEvent {
+                            timestamp: self.simulation_time,
+                            event_type: SimulationEventType::NeighborStateChanged {
+                                router_id: link_info1.0,
+                                neighbor_id: link_info1.1,
+                                new_state: "Down".to_string(),
+                            },
+                            description: format!("Router {} neighbor {} went down due to link failure", 
+                                link_info1.0, link_info1.1),
+                        });
+                    }
+                    // Remove the link from router_links
+                    engine1.remove_link(link_info1.1);
+                }
+                
+                if let Some(engine2) = self.ospf_engines.get_mut(&link_info2.0) {
+                    if engine2.remove_neighbor(link_info2.1) {
+                        events_to_log.push(SimulationEvent {
+                            timestamp: self.simulation_time,
+                            event_type: SimulationEventType::NeighborStateChanged {
+                                router_id: link_info2.0,
+                                neighbor_id: link_info2.1,
+                                new_state: "Down".to_string(),
+                            },
+                            description: format!("Router {} neighbor {} went down due to link failure", 
+                                link_info2.0, link_info2.1),
+                        });
+                    }
+                    // Remove the link from router_links
+                    engine2.remove_link(link_info2.1);
+                }
+                
+                // Log events after releasing mutable borrows
+                for event in events_to_log {
+                    self.log_event(event);
+                }
+                
+                // Regenerate Router LSAs for affected routers
+                let mut new_events = Vec::new();
+                if let Some(engine1) = self.ospf_engines.get_mut(&from_id) {
+                    let events = engine1.regenerate_router_lsa();
+                    for mut event in events {
+                        event.timestamp = self.simulation_time + 0.1; // Schedule LSA flood
+                        new_events.push(event);
+                    }
+                }
+                
+                if let Some(engine2) = self.ospf_engines.get_mut(&to_id) {
+                    let events = engine2.regenerate_router_lsa();
+                    for mut event in events {
+                        event.timestamp = self.simulation_time + 0.1; // Schedule LSA flood
+                        new_events.push(event);
+                    }
+                }
+                
+                // Schedule the new events
+                for event in new_events {
+                    self.protocol_engine.schedule_event(event);
+                }
+                
+                // Recalculate routes
+                self.calculate_routes_for_router(from_id);
+                self.calculate_routes_for_router(to_id);
+            } else {
+                // Link recovery - add links back
+                let link_info = {
+                    let link = self.topology.links.get(&link_id).unwrap();
+                    (
+                        (link.router1_id, link.router2_id, link.router1_interface_id, link.cost),
+                        (link.router2_id, link.router1_id, link.router2_interface_id, link.cost)
+                    )
+                };
+                
+                // Add links back to OSPF engines
+                if let Some(engine1) = self.ospf_engines.get_mut(&link_info.0.0) {
+                    engine1.add_link(link_info.0.1, link_info.0.2, link_info.0.3);
+                }
+                
+                if let Some(engine2) = self.ospf_engines.get_mut(&link_info.1.0) {
+                    engine2.add_link(link_info.1.1, link_info.1.2, link_info.1.3);
+                }
+                
+                // Note: Neighbor relationships will be re-established through Hello protocol
+            }
+            
+            return true;
+        }
+        false
+    }
+    
+    pub fn toggle_router_failure(&mut self, router_id: u32) -> bool {
+        let (router_failed, router_name, has_ospf) = if let Some(router) = self.topology.routers.get_mut(&router_id) {
+            router.is_failed = !router.is_failed;
+            (router.is_failed, router.name.clone(), router.ospf_state.is_some())
+        } else {
+            return false;
+        };
+        
+        // Log the event
+        let event_type = if router_failed {
+            "Router Failure"
+        } else {
+            "Router Recovery"
+        };
+        
+        self.log_event(SimulationEvent {
+            timestamp: self.simulation_time,
+            event_type: SimulationEventType::RouterAdded {
+                router_id,
+                name: router_name.clone(),
+            },
+            description: format!("{}: Router {} ({})", event_type, router_id, router_name),
+        });
+        
+        if router_failed {
+            // Clear routing table
+            if let Some(router) = self.topology.routers.get_mut(&router_id) {
+                router.routing_table.clear();
+            }
+            
+            // Remove OSPF engine (it will be recreated on recovery)
+            self.ospf_engines.remove(&router_id);
+                
+                // Notify all neighbors about this router going down
+                let neighbors: Vec<u32> = self.topology.links
+                    .values()
+                    .filter_map(|link| {
+                        if link.router1_id == router_id {
+                            Some(link.router2_id)
+                        } else if link.router2_id == router_id {
+                            Some(link.router1_id)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                
+                for neighbor_id in neighbors {
+                    if let Some(engine) = self.ospf_engines.get_mut(&neighbor_id) {
+                        if engine.remove_neighbor(router_id) {
+                            self.log_event(SimulationEvent {
+                                timestamp: self.simulation_time,
+                                event_type: SimulationEventType::NeighborStateChanged {
+                                    router_id: neighbor_id,
+                                    neighbor_id: router_id,
+                                    new_state: "Down".to_string(),
+                                },
+                                description: format!("Router {} neighbor {} went down due to router failure", 
+                                    neighbor_id, router_id),
+                            });
+                        }
+                    }
+                    self.calculate_routes_for_router(neighbor_id);
+                }
+        } else {
+            // Router recovery - recreate OSPF engine if enabled
+            if has_ospf {
+                let router_ip = format!("{}.{}.{}.{}", 1, 1, 1, router_id);
+                let mut ospf_engine = OSPFEngine::new(router_ip.clone(), "0.0.0.0".to_string());
+                
+                // Add router links to OSPF engine
+                for link in self.topology.links.values() {
+                    if !link.is_failed {
+                        if link.router1_id == router_id {
+                            ospf_engine.add_router_link(link.router2_id, link.router1_interface_id, link.cost);
+                        } else if link.router2_id == router_id {
+                            ospf_engine.add_router_link(link.router1_id, link.router2_interface_id, link.cost);
+                        }
+                    }
+                }
+                
+                self.ospf_engines.insert(router_id, ospf_engine);
+                
+                // If simulation is running, start sending hello packets
+                if self.running {
+                    self.schedule_initial_hello_packets(router_id);
+                }
+            }
+        }
+        
+        return true;
     }
 }
