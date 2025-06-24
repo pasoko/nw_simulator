@@ -41,5 +41,9 @@ logs:
 	sudo docker-compose logs -f
 
 # Complete clean rebuild
-rebuild:
-	./scripts/clean-rebuild.sh
+rebuild: clean
+	@echo "Starting clean rebuild..."
+	cd www && npm install
+	wasm-pack build --target web --out-dir www/pkg
+	sudo docker build -t ospf-network-simulator:latest .
+	@echo "Rebuild complete!"
