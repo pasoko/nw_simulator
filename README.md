@@ -14,8 +14,15 @@ WebAssemblyとRustで構築されたOSPFv2ネットワークシミュレータ�
 
 ## 必要環境
 
+### 実行環境
 - Docker および Docker Compose
 - WebAssembly対応のモダンブラウザ（Chrome、Firefox、Edge）
+
+### 開発環境（ソースからビルドする場合）
+- Rust (stable)
+- wasm-pack
+- Node.js (v16以上) および npm
+- C/C++コンパイラ (gcc/clang) - build-essentialパッケージ
 
 ## クイックスタート
 
@@ -61,6 +68,38 @@ make logs     # コンテナログの表示
 7. **ルーティングテーブル確認**: ドロップダウンからルーターを選択
 
 ## トラブルシューティング
+
+### ビルドエラー：「linker `cc` not found」
+
+**症状**: wasm-packビルド時に「error: linker `cc` not found」エラーが発生
+
+**原因**: C/C++コンパイラがインストールされていない
+
+**解決方法**:
+```bash
+# Ubuntu/Debian
+sudo apt-get update && sudo apt-get install -y build-essential
+
+# Fedora/RHEL
+sudo dnf install gcc gcc-c++ make
+
+# macOS
+xcode-select --install
+```
+
+### wasm-pack: command not found
+
+**症状**: wasm-packコマンドが見つからない
+
+**解決方法**:
+```bash
+# wasm-packを再インストール
+curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+# PATHに追加
+echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+```
 
 ### WebAssemblyが読み込まれない
 
@@ -138,23 +177,54 @@ nw_simulator/
 
 ### 開発環境セットアップ
 
-**必要なツール**:
-- Rust (latest stable)
-- wasm-pack
-- Node.js (v16+)
+**必要なツールのインストール**:
+
+1. **Rust のインストール**（未インストールの場合）:
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source $HOME/.cargo/env
+rustup default stable
+```
+
+2. **wasm-pack のインストール**:
+```bash
+curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+# PATHに追加（.bashrcや.zshrcに追記推奨）
+export PATH="$HOME/.cargo/bin:$PATH"
+```
+
+3. **C/C++コンパイラのインストール**（Ubuntu/Debian）:
+```bash
+sudo apt-get update
+sudo apt-get install -y build-essential
+```
+
+4. **Node.js のインストール**（未インストールの場合）:
+```bash
+# Node.js公式リポジトリの追加
+curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
+sudo apt-get install -y nodejs
+```
 
 **ソースからビルド**:
 ```bash
-# wasm-packのインストール
-curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
-
 # プロジェクトのビルド
+make -f Makefile.nosudo setup-local
+# または手動で
+cd www && npm install
 wasm-pack build --target web --out-dir www/pkg
 
 # 開発サーバーの起動
 cd www
-npm install
 npm start
+```
+
+**Docker権限の設定**（Dockerを使用する場合）:
+```bash
+# 現在のユーザーをdockerグループに追加
+sudo usermod -aG docker $USER
+# 変更を反映（再ログインが必要）
+newgrp docker
 ```
 
 ### テスト実行
