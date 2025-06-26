@@ -3,6 +3,12 @@
   "version": "0.1.0",
   "description": "Network Simulator Web Interface",
   "main": "index.js",
+  "license": "MIT",
+  "author": "pasoko",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pasoko/nw_simulator.git"
+  },
   "scripts": {
     "start": "webpack-dev-server --open",
     "build": "webpack --mode production"

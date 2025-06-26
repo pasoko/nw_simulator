@@ -2,6 +2,10 @@
 name = "nw_simulator"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+authors = ["pasoko"]
+description = "OSPFv2 network simulator built with Rust and WebAssembly"
+repository = "https://github.com/pasoko/nw_simulator"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
