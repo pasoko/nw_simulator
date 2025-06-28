@@ -19,10 +19,56 @@ WebAssemblyとRustで構築されたOSPFv2ネットワークシミュレータ�
 - WebAssembly対応のモダンブラウザ（Chrome、Firefox、Edge）
 
 ### 開発環境（ソースからビルドする場合）
-- Rust (stable)
+
+#### 必須ツール
+以下のツールが事前にインストールされている必要があります：
+
+1. **Rust** (stable版)
+   - Rustコンパイラとcargoパッケージマネージャー
+   - バージョン: 1.70以上推奨
+
+2. **wasm-pack**
+   - RustコードをWebAssemblyにコンパイルするツール
+   - バージョン: 最新版
+
+3. **Node.js および npm**
+   - フロントエンドビルドとwebpackの実行
+   - バージョン: Node.js v16以上、npm v7以上
+
+4. **C/C++コンパイラ**
+   - build-essentialパッケージ（gcc、g++、make等）
+   - Rust/WebAssemblyのネイティブコンパイルに必要
+
+5. **Git**
+   - ソースコードの取得とバージョン管理
+   
+6. **Docker および Docker Compose**（コンテナ実行の場合）
+   - Docker Engine v20以上
+   - Docker Compose v2以上
+
+#### 追加の依存関係（自動インストール）
+以下はセットアップスクリプトで自動的にインストールされます：
+- pkg-config
+- libssl-dev（OpenSSL開発ライブラリ）
+- curl（インストーラのダウンロード用）
+
+## WSL2 Ubuntu 24.04 セットアップ
+
+WSL2のUbuntu 24.04環境で開発環境を構築する場合は、付属のセットアップスクリプトを使用できます：
+
+```bash
+# セットアップスクリプトの実行
+./setup-wsl2-ubuntu.sh
+```
+
+このスクリプトは以下を自動的にインストール・設定します：
+- システムパッケージの更新
+- build-essential（gcc、g++、make）
+- Rust（最新stable版）
 - wasm-pack
-- Node.js (v16以上) および npm
-- C/C++コンパイラ (gcc/clang) - build-essentialパッケージ
+- Node.js（LTS版）とnpm
+- Docker（sudo権限なしで実行可能に設定）
+- プロジェクトのビルド（オプション）
 
 ## クイックスタート
 
@@ -33,10 +79,19 @@ cd nw_simulator
 ```
 
 ### 2. Dockerコンテナの起動
+
+#### 通常の起動（sudoが必要）
 ```bash
 make run
 ```
-または
+
+#### sudo権限なしでの起動
+```bash
+# Dockerグループに追加されている場合
+make -f Makefile.nosudo run
+```
+
+または直接実行：
 ```bash
 docker-compose up --build
 ```
@@ -48,6 +103,7 @@ http://localhost:8080
 
 ## 主要なMakeコマンド
 
+### 標準コマンド（sudoが必要）
 ```bash
 make build    # Dockerイメージのビルド
 make run      # コンテナの起動（本番モード）
@@ -55,6 +111,20 @@ make dev      # 開発モードで起動（ホットリロード対応）
 make stop     # コンテナの停止
 make clean    # ビルドアーティファクトのクリーンアップ
 make logs     # コンテナログの表示
+```
+
+### sudo権限なしでの実行
+Dockerグループに追加されている場合は、`Makefile.nosudo`を使用：
+```bash
+make -f Makefile.nosudo build    # Dockerイメージのビルド
+make -f Makefile.nosudo run      # コンテナの起動（本番モード）
+make -f Makefile.nosudo dev      # 開発モードで起動
+make -f Makefile.nosudo stop     # コンテナの停止
+make -f Makefile.nosudo clean    # クリーンアップ
+make -f Makefile.nosudo logs     # ログの表示
+
+# ローカル開発（Dockerを使わない）
+make -f Makefile.nosudo setup-local  # ローカル環境セットアップ
 ```
 
 ## 使用方法
@@ -149,12 +219,28 @@ make run
 
 ### Docker権限エラー（Linux）
 
-権限エラーが発生する場合は、ユーザーをdockerグループに追加:
+権限エラーが発生する場合の解決方法：
+
+#### 方法1: Dockerグループに追加（推奨）
 ```bash
 sudo usermod -aG docker $USER
 newgrp docker
 ```
 変更を反映するため、一度ログアウトして再ログインしてください。
+
+#### 方法2: Makefile.nosudoを使用
+Dockerグループに追加後、sudo権限なしで実行：
+```bash
+make -f Makefile.nosudo build
+make -f Makefile.nosudo run
+```
+
+#### 方法3: セットアップスクリプトを使用
+WSL2 Ubuntu環境の場合：
+```bash
+./setup-wsl2-ubuntu.sh
+```
+このスクリプトがDockerグループの設定も自動的に行います。
 
 ## 開発者向け情報
 
