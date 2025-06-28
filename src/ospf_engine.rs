@@ -4,20 +4,40 @@ use crate::router::{OSPFNeighbor, OSPFNeighborState, RouterLSA, RouterLink, Link
 use crate::protocol::{ProtocolPacket, PacketEvent};
 use crate::console_log;
 
+/// OSPFv2プロトコルエンジンの実装
+/// 
+/// このエンジンは、RFC 2328に基づくOSPFv2プロトコルの完全な実装を提供します。
+/// ネイバー関係の確立、LSAデータベースの同期、SPF計算によるルーティングテーブル更新を管理します。
+/// 
+/// ## OSPFネイバーステートマシン
+/// 1. **Down** - ネイバーとの通信なし
+/// 2. **Init** - Helloパケットを受信したが、双方向通信未確立
+/// 3. **2Way** - 双方向通信確立、DRとBDRの選出
+/// 4. **ExStart** - Database Description交換の準備
+/// 5. **Exchange** - Database Descriptionパケットの交換
+/// 6. **Loading** - LSAリクエストとアップデートの交換
+/// 7. **Full** - LSAデータベース同期完了、隣接関係確立
+/// 
+/// ## パケット処理フロー
+/// - **Hello**: ネイバー発見と維持
+/// - **Database Description**: LSAヘッダーの交換
+/// - **Link State Request**: 不足しているLSAの要求
+/// - **Link State Update**: LSAデータの送信
+/// - **Link State Acknowledgment**: LSA受信確認
 pub struct OSPFEngine {
     router_id: String,
     area_id: String,
     hello_interval: u16,
     dead_interval: u32,
     neighbors: HashMap<u32, OSPFNeighbor>,
-    neighbor_last_hello: HashMap<u32, f64>,  // Track last hello time
+    neighbor_last_hello: HashMap<u32, f64>,  // 最後のHelloパケット受信時刻を記録
     current_time: f64,
-    lsa_database: HashMap<String, crate::router::LSA>,  // Key: LSA identifier (type:ls_id:adv_router)
-    lsa_sequence_number: u32,  // Current sequence number for self-originated LSAs
-    router_links: Vec<(u32, u32, u32)>,  // (neighbor_id, interface_id, cost) for Router LSA generation
-    dd_sequence_number: u32,  // DD sequence number for exchange
-    neighbor_dd_state: HashMap<u32, DDExchangeState>,  // Track DD exchange state per neighbor
-    neighbor_previous_state: HashMap<u32, OSPFNeighborState>,  // Track previous state for logging
+    lsa_database: HashMap<String, crate::router::LSA>,  // キー: LSA識別子 (type:ls_id:adv_router)
+    lsa_sequence_number: u32,  // 自身が発信するLSAの現在のシーケンス番号
+    router_links: Vec<(u32, u32, u32)>,  // Router LSA生成用 (neighbor_id, interface_id, cost)
+    dd_sequence_number: u32,  // Database Description交換用シーケンス番号
+    neighbor_dd_state: HashMap<u32, DDExchangeState>,  // ネイバーごとのDD交換状態を記録
+    neighbor_previous_state: HashMap<u32, OSPFNeighborState>,  // ログ記録用の前回ステート
 }
 
 #[derive(Clone)]
