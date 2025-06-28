@@ -18,9 +18,9 @@ help:
 # Setup for local development without Docker
 setup-local:
 	@echo "Setting up local development environment..."
-	cd www && npm install
+	cd www && yarn install
 	PATH="$$HOME/.cargo/bin:$$PATH" wasm-pack build --target web --out-dir www/pkg
-	@echo "Local setup complete! You can now run 'cd www && npm start' to start the development server"
+	@echo "Local setup complete! You can now run 'cd www && yarn start' to start the development server"
 
 # Build Docker image
 build:
@@ -54,7 +54,7 @@ logs:
 # Complete clean rebuild
 rebuild: clean
 	@echo "Starting clean rebuild..."
-	cd www && npm install
+	cd www && yarn install
 	PATH="$$HOME/.cargo/bin:$$PATH" wasm-pack build --target web --out-dir www/pkg
 	docker build -t ospf-network-simulator:latest .
 	@echo "Rebuild complete!"

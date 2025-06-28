@@ -31,9 +31,9 @@ WebAssemblyとRustで構築されたOSPFv2ネットワークシミュレータ�
    - RustコードをWebAssemblyにコンパイルするツール
    - バージョン: 最新版
 
-3. **Node.js および npm**
+3. **Node.js および Yarn**
    - フロントエンドビルドとwebpackの実行
-   - バージョン: Node.js v16以上、npm v7以上
+   - バージョン: Node.js v16以上、Yarn v1以上
 
 4. **C/C++コンパイラ**
    - build-essentialパッケージ（gcc、g++、make等）
@@ -66,7 +66,7 @@ WSL2のUbuntu 24.04環境で開発環境を構築する場合は、付属のセ�
 - build-essential（gcc、g++、make）
 - Rust（最新stable版）
 - wasm-pack
-- Node.js（LTS版）とnpm
+- Node.js（LTS版）とYarn
 - Docker（sudo権限なしで実行可能に設定）
 - プロジェクトのビルド（オプション）
 
@@ -297,12 +297,12 @@ sudo apt-get install -y nodejs
 # プロジェクトのビルド
 make -f Makefile.nosudo setup-local
 # または手動で
-cd www && npm install
+cd www && yarn install
 wasm-pack build --target web --out-dir www/pkg
 
 # 開発サーバーの起動
 cd www
-npm start
+yarn start
 ```
 
 **Docker権限の設定**（Dockerを使用する場合）:

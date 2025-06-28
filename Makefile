@@ -46,7 +46,7 @@ logs:
 # Complete clean rebuild
 rebuild: clean
 	@echo "Starting clean rebuild..."
-	cd www && npm install
+	cd www && yarn install
 	PATH="$$HOME/.cargo/bin:$$PATH" wasm-pack build --target web --out-dir www/pkg
 	sudo docker build -t ospf-network-simulator:latest .
 	@echo "Rebuild complete!"

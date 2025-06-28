@@ -95,7 +95,7 @@ else
 fi
 
 # Step 5: Install Node.js (v20 LTS)
-print_step 5 "Installing Node.js and npm..."
+print_step 5 "Installing Node.js..."
 if command_exists node; then
     NODE_VERSION=$(node --version)
     print_warning "Node.js is already installed: $NODE_VERSION"
@@ -123,7 +123,7 @@ else
 
     # Update and install Docker
     sudo apt-get update
-    sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose docker-buildx-plugin docker-compose-plugin 
 fi
 
 # Configure Docker to run without sudo
@@ -136,8 +136,17 @@ if ! groups $USER | grep -q docker; then
     print_warning "Alternatively, run: newgrp docker"
 fi
 
-# Step 8: Verify installations
-print_step 8 "Verifying installations..."
+# Step 8: Install Yarn
+print_step 8 "Installing Yarn..."
+if command_exists yarn; then
+    print_warning "Yarn is already installed"
+    yarn --version
+else
+    sudo npm install -g yarn
+fi
+
+# Step 9: Verify installations
+print_step 9 "Verifying installations..."
 echo ""
 echo "Checking installed tools:"
 echo "========================="
@@ -147,21 +156,21 @@ check_version "rustc" "rustc --version"
 check_version "cargo" "cargo --version"
 check_version "wasm-pack" "wasm-pack --version"
 check_version "node" "node --version"
-check_version "npm" "npm --version"
+check_version "yarn" "yarn --version"
 check_version "docker" "docker --version"
 check_version "docker-compose" "docker compose version"
 
-# Step 9: Project setup (optional)
+# Step 10: Project setup (optional)
 echo ""
-print_step 9 "Project setup..."
+print_step 10 "Project setup..."
 if [ -f "Cargo.toml" ] && [ -d "www" ]; then
     echo "Detected project files. Would you like to build the project now? (y/n)"
     read -r response
     if [[ "$response" =~ ^[Yy]$ ]]; then
-        print_step 10 "Building the project..."
+        print_step 11 "Building the project..."
         
-        # Install npm dependencies
-        cd www && npm install
+        # Install dependencies with Yarn
+        cd www && yarn install
         cd ..
         
         # Build WebAssembly module
@@ -170,7 +179,7 @@ if [ -f "Cargo.toml" ] && [ -d "www" ]; then
         echo -e "${GREEN}✓${NC} Project build completed!"
         echo ""
         echo "You can now run the project with:"
-        echo "  - Development mode: cd www && npm start"
+        echo "  - Development mode: cd www && yarn start"
         echo "  - Docker mode: make -f Makefile.nosudo run"
     fi
 else
@@ -188,7 +197,7 @@ echo "1. If you were added to the docker group, run: newgrp docker"
 echo "2. Clone the project: git clone <repository-url>"
 echo "3. Navigate to project: cd nw_simulator"
 echo "4. Build the project: make -f Makefile.nosudo setup-local"
-echo "5. Start development server: cd www && npm start"
+echo "5. Start development server: cd www && yarn start"
 echo ""
 echo "For Docker operations without sudo:"
 echo "  - Build: make -f Makefile.nosudo build"
