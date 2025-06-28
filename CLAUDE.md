@@ -25,7 +25,7 @@
 - 可能な限り分割代入を活用
 - 関数名は snake_case、クラス名は PascalCase で統一
 - 推奨するフォルダ構成は以下を参照してください
-nw_simulator/
+.
 ├── Cargo.toml          # Rustの依存関係設定
 ├── src/                # Rustソースコード
 │   ├── lib.rs          # WebAssemblyエントリポイント
