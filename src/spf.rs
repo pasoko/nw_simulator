@@ -32,9 +32,34 @@ impl PartialEq for DijkstraNode {
 
 impl Eq for DijkstraNode {}
 
+/// SPF（Shortest Path First）アルゴリズムを実装するための計算機
+/// 
+/// このアルゴリズムは、OSPFプロトコルで使用されるダイクストラアルゴリズムを実装し、
+/// 指定されたソースルーターから他の全てのルーターへの最短パスを計算します。
+/// 
+/// ## アルゴリズムの概要
+/// 1. ソースルーターをコスト0で初期化
+/// 2. プライオリティキュー（最小ヒープ）を使用して、コストが最小のノードを選択
+/// 3. 選択されたノードの隣接ノードのコストを更新
+/// 4. 全てのノードが処理されるまで繰り返し
+/// 
+/// ## 入力
+/// - LSAデータベース: ネットワークトポロジー情報
+/// - ソースルーターID: 計算の起点となるルーター
+/// 
+/// ## 出力
+/// - ルーティングテーブル: 各宛先への最短パスとコスト
 pub struct SPFCalculator;
 
 impl SPFCalculator {
+    /// LSAデータベースを基に、指定されたソースルーターからの最短パスを計算
+    /// 
+    /// # 引数
+    /// * `lsa_database` - ネットワーク全体のLink State Advertisement情報
+    /// * `source_router_id` - 計算の起点となるルーターのID
+    /// 
+    /// # 戻り値
+    /// RoutingTableEntryのベクター。各エントリには宛先、コスト、ネクストホップが含まれる
     pub fn calculate_routes_from_lsa(
         lsa_database: &HashMap<String, LSA>,
         source_router_id: u32,

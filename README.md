@@ -10,7 +10,10 @@ WebAssemblyとRustで構築されたOSPFv2ネットワークシミュレータ�
 - パケット送受信の可視化アニメーション
 - SPFアルゴリズムによるルーティングテーブル計算
 - 時間経過によるネットワーク状態の変化をシミュレート
-- シミュレーションログの記録とエクスポート
+- ルーター障害・復旧シミュレーション
+- リンク障害・復旧シミュレーション
+- リアルタイムシミュレーション統計表示
+- シミュレーションログの記録とJSON形式でのエクスポート
 
 ## 必要環境
 
@@ -33,7 +36,8 @@ WebAssemblyとRustで構築されたOSPFv2ネットワークシミュレータ�
 
 3. **Node.js および Yarn**
    - フロントエンドビルドとwebpackの実行
-   - バージョン: Node.js v16以上、Yarn v1以上
+   - バージョン: Node.js v18以上、Yarn v4以上
+   - 推奨: Voltaを使用したバージョン管理
 
 4. **C/C++コンパイラ**
    - build-essentialパッケージ（gcc、g++、make等）
@@ -221,15 +225,32 @@ nw_simulator/
 ├── Cargo.toml          # Rust依存関係
 ├── CLAUDE.md           # プロジェクト要件定義
 ├── src/                # Rustソースコード
-│   └── lib.rs          # WebAssemblyエントリポイント
+│   ├── lib.rs          # WebAssemblyエントリポイント
+│   ├── network.rs      # ネットワークトポロジー管理
+│   ├── ospf.rs         # OSPFプロトコル実装
+│   ├── ospf_engine.rs  # OSPFエンジンコア
+│   ├── protocol.rs     # プロトコル定義
+│   ├── router.rs       # ルーター状態管理
+│   ├── simulation.rs   # シミュレーション制御
+│   ├── spf.rs          # 最短経路優先アルゴリズム
+│   └── ui_state.rs     # UI状態管理
 ├── www/                # フロントエンド
-│   ├── index.html
-│   ├── index.js
-│   ├── styles.css
-│   └── packet-visualizer.js
+│   ├── index.html      # メインHTMLページ
+│   ├── index.js        # メインJavaScriptエントリポイント
+│   ├── packet-visualizer.js # パケット可視化
+│   ├── modules/        # モジュラーJavaScriptコンポーネント
+│   │   ├── canvas-renderer.js
+│   │   ├── connection-manager.js
+│   │   ├── event-logger.js
+│   │   ├── router-manager.js
+│   │   ├── simulation-controller.js
+│   │   └── state-manager.js
+│   ├── webpack.config.js # Webpack設定
+│   └── package.json    # フロントエンド依存関係
 ├── Dockerfile          # 本番用コンテナ定義
 ├── Dockerfile.dev      # 開発用コンテナ定義
-└── docker-compose.yml  # Docker Compose設定
+├── docker-compose.yml  # Docker Compose設定
+└── setup-wsl2-ubuntu.sh # WSL2セットアップスクリプト
 ```
 
 ### 開発環境セットアップ
@@ -256,7 +277,18 @@ sudo apt-get update
 sudo apt-get install -y build-essential
 ```
 
-4. **Node.js のインストール**（未インストールの場合）:
+4. **Node.js のインストール**（Volta推奨）:
+```bash
+# Voltaのインストール
+curl https://get.volta.sh | bash
+source ~/.bashrc
+
+# Node.jsとYarnのインストール
+volta install node@22
+volta install yarn@4
+```
+
+**従来の方法**（未インストールの場合）:
 ```bash
 # Node.js公式リポジトリの追加
 curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
