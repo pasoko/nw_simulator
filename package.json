@@ -1,24 +1,4 @@
 {
   "name": "nw_simulator",
-  "version": "1.0.0",
-  "description": "WebAssemblyとRustで構築されたOSPFv2ネットワークシミュレーターです。ブラウザ上でルーターの設置、接続、OSPFプロトコルの動作をリアルタイムで可視化できます。",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/pasoko/nw_simulator.git"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/pasoko/nw_simulator/issues"
-  },
-  "homepage": "https://github.com/pasoko/nw_simulator#readme",
-  "volta": {
-    "node": "22.17.0",
-    "yarn": "4.9.2"
-  }
+  "packageManager": "yarn@4.9.2"
 }
