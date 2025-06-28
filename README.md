@@ -67,7 +67,7 @@ WSL2のUbuntu 24.04環境で開発環境を構築する場合は、付属のセ�
 - Rust（最新stable版）
 - wasm-pack
 - Node.js（LTS版）とYarn
-- Docker（sudo権限なしで実行可能に設定）
+- Docker
 - プロジェクトのビルド（オプション）
 
 ## クイックスタート
@@ -80,15 +80,8 @@ cd nw_simulator
 
 ### 2. Dockerコンテナの起動
 
-#### 通常の起動（sudoが必要）
 ```bash
 make run
-```
-
-#### sudo権限なしでの起動
-```bash
-# Dockerグループに追加されている場合
-make -f Makefile.nosudo run
 ```
 
 または直接実行：
@@ -103,7 +96,6 @@ http://localhost:8080
 
 ## 主要なMakeコマンド
 
-### 標準コマンド（sudoが必要）
 ```bash
 make build    # Dockerイメージのビルド
 make run      # コンテナの起動（本番モード）
@@ -111,20 +103,6 @@ make dev      # 開発モードで起動（ホットリロード対応）
 make stop     # コンテナの停止
 make clean    # ビルドアーティファクトのクリーンアップ
 make logs     # コンテナログの表示
-```
-
-### sudo権限なしでの実行
-Dockerグループに追加されている場合は、`Makefile.nosudo`を使用：
-```bash
-make -f Makefile.nosudo build    # Dockerイメージのビルド
-make -f Makefile.nosudo run      # コンテナの起動（本番モード）
-make -f Makefile.nosudo dev      # 開発モードで起動
-make -f Makefile.nosudo stop     # コンテナの停止
-make -f Makefile.nosudo clean    # クリーンアップ
-make -f Makefile.nosudo logs     # ログの表示
-
-# ローカル開発（Dockerを使わない）
-make -f Makefile.nosudo setup-local  # ローカル環境セットアップ
 ```
 
 ## 使用方法
@@ -228,14 +206,7 @@ newgrp docker
 ```
 変更を反映するため、一度ログアウトして再ログインしてください。
 
-#### 方法2: Makefile.nosudoを使用
-Dockerグループに追加後、sudo権限なしで実行：
-```bash
-make -f Makefile.nosudo build
-make -f Makefile.nosudo run
-```
-
-#### 方法3: セットアップスクリプトを使用
+#### 方法2: セットアップスクリプトを使用
 WSL2 Ubuntu環境の場合：
 ```bash
 ./setup-wsl2-ubuntu.sh
@@ -295,8 +266,6 @@ sudo apt-get install -y nodejs
 **ソースからビルド**:
 ```bash
 # プロジェクトのビルド
-make -f Makefile.nosudo setup-local
-# または手動で
 cd www && yarn install
 wasm-pack build --target web --out-dir www/pkg
 

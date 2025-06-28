@@ -16,37 +16,37 @@ help:
 
 # Build Docker image
 build:
-	sudo docker build -t ospf-network-simulator:latest .
+	docker build -t ospf-network-simulator:latest .
 
 # Run in production mode
 run:
-	sudo docker-compose up -d
+	docker-compose up -d
 
 # Run in development mode
 dev:
-	sudo docker-compose -f docker-compose.dev.yml up
+	docker-compose -f docker-compose.dev.yml up
 
 # Stop containers
 stop:
-	sudo docker-compose down 2>/dev/null || true
-	sudo docker-compose -f docker-compose.dev.yml down 2>/dev/null || true
+	docker-compose down 2>/dev/null || true
+	docker-compose -f docker-compose.dev.yml down 2>/dev/null || true
 
 # Clean up
 clean:
 	@echo "Cleaning up Docker resources..."
-	sudo docker-compose down 2>/dev/null || true
-	sudo docker-compose -f docker-compose.dev.yml down 2>/dev/null || true
-	sudo docker rmi ospf-network-simulator:latest || true
-	sudo docker system prune -f
+	docker-compose down 2>/dev/null || true
+	docker-compose -f docker-compose.dev.yml down 2>/dev/null || true
+	docker rmi ospf-network-simulator:latest || true
+	docker system prune -f
 
 # Show logs
 logs:
-	sudo docker-compose logs -f
+	docker-compose logs -f
 
 # Complete clean rebuild
 rebuild: clean
 	@echo "Starting clean rebuild..."
 	cd www && yarn install
 	PATH="$$HOME/.cargo/bin:$$PATH" wasm-pack build --target web --out-dir www/pkg
-	sudo docker build -t ospf-network-simulator:latest .
+	docker build -t ospf-network-simulator:latest .
 	@echo "Rebuild complete!"

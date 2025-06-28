@@ -149,7 +149,7 @@ if [ -f "Cargo.toml" ] && [ -d "www" ]; then
         echo ""
         echo "You can now run the project with:"
         echo "  - Development mode: cd www && yarn start"
-        echo "  - Docker mode: make -f Makefile.nosudo run"
+        echo "  - Docker mode: make run"
     fi
 else
     print_warning "Not in project directory. Skipping project build."
@@ -165,12 +165,12 @@ echo "Next steps:"
 echo "1. If you were added to the docker group, run: newgrp docker"
 echo "2. Clone the project: git clone <repository-url>"
 echo "3. Navigate to project: cd nw_simulator"
-echo "4. Build the project: make -f Makefile.nosudo setup-local"
+echo "4. Build the project: cd www && yarn install && cd .. && wasm-pack build --target web --out-dir www/pkg"
 echo "5. Start development server: cd www && yarn start"
 echo ""
-echo "For Docker operations without sudo:"
-echo "  - Build: make -f Makefile.nosudo build"
-echo "  - Run: make -f Makefile.nosudo run"
+echo "For Docker operations:"
+echo "  - Build: make build"
+echo "  - Run: make run"
 echo ""
 
 # Check if we need to reload shell
