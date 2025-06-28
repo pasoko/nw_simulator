@@ -29,15 +29,16 @@ FROM node:20-alpine AS frontend-builder
 WORKDIR /app/www
 
 # Copy package files
-COPY www/package.json www/package-lock.json* ./
+COPY www/package.json www/yarn.lock* ./
 
 # Install dependencies
-RUN npm install
+RUN yarn install
 
 # Copy frontend source files
 COPY www/index.html ./
 COPY www/index.js ./
 COPY www/packet-visualizer.js ./
+COPY www/modules ./modules
 COPY www/webpack.config.js ./
 COPY www/health.html ./
 
@@ -45,7 +46,7 @@ COPY www/health.html ./
 COPY --from=rust-builder /app/pkg ./pkg
 
 # Build frontend
-RUN npm run build
+RUN yarn build
 
 # Production stage with nginx
 FROM nginx:alpine

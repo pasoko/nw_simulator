@@ -99,7 +99,7 @@ Closes #123
 cargo test
 
 # JavaScriptのテスト（将来実装予定）
-npm test
+yarn test
 ```
 
 ## ドキュメント
