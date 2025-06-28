@@ -63,6 +63,7 @@ sudo apt-get install -y \
     libssl-dev \
     make \
     ca-certificates \
+    docker-compose \
     gnupg
 
 # Step 3: Install Rust
