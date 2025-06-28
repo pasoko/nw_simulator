@@ -95,40 +95,8 @@ else
     curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 fi
 
-# Step 5: Install Node.js (v20 LTS)
-print_step 5 "Installing Node.js..."
-if command_exists node; then
-    NODE_VERSION=$(node --version)
-    print_warning "Node.js is already installed: $NODE_VERSION"
-else
-    # Add NodeSource repository
-    curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
-    sudo apt-get install -y nodejs
-fi
-
-# Step 6: Docker setup (without sudo)
-print_step 6 "Setting up Docker..."
-if command_exists docker; then
-    print_warning "Docker is already installed"
-else
-    # Add Docker's official GPG key
-    sudo install -m 0755 -d /etc/apt/keyrings
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-    sudo chmod a+r /etc/apt/keyrings/docker.gpg
-
-    # Add the repository to Apt sources
-    echo \
-      "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-      $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
-      sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-    # Update and install Docker
-    sudo apt-get update
-    sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose docker-buildx-plugin docker-compose-plugin 
-fi
-
 # Configure Docker to run without sudo
-print_step 7 "Configuring Docker for non-root access..."
+print_step 5 "Configuring Docker for non-root access..."
 if ! groups $USER | grep -q docker; then
     sudo groupadd -f docker
     sudo usermod -aG docker $USER
@@ -137,8 +105,8 @@ if ! groups $USER | grep -q docker; then
     print_warning "Alternatively, run: newgrp docker"
 fi
 
-# Step 8: Install Yarn
-print_step 8 "Installing Yarn..."
+# Step 6: Install Yarn
+print_step 6 "Installing Yarn..."
 if command_exists yarn; then
     print_warning "Yarn is already installed"
     yarn --version
@@ -146,8 +114,8 @@ else
     sudo npm install -g yarn
 fi
 
-# Step 9: Verify installations
-print_step 9 "Verifying installations..."
+# Step 7: Verify installations
+print_step 7 "Verifying installations..."
 echo ""
 echo "Checking installed tools:"
 echo "========================="
@@ -161,14 +129,14 @@ check_version "yarn" "yarn --version"
 check_version "docker" "docker --version"
 check_version "docker-compose" "docker compose version"
 
-# Step 10: Project setup (optional)
+# Step 8: Project setup (optional)
 echo ""
-print_step 10 "Project setup..."
+print_step 8 "Project setup..."
 if [ -f "Cargo.toml" ] && [ -d "www" ]; then
     echo "Detected project files. Would you like to build the project now? (y/n)"
     read -r response
     if [[ "$response" =~ ^[Yy]$ ]]; then
-        print_step 11 "Building the project..."
+        print_step 9 "Building the project..."
         
         # Install dependencies with Yarn
         cd www && yarn install
