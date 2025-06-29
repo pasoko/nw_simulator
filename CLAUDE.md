@@ -16,8 +16,9 @@
 
 # 共通コマンド
 - JavaScript Tool Managerとしてvoltaを使用します。
-- Node.jsは最新の安定版LTSを使用します
-- nodeのパッケージマネージャーとしてはyarnを使います
+- Node.jsは最新の安定版LTS（v22.17.0）を使用します
+- nodeのパッケージマネージャーとしてはyarn（v4.9.2）を使います
+- WebAssemblyビルドにはwasm-pack（v0.13.1）を使用します
 
 # コードスタイル
 
@@ -59,3 +60,14 @@
 
 - 変更完了後は必ず型チェックを実行
 - 全テストではなく単体テストを優先して実行
+
+# 最新アップデート履歴
+
+## 2025-06-29: ツール最新版アップデート
+- Node.js: 22.12.0 → 22.17.0 (LTS最新版)
+- webpack: 5.89.0 → 5.99.9
+- webpack-cli: 5.1.4 → 6.0.1  
+- html-webpack-plugin: 5.5.3 → 5.6.3
+- copy-webpack-plugin: 11.0.0 → 13.0.0
+- Docker base images: rust:1.79→1.88, node:20→22
+- 全ビルドとテスト正常動作確認済み

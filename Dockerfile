@@ -1,5 +1,5 @@
 # Build stage for Rust/WebAssembly
-FROM rust:1.79-slim AS rust-builder
+FROM rust:1.88-slim AS rust-builder
 
 # Install required dependencies
 RUN apt-get update && apt-get install -y \
@@ -24,7 +24,7 @@ RUN cargo generate-lockfile
 RUN wasm-pack build --target web --out-dir pkg
 
 # Frontend build stage
-FROM node:20-alpine AS frontend-builder
+FROM node:22-alpine AS frontend-builder
 
 WORKDIR /app/www
 
