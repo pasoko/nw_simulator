@@ -34,7 +34,7 @@ impl FailureManager {
         topology: &mut NetworkTopology,
         ospf_engines: &mut HashMap<u32, OSPFEngine>,
         event_manager: &mut EventManager,
-    ) -> bool {
+    ) -> (bool, Vec<crate::protocol::PacketEvent>) {
         // Find the link
         let link_id = topology.links
             .iter()
@@ -49,21 +49,21 @@ impl FailureManager {
                 link.is_failed = !link.is_failed;
                 (link.is_failed, link.cost)
             } else {
-                return false;
+                return (false, Vec::new());
             };
             
-            // Log the event
-            if link_failed {
+            // Log the event and handle failure/recovery
+            let events = if link_failed {
                 event_manager.log_link_failure(from_id, to_id);
-                self.handle_link_failure(from_id, to_id, topology, ospf_engines, event_manager);
+                self.handle_link_failure(from_id, to_id, topology, ospf_engines, event_manager)
             } else {
                 event_manager.log_link_recovery(from_id, to_id);
-                self.handle_link_recovery(from_id, to_id, topology, ospf_engines, event_manager);
-            }
+                self.handle_link_recovery(from_id, to_id, topology, ospf_engines, event_manager)
+            };
             
-            true
+            (true, events)
         } else {
-            false
+            (false, Vec::new())
         }
     }
     
@@ -101,7 +101,7 @@ impl FailureManager {
         topology: &NetworkTopology,
         ospf_engines: &mut HashMap<u32, OSPFEngine>,
         event_manager: &mut EventManager,
-    ) {
+    ) -> Vec<crate::protocol::PacketEvent> {
         console_log!("Processing link failure between {} and {}", from_id, to_id);
         
         // Get link information before removing neighbors
@@ -137,9 +137,21 @@ impl FailureManager {
                 engine2.remove_link(r1_id);
             }
             
-            // Schedule LSA regeneration for affected routers
-            self.schedule_lsa_regeneration(vec![r1_id, r2_id], ospf_engines);
+            // Regenerate LSAs for affected routers and return flooding events
+            let mut events = Vec::new();
+            for router_id in vec![r1_id, r2_id] {
+                if let Some(engine) = ospf_engines.get_mut(&router_id) {
+                    if engine.get_neighbor_count() > 0 {
+                        let lsa_events = engine.regenerate_router_lsa();
+                        console_log!("Router {} regenerated LSA after link failure, {} flooding events generated", 
+                            router_id, lsa_events.len());
+                        events.extend(lsa_events);
+                    }
+                }
+            }
+            return events;
         }
+        Vec::new()
     }
     
     fn handle_link_recovery(
@@ -149,7 +161,7 @@ impl FailureManager {
         topology: &NetworkTopology,
         ospf_engines: &mut HashMap<u32, OSPFEngine>,
         _event_manager: &mut EventManager,
-    ) {
+    ) -> Vec<crate::protocol::PacketEvent> {
         console_log!("Processing link recovery between {} and {}", from_id, to_id);
         
         // Get link information
@@ -177,6 +189,7 @@ impl FailureManager {
             
             console_log!("Link recovery complete - neighbor relationships will be re-established through Hello protocol");
         }
+        Vec::new()  // LSA regeneration will happen after neighbors are re-established
     }
     
     fn handle_router_failure(
@@ -258,8 +271,13 @@ impl FailureManager {
     fn schedule_lsa_regeneration(&mut self, router_ids: Vec<u32>, ospf_engines: &mut HashMap<u32, OSPFEngine>) {
         for router_id in router_ids {
             if let Some(engine) = ospf_engines.get_mut(&router_id) {
-                let _events = engine.regenerate_router_lsa();
-                console_log!("Scheduled LSA regeneration for router {}", router_id);
+                // Only regenerate LSA if we have neighbors and router links
+                if engine.get_neighbor_count() > 0 {
+                    let events = engine.regenerate_router_lsa();
+                    console_log!("Router {} regenerated LSA, {} flooding events generated", 
+                        router_id, events.len());
+                    // Note: Events need to be scheduled by the simulation engine
+                }
             }
         }
     }

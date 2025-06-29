@@ -14,6 +14,7 @@ pub struct OSPFLSAManager {
     lsa_sequence_number: u32,
     router_id: String,
     router_links: Vec<(u32, u32, u32)>, // (neighbor_id, interface_id, cost)
+    recent_lsa_updates: HashMap<String, f64>, // Track recent LSA updates to prevent flooding loops
 }
 
 impl OSPFLSAManager {
@@ -23,6 +24,7 @@ impl OSPFLSAManager {
             lsa_sequence_number: 0x80000001,
             router_id,
             router_links: Vec::new(),
+            recent_lsa_updates: HashMap::new(),
         }
     }
     
@@ -91,6 +93,9 @@ impl OSPFLSAManager {
             lsa.header.advertising_router.clone()
         );
         
+        // Track update time to prevent flooding loops
+        self.recent_lsa_updates.insert(key.clone(), 0.0);  // Current time should be passed
+        
         console_log!("Router {} updating LSA database with key: {}", self.router_id, key);
         if let LSAData::Router(ref rlsa) = lsa.data {
             console_log!("  Router LSA with {} links", rlsa.links.len());
@@ -114,6 +119,7 @@ impl OSPFLSAManager {
     
     pub fn age_lsas(&mut self, time_delta: f64) {
         const MAX_AGE: u16 = 3600; // 1 hour in seconds
+        const RECENT_UPDATE_WINDOW: f64 = 5.0; // 5 seconds window for recent updates
         let mut expired_lsas = Vec::new();
         
         for (key, lsa) in self.lsa_database.iter_mut() {
@@ -128,8 +134,15 @@ impl OSPFLSAManager {
         // Remove expired LSAs
         for key in expired_lsas {
             self.lsa_database.remove(&key);
+            self.recent_lsa_updates.remove(&key);
             console_log!("Router {} removed expired LSA: {}", self.router_id, key);
         }
+        
+        // Clean up old entries from recent updates tracking
+        let current_time = time_delta; // This should be actual simulation time
+        self.recent_lsa_updates.retain(|_, &mut update_time| {
+            current_time - update_time < RECENT_UPDATE_WINDOW
+        });
     }
     
     pub fn find_lsa_to_request(&self, received_headers: &[RouterLSAHeader]) -> Vec<RouterLSAHeader> {
@@ -164,16 +177,73 @@ impl OSPFLSAManager {
         );
         
         if let Some(existing_lsa) = self.lsa_database.get(&key) {
-            new_lsa.header.ls_sequence_number > existing_lsa.header.ls_sequence_number
+            // RFC 2328 Section 13.1: LSA is more recent if:
+            // 1. It has a higher sequence number
+            // 2. Same sequence but higher checksum 
+            // 3. Same sequence and checksum but age is MaxAge while current is not
+            if new_lsa.header.ls_sequence_number > existing_lsa.header.ls_sequence_number {
+                console_log!("  LSA {} has newer seq num {} > {}, will update", 
+                    key, new_lsa.header.ls_sequence_number, existing_lsa.header.ls_sequence_number);
+                return true;
+            } else if new_lsa.header.ls_sequence_number < existing_lsa.header.ls_sequence_number {
+                console_log!("  LSA {} has older seq num {} < {}, skipping update", 
+                    key, new_lsa.header.ls_sequence_number, existing_lsa.header.ls_sequence_number);
+                return false;
+            }
+            
+            // Same sequence number - check if it's truly the same LSA
+            if new_lsa.header.ls_checksum == existing_lsa.header.ls_checksum {
+                console_log!("  LSA {} already exists with same seq num {} and checksum, skipping update", 
+                    key, new_lsa.header.ls_sequence_number);
+                return false;
+            }
+            
+            // Different checksum with same sequence is unusual but update anyway
+            console_log!("  LSA {} has same seq num {} but different checksum, will update", 
+                key, new_lsa.header.ls_sequence_number);
+            true
         } else {
+            console_log!("  LSA {} is new, will update", key);
             true
         }
     }
     
     pub fn regenerate_router_lsa(&mut self) -> LSA {
-        self.lsa_sequence_number += 1;
-        console_log!("Router {} regenerating Router LSA due to topology change", self.router_id);
-        self.generate_router_lsa()
+        // Check if we really need to regenerate (topology changed)
+        if self.needs_lsa_regeneration() {
+            self.lsa_sequence_number += 1;
+            console_log!("Router {} regenerating Router LSA due to topology change (seq num {})", 
+                self.router_id, self.lsa_sequence_number);
+            self.generate_router_lsa()
+        } else {
+            // Return existing LSA without incrementing sequence number
+            console_log!("Router {} LSA regeneration requested but topology unchanged", self.router_id);
+            let key = format!("1:{}:{}", self.router_id, self.router_id);
+            self.lsa_database.get(&key).cloned().unwrap_or_else(|| {
+                console_log!("Router {} has no existing LSA, generating new one", self.router_id);
+                self.lsa_sequence_number += 1;
+                self.generate_router_lsa()
+            })
+        }
+    }
+    
+    pub fn needs_lsa_regeneration(&self) -> bool {
+        // Check if current LSA matches our configured links
+        let key = format!("1:{}:{}", self.router_id, self.router_id);
+        if let Some(existing_lsa) = self.lsa_database.get(&key) {
+            if let LSAData::Router(router_lsa) = &existing_lsa.data {
+                // Check if number of links matches
+                if router_lsa.links.len() != self.router_links.len() {
+                    console_log!("Router {} link count changed: {} -> {}", 
+                        self.router_id, router_lsa.links.len(), self.router_links.len());
+                    return true;
+                }
+                // TODO: Add more detailed checks (link costs, neighbors, etc.)
+                return false;
+            }
+        }
+        // No existing LSA, so we need to generate one
+        true
     }
     
     pub fn clear_database(&mut self) {
@@ -183,6 +253,19 @@ impl OSPFLSAManager {
     
     pub fn get_router_links(&self) -> &Vec<(u32, u32, u32)> {
         &self.router_links
+    }
+    
+    pub fn get_lsa_by_header(&self, header: &crate::ospf::LSAHeader) -> Option<&LSA> {
+        let key = format!("{}:{}:{}", 
+            header.lsa_type, 
+            header.link_state_id, 
+            header.advertising_router
+        );
+        self.lsa_database.get(&key)
+    }
+    
+    pub fn was_recently_updated(&self, lsa_key: &str) -> bool {
+        self.recent_lsa_updates.contains_key(lsa_key)
     }
 }
 

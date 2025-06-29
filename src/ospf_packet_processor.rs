@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use crate::ospf::{OSPFPacket, OSPFPacketType, OSPFPacketData, HelloPacket, DatabaseDescriptionPacket, 
-    LinkStateRequestPacket, LinkStateUpdatePacket, LSA, LSAHeader, LSARequest};
+    LinkStateRequestPacket, LinkStateUpdatePacket, LinkStateAcknowledgmentPacket, LSA, LSAHeader, LSARequest};
 use crate::router::{OSPFNeighborState, LSAType, LSAHeader as RouterLSAHeader};
 use crate::protocol::{ProtocolPacket, PacketEvent};
 use crate::console_log;
@@ -15,6 +15,8 @@ pub struct DDExchangeState {
     pub lsa_headers_sent: Vec<RouterLSAHeader>,
     pub lsa_headers_to_send: Vec<RouterLSAHeader>,
     pub dd_exchange_done: bool,
+    pub dd_exchange_count: u32,  // Track number of DD packets exchanged
+    pub dd_exchange_start_time: f64,  // Track when DD exchange started
 }
 
 /// OSPF Packet Processing
@@ -46,8 +48,15 @@ impl OSPFPacketProcessor {
     }
     
     pub fn generate_hello_packet(&self, active_neighbors: &[String]) -> HelloPacket {
-        console_log!("Router {} generating Hello packet with {} neighbors: {:?}", 
-            self.router_id, active_neighbors.len(), active_neighbors);
+        // Only log if we have neighbors or every 10th time to reduce log spam
+        static mut HELLO_LOG_COUNT: u32 = 0;
+        unsafe {
+            HELLO_LOG_COUNT = (HELLO_LOG_COUNT + 1) % 10;
+            if !active_neighbors.is_empty() || HELLO_LOG_COUNT == 0 {
+                console_log!("Router {} generating Hello packet with {} neighbors: {:?}", 
+                    self.router_id, active_neighbors.len(), active_neighbors);
+            }
+        }
         
         HelloPacket {
             network_mask: "255.255.255.252".to_string(),
@@ -79,17 +88,46 @@ impl OSPFPacketProcessor {
                     .unwrap_or("0").parse::<u32>().unwrap_or(0);
                 let is_master = our_router_id_num > from_router_id;
                 
-                // Initialize DD exchange state
-                let dd_state = DDExchangeState {
-                    dd_seq_num: if is_master { self.dd_sequence_number } else { packet.dd_sequence_number },
-                    is_master,
-                    last_received_dd_seq: packet.dd_sequence_number,
-                    lsa_headers_to_request: Vec::new(),
-                    lsa_headers_sent: Vec::new(),
-                    lsa_headers_to_send: Vec::new(),
-                    dd_exchange_done: false,
-                };
-                self.neighbor_dd_state.insert(from_router_id, dd_state);
+                console_log!("Router {} in ExStart with {}, Master/Slave negotiation: we are {}", 
+                    self.router_id, from_router_id, if is_master { "Master" } else { "Slave" });
+                
+                // Check packet flags
+                let init_flag = packet.flags & 0x04 != 0;  // I bit
+                let more_flag = packet.flags & 0x02 != 0;  // M bit
+                let ms_flag = packet.flags & 0x01 != 0;   // MS bit
+                
+                console_log!("  Received DD: I={}, M={}, MS={}, seq={}", 
+                    init_flag, more_flag, ms_flag, packet.dd_sequence_number);
+                
+                // Only process if this is an initial DD packet (I bit set)
+                if !init_flag {
+                    console_log!("  Ignoring DD packet without I bit in ExStart state");
+                    return (None, false, Vec::new());
+                }
+                
+                // Check if DD state already exists (might have been created when sending first DD)
+                if let Some(dd_state) = self.neighbor_dd_state.get_mut(&from_router_id) {
+                    // Update with negotiation results
+                    dd_state.is_master = is_master;
+                    dd_state.last_received_dd_seq = packet.dd_sequence_number;
+                    if !is_master {
+                        dd_state.dd_seq_num = packet.dd_sequence_number;
+                    }
+                } else {
+                    // Initialize DD exchange state
+                    let dd_state = DDExchangeState {
+                        dd_seq_num: if is_master { self.dd_sequence_number } else { packet.dd_sequence_number },
+                        is_master,
+                        last_received_dd_seq: packet.dd_sequence_number,
+                        lsa_headers_to_request: Vec::new(),
+                        lsa_headers_sent: Vec::new(),
+                        lsa_headers_to_send: Vec::new(),
+                        dd_exchange_done: false,
+                        dd_exchange_count: 0,
+                        dd_exchange_start_time: 0.0,  // Should be set by caller
+                    };
+                    self.neighbor_dd_state.insert(from_router_id, dd_state);
+                }
                 
                 (Some(OSPFNeighborState::Exchange), true, Vec::new())
             }
@@ -99,13 +137,23 @@ impl OSPFPacketProcessor {
                 let mut lsa_headers_to_request = Vec::new();
                 
                 if let Some(dd_state) = self.neighbor_dd_state.get_mut(&from_router_id) {
+                    // Increment DD exchange count and check for excessive exchanges
+                    dd_state.dd_exchange_count += 1;
+                    if dd_state.dd_exchange_count > 50 {
+                        console_log!("Router {} DD exchange with {} exceeded limit, moving to Down state", 
+                            self.router_id, from_router_id);
+                        new_state = Some(OSPFNeighborState::Down);
+                        return (new_state, false, Vec::new());
+                    }
+                    
                     // Validate sequence number
                     let more_flag = packet.flags & 0x02 != 0;  // M bit
                     let init_flag = packet.flags & 0x04 != 0;  // I bit
                     let ms_flag = packet.flags & 0x01 != 0;   // MS bit
                     
-                    console_log!("Router {} received DD from {}: M={}, I={}, MS={}, seq={}", 
-                        self.router_id, from_router_id, more_flag, init_flag, ms_flag, packet.dd_sequence_number);
+                    console_log!("Router {} received DD from {} (#{} exchange): M={}, I={}, MS={}, seq={}", 
+                        self.router_id, from_router_id, dd_state.dd_exchange_count, 
+                        more_flag, init_flag, ms_flag, packet.dd_sequence_number);
                     
                     // Update last received sequence number
                     dd_state.last_received_dd_seq = packet.dd_sequence_number;
@@ -130,19 +178,30 @@ impl OSPFPacketProcessor {
                         dd_state.lsa_headers_to_request.push(router_lsa_header);
                     }
                     
-                    // Increment sequence number for next DD packet if we are master
+                    // Determine if we should send a response DD packet
                     if dd_state.is_master {
-                        dd_state.dd_seq_num = dd_state.dd_seq_num.wrapping_add(1);
+                        // Master sends next DD packet with incremented sequence number
                         should_send_dd = true;
+                        console_log!("Router {} (Master) will send next DD to {} with seq {}", 
+                            self.router_id, from_router_id, dd_state.dd_seq_num + 1);
                     } else {
                         // Slave responds with received sequence number
                         should_send_dd = true;
+                        console_log!("Router {} (Slave) will respond to {} with seq {}", 
+                            self.router_id, from_router_id, dd_state.last_received_dd_seq);
                     }
                     
                     // Check for completion of DD exchange
                     // Exchange is done when both sides have sent DD packets with M=0
                     if !more_flag && !init_flag {
                         dd_state.dd_exchange_done = true;
+                        
+                        // Slave should acknowledge the final DD packet
+                        if !dd_state.is_master {
+                            should_send_dd = true;
+                            console_log!("Router {} (Slave) acknowledging final DD from {}", 
+                                self.router_id, from_router_id);
+                        }
                         
                         // Only transition to next state if we've also sent our last DD
                         if dd_state.lsa_headers_to_send.is_empty() {
@@ -258,10 +317,39 @@ impl OSPFPacketProcessor {
         let dd_seq_num;
         let mut lsa_headers_to_send = Vec::new();
         
-        if let Some(dd_state) = self.neighbor_dd_state.get_mut(&to_router_id) {
+        // Check if we need to initialize DD state for a new exchange
+        if !self.neighbor_dd_state.contains_key(&to_router_id) {
+            // Initialize DD exchange state for ExStart
+            let our_router_id_num = self.router_id.split('.').last()
+                .unwrap_or("0").parse::<u32>().unwrap_or(0);
+            let is_master = our_router_id_num > to_router_id;
+            
+            let dd_state = DDExchangeState {
+                dd_seq_num: self.dd_sequence_number,
+                is_master,
+                last_received_dd_seq: 0,
+                lsa_headers_to_request: Vec::new(),
+                lsa_headers_sent: Vec::new(),
+                lsa_headers_to_send: Vec::new(),
+                dd_exchange_done: false,
+                dd_exchange_count: 0,
+                dd_exchange_start_time: 0.0,  // Should be set by caller
+            };
+            self.neighbor_dd_state.insert(to_router_id, dd_state);
+            
+            // Initial DD packet for ExStart state
+            flags = 0x07; // I, M, MS bits for initial negotiation
+            dd_seq_num = self.dd_sequence_number;
+            
+            console_log!("Router {} sending initial DD packet to {} for ExStart (I=1, M=1, MS=1)", 
+                self.router_id, to_router_id);
+        } else if let Some(dd_state) = self.neighbor_dd_state.get_mut(&to_router_id) {
             // In Exchange state - send LSA headers
             if dd_state.lsa_headers_to_send.is_empty() && dd_state.lsa_headers_sent.is_empty() {
-                // First DD packet - prepare all LSA headers to send
+                // First DD packet with actual LSA headers - prepare all LSA headers to send
+                console_log!("Router {} preparing LSA headers for DD exchange with {}", 
+                    self.router_id, to_router_id);
+                
                 dd_state.lsa_headers_to_send = lsa_database.values().map(|lsa| {
                     RouterLSAHeader {
                         ls_age: lsa.header.ls_age,
@@ -273,6 +361,13 @@ impl OSPFPacketProcessor {
                         length: lsa.header.length,
                     }
                 }).collect();
+                
+                console_log!("Router {} has {} LSAs to send in DD exchange (database has {} entries)", 
+                    self.router_id, dd_state.lsa_headers_to_send.len(), lsa_database.len());
+                
+                if dd_state.lsa_headers_to_send.is_empty() {
+                    console_log!("  WARNING: LSA database is empty during DD exchange!");
+                }
             }
             
             // Send a batch of LSA headers (max 100 per packet for example)
@@ -301,6 +396,10 @@ impl OSPFPacketProcessor {
             if dd_state.is_master {
                 flags |= 0x01; // MS bit
                 dd_seq_num = dd_state.dd_seq_num;
+                // Only increment sequence number if we have more data to send
+                if !dd_state.lsa_headers_to_send.is_empty() {
+                    dd_state.dd_seq_num = dd_state.dd_seq_num.wrapping_add(1);
+                }
             } else {
                 // Slave uses received sequence number
                 dd_seq_num = dd_state.last_received_dd_seq;
@@ -310,8 +409,11 @@ impl OSPFPacketProcessor {
             if !dd_state.lsa_headers_to_send.is_empty() {
                 flags |= 0x02; // M bit
             }
+            
+            console_log!("Router {} sending DD packet to {} with {} LSA headers, M={}", 
+                self.router_id, to_router_id, lsa_headers_to_send.len(), flags & 0x02 != 0);
         } else {
-            // Initial DD packet for ExStart state
+            // Should not happen but handle gracefully
             flags = 0x07; // I, M, MS bits for initial negotiation
             dd_seq_num = self.dd_sequence_number;
         }
@@ -403,6 +505,37 @@ impl OSPFPacketProcessor {
         
         console_log!("Router {} creating LSU packet for router {} with {} LSAs", 
             self.router_id, to_router_id, lsas.len());
+        
+        PacketEvent {
+            timestamp: 0.0,
+            from_router_id: from_id,
+            to_router_id,
+            packet: ProtocolPacket::OSPF(ospf_packet),
+        }
+    }
+    
+    pub fn create_lsack_packet_event(&self, to_router_id: u32, lsa_headers: &[LSAHeader]) -> PacketEvent {
+        let lsack_packet = LinkStateAcknowledgmentPacket {
+            lsa_headers: lsa_headers.to_vec(),
+        };
+        
+        let ospf_packet = OSPFPacket {
+            version: 2,
+            packet_type: OSPFPacketType::LinkStateAcknowledgment,
+            router_id: self.router_id.clone(),
+            area_id: self.area_id.clone(),
+            checksum: 0,
+            auth_type: 0,
+            authentication: 0,
+            data: OSPFPacketData::LinkStateAcknowledgment(lsack_packet),
+        };
+        
+        let from_id = self.router_id.split('.').last()
+            .and_then(|s| s.parse::<u32>().ok())
+            .unwrap_or(1);
+        
+        console_log!("Router {} creating LSAck packet for router {} with {} headers", 
+            self.router_id, to_router_id, lsa_headers.len());
         
         PacketEvent {
             timestamp: 0.0,

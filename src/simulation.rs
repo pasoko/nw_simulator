@@ -56,13 +56,31 @@ impl NetworkSimulation {
         if let Some(link) = self.topology.links.get(&link_id) {
             if let Some(engine1) = self.ospf_engines.get_mut(&router1_id) {
                 engine1.add_router_link(router2_id, link.router1_interface_id, cost);
-                console_log!("Router {} regenerating LSA after link addition", router1_id);
-                let _events = engine1.regenerate_router_lsa();
+                console_log!("Router {} link configuration updated", router1_id);
+                // Only regenerate LSA if we have neighbors and the topology actually changed
+                if engine1.get_neighbor_count() > 0 && engine1.get_lsa_count() > 0 {
+                    console_log!("Router {} regenerating LSA after link addition", router1_id);
+                    let events = engine1.regenerate_router_lsa();
+                    // Schedule the flooding events
+                    for mut event in events {
+                        event.timestamp = self.simulation_time + 0.1;
+                        self.protocol_engine.schedule_event(event);
+                    }
+                }
             }
             if let Some(engine2) = self.ospf_engines.get_mut(&router2_id) {
                 engine2.add_router_link(router1_id, link.router2_interface_id, cost);
-                console_log!("Router {} regenerating LSA after link addition", router2_id);
-                let _events = engine2.regenerate_router_lsa();
+                console_log!("Router {} link configuration updated", router2_id);
+                // Only regenerate LSA if we have neighbors and the topology actually changed
+                if engine2.get_neighbor_count() > 0 && engine2.get_lsa_count() > 0 {
+                    console_log!("Router {} regenerating LSA after link addition", router2_id);
+                    let events = engine2.regenerate_router_lsa();
+                    // Schedule the flooding events
+                    for mut event in events {
+                        event.timestamp = self.simulation_time + 0.1;
+                        self.protocol_engine.schedule_event(event);
+                    }
+                }
             }
         }
         
@@ -112,11 +130,20 @@ impl NetworkSimulation {
             self.topology.links.remove(&link_id);
             
             // Notify OSPF engines about the link failure
+            let mut lsa_events = Vec::new();
+            
             if let Some(engine1) = self.ospf_engines.get_mut(&router1_id) {
                 if engine1.remove_neighbor(router2_id) {
                     self.event_manager.log_neighbor_state_changed(
                         router1_id, router2_id, "Active".to_string(), "Down".to_string()
                     );
+                }
+                // Remove link and regenerate LSA
+                engine1.remove_link(router2_id);
+                if engine1.get_neighbor_count() > 0 {
+                    let events = engine1.regenerate_router_lsa();
+                    console_log!("Router {} regenerating LSA after link failure", router1_id);
+                    lsa_events.extend(events);
                 }
             }
             
@@ -126,6 +153,19 @@ impl NetworkSimulation {
                         router2_id, router1_id, "Active".to_string(), "Down".to_string()
                     );
                 }
+                // Remove link and regenerate LSA
+                engine2.remove_link(router1_id);
+                if engine2.get_neighbor_count() > 0 {
+                    let events = engine2.regenerate_router_lsa();
+                    console_log!("Router {} regenerating LSA after link failure", router2_id);
+                    lsa_events.extend(events);
+                }
+            }
+            
+            // Schedule LSA flooding events
+            for mut event in lsa_events {
+                event.timestamp = self.simulation_time + 0.1;
+                self.protocol_engine.schedule_event(event);
             }
             
             // Remove scheduled packet events between these routers
@@ -165,9 +205,10 @@ impl NetworkSimulation {
             }
         }
         
-        // Generate initial Router LSA
-        ospf_engine.generate_router_lsa();
-        console_log!("Router {} initial Router LSA generated", router_id);
+        // Don't generate LSA here - wait until neighbors are discovered
+        // LSAs should only be generated when we have active neighbors to flood to
+        console_log!("Router {} OSPF enabled with {} configured links, LSA generation deferred until neighbors discovered", 
+            router_id, ospf_engine.get_router_links().len());
         
         self.ospf_engines.insert(router_id, ospf_engine);
         self.event_manager.log_ospf_enabled(router_id);
@@ -178,10 +219,7 @@ impl NetworkSimulation {
             router_id, &mut self.topology, &self.ospf_engines, &mut self.event_manager
         );
         
-        // If simulation is running, schedule hello packets immediately
-        if self.running {
-            self.schedule_initial_hello_packets(router_id);
-        }
+        // OSPF engine will manage Hello timers internally
         
         Ok(())
     }
@@ -198,11 +236,8 @@ impl NetworkSimulation {
         
         console_log!("Starting simulation with {} OSPF-enabled routers", router_ids.len());
         
-        // Schedule initial hello packets immediately
-        for router_id in router_ids {
-            console_log!("Scheduling initial hello packets for router {}", router_id);
-            self.schedule_initial_hello_packets(router_id);
-        }
+        // No need to schedule initial hello packets - OSPF engines will handle this
+        console_log!("OSPF engines will manage Hello timers internally");
     }
     
     pub fn stop_simulation(&mut self) {
@@ -221,7 +256,10 @@ impl NetworkSimulation {
         self.failure_manager.update_time(target_time);
         self.route_calculator.update_time(target_time);
         
-        // Process scheduled events
+        // Process scheduled events with a limit to prevent infinite loops
+        let max_events_per_step = 500;  // Increased limit to handle Hello packets for all routers
+        let mut events_processed = 0;
+        
         while let Some(event) = self.protocol_engine.process_next_event() {
             if event.timestamp > target_time {
                 self.protocol_engine.events.insert(0, event);
@@ -230,20 +268,52 @@ impl NetworkSimulation {
             
             self.simulation_time = event.timestamp;
             self.process_packet_event(event);
+            
+            events_processed += 1;
+            if events_processed >= max_events_per_step {
+                console_log!("Warning: Processed {} events in one step, deferring remaining events", 
+                    max_events_per_step);
+                break;
+            }
+        }
+        
+        // Log event queue size if it's growing too large
+        if self.protocol_engine.events.len() > 1000 {
+            console_log!("Warning: Event queue has {} pending events", 
+                self.protocol_engine.events.len());
         }
         
         self.simulation_time = target_time;
         
         // Update all OSPF engines' time after processing events
-        for engine in self.ospf_engines.values_mut() {
-            engine.update_time(self.simulation_time);
+        let mut ospf_events = Vec::new();
+        for (_router_id, engine) in self.ospf_engines.iter_mut() {
+            let events = engine.update_time(self.simulation_time);
+            if !events.is_empty() {
+                console_log!("Router {} generated {} events from timer processing", _router_id, events.len());
+            }
+            ospf_events.extend(events);
+        }
+        
+        // Schedule OSPF timer events
+        for mut event in ospf_events {
+            event.timestamp = self.simulation_time + 0.1; // Small delay for packet processing
+            self.protocol_engine.schedule_event(event);
         }
     }
     
     pub fn toggle_link_failure(&mut self, from_id: u32, to_id: u32) -> bool {
-        self.failure_manager.toggle_link_failure(
+        let (success, events) = self.failure_manager.toggle_link_failure(
             from_id, to_id, &mut self.topology, &mut self.ospf_engines, &mut self.event_manager
-        )
+        );
+        
+        // Schedule flooding events
+        for mut event in events {
+            event.timestamp = self.simulation_time + 0.1;
+            self.protocol_engine.schedule_event(event);
+        }
+        
+        success
     }
     
     pub fn toggle_router_failure(&mut self, router_id: u32) -> bool {
@@ -274,52 +344,8 @@ impl NetworkSimulation {
     }
     
     // Private helper methods
-    
-    fn schedule_initial_hello_packets(&mut self, router_id: u32) {
-        let initial_hello_time = self.simulation_time + 0.01;
-        
-        if let Some(router) = self.topology.routers.get(&router_id) {
-            if let Some(_ospf_state) = &router.ospf_state {
-                let timer_event = PacketEvent {
-                    timestamp: initial_hello_time,
-                    from_router_id: router_id,
-                    to_router_id: router_id,
-                    packet: ProtocolPacket::OSPF(OSPFPacket {
-                        version: 2,
-                        packet_type: OSPFPacketType::Hello,
-                        router_id: format!("{}.{}.{}.{}", 1, 1, 1, router_id),
-                        area_id: "0.0.0.0".to_string(),
-                        checksum: 0,
-                        auth_type: 0,
-                        authentication: 0,
-                        data: OSPFPacketData::Hello(HelloPacket {
-                            network_mask: "255.255.255.252".to_string(),
-                            hello_interval: 10,
-                            options: 0,
-                            router_priority: 1,
-                            router_dead_interval: 40,
-                            designated_router: "0.0.0.0".to_string(),
-                            backup_designated_router: "0.0.0.0".to_string(),
-                            neighbors: Vec::new(),
-                        }),
-                    }),
-                };
-                self.protocol_engine.schedule_event(timer_event);
-            }
-        }
-    }
 
     fn process_packet_event(&mut self, event: PacketEvent) {
-        // Check if this is a timer event for hello packet scheduling
-        if event.from_router_id == event.to_router_id && 
-           self.topology.routers.contains_key(&event.from_router_id) {
-            let ProtocolPacket::OSPF(ref ospf_packet) = event.packet;
-            if matches!(ospf_packet.packet_type, OSPFPacketType::Hello) {
-                self.schedule_hello_packets(event.from_router_id);
-                return;
-            }
-        }
-        
         // Check for failed routers/links
         if self.is_packet_dropped(&event) {
             return;
@@ -429,67 +455,6 @@ impl NetworkSimulation {
         }
     }
     
-    fn schedule_hello_packets(&mut self, router_id: u32) {
-        let hello_interval = 10.0;
-        let next_hello_time = self.simulation_time + hello_interval;
-        
-        if let Some(router) = self.topology.routers.get(&router_id) {
-            if router.is_failed {
-                console_log!("Router {} is failed, not scheduling hello packets", router_id);
-                return;
-            }
-            
-            if let Some(_ospf_state) = &router.ospf_state {
-                let neighbors = self.topology.get_neighbors(router_id);
-                
-                console_log!("Router {} scheduling hello packets at time {:.1}s for {} neighbors",
-                    router_id, self.simulation_time, neighbors.len());
-                
-                for neighbor_id in neighbors {
-                    if self.should_send_hello_to_neighbor(router_id, neighbor_id) {
-                        let packet = self.create_hello_packet(router_id);
-                        let event = PacketEvent {
-                            timestamp: next_hello_time,
-                            from_router_id: router_id,
-                            to_router_id: neighbor_id,
-                            packet: ProtocolPacket::OSPF(packet),
-                        };
-                        
-                        self.protocol_engine.schedule_event(event);
-                        console_log!("  Scheduled hello to router {} at time {:.1}s",
-                            neighbor_id, next_hello_time);
-                    }
-                }
-                
-                // Schedule next hello timer event
-                let timer_event = PacketEvent {
-                    timestamp: next_hello_time,
-                    from_router_id: router_id,
-                    to_router_id: router_id,
-                    packet: ProtocolPacket::OSPF(OSPFPacket {
-                        version: 2,
-                        packet_type: OSPFPacketType::Hello,
-                        router_id: format!("{}.{}.{}.{}", 1, 1, 1, router_id),
-                        area_id: "0.0.0.0".to_string(),
-                        checksum: 0,
-                        auth_type: 0,
-                        authentication: 0,
-                        data: OSPFPacketData::Hello(HelloPacket {
-                            network_mask: "255.255.255.252".to_string(),
-                            hello_interval: 10,
-                            options: 0,
-                            router_priority: 1,
-                            router_dead_interval: 40,
-                            designated_router: "0.0.0.0".to_string(),
-                            backup_designated_router: "0.0.0.0".to_string(),
-                            neighbors: Vec::new(),
-                        }),
-                    }),
-                };
-                self.protocol_engine.schedule_event(timer_event);
-            }
-        }
-    }
     
     fn should_send_hello_to_neighbor(&self, router_id: u32, neighbor_id: u32) -> bool {
         // Check if the link is failed
@@ -561,8 +526,6 @@ impl NetworkSimulation {
         
         let (new_events, _lsa_updated, lsa_count, lsa_database_changed, state_transitions) = 
             if let Some(engine) = self.ospf_engines.get_mut(&to_router_id) {
-                engine.update_time(self.simulation_time);
-                
                 let lsa_count_before = engine.get_lsa_count();
                 
                 let new_events = match &packet.data {

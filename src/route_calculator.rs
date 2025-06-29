@@ -119,11 +119,15 @@ impl RouteCalculator {
             let old_routes = router.routing_table.clone();
             console_log!("Router {} old routing table has {} entries", router_id, old_routes.len());
             
+            // Clear old OSPF routes and update with new ones
+            console_log!("Router {} clearing old OSPF routes", router_id);
+            router.routing_table.retain(|r| r.protocol != RoutingProtocol::OSPF);
+            
             // Update routing table
             console_log!("Router {} updating routing table with {} new routes", router_id, routes.len());
             for route in &routes {
-                console_log!("  Updating route: {} -> {} via {}", 
-                    route.destination, route.next_hop, route.interface_id);
+                console_log!("  Adding route: {} -> {} via {} (metric {})", 
+                    route.destination, route.next_hop, route.interface_id, route.metric);
                 router.update_routing_table(route.clone());
             }
             console_log!("Router {} new routing table has {} entries", router_id, router.routing_table.len());

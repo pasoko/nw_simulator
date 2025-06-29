@@ -61,8 +61,11 @@ impl OSPFNeighborManager {
             self.neighbor_previous_state.insert(neighbor_id, old_state.clone());
             neighbor.state = new_state.clone();
             
-            console_log!("Neighbor {} state changed: {:?} -> {:?}", 
-                neighbor_id, old_state, new_state);
+            // Only log significant state changes
+            if old_state != new_state {
+                console_log!("Neighbor {} state changed: {:?} -> {:?}", 
+                    neighbor_id, old_state, new_state);
+            }
             
             return old_state != new_state;
         }
@@ -91,23 +94,43 @@ impl OSPFNeighborManager {
     }
     
     pub fn get_all_active_neighbors(&self) -> Vec<String> {
-        self.neighbors.iter()
+        let neighbors: Vec<String> = self.neighbors.iter()
             .filter(|(_, n)| n.state != OSPFNeighborState::Down)
             .map(|(id, _)| format!("{}.{}.{}.{}", 1, 1, 1, id))
-            .collect()
+            .collect();
+        
+        // Remove frequent logging to improve performance
+        
+        neighbors
     }
     
     pub fn get_neighbor_count(&self) -> usize {
         self.neighbors.len()
     }
     
-    pub fn get_state_transitions(&self) -> HashMap<u32, (OSPFNeighborState, OSPFNeighborState)> {
-        self.neighbors.iter()
-            .filter_map(|(id, neighbor)| {
-                self.neighbor_previous_state.get(id)
-                    .map(|prev| (*id, (prev.clone(), neighbor.state.clone())))
-            })
-            .collect()
+    /// Get all neighbor IDs (regardless of state)
+    pub fn get_all_neighbor_ids(&self) -> Vec<u32> {
+        self.neighbors.keys().cloned().collect()
+    }
+    
+    pub fn get_state_transitions(&mut self) -> HashMap<u32, (OSPFNeighborState, OSPFNeighborState)> {
+        let mut transitions = HashMap::new();
+        
+        for (id, neighbor) in &self.neighbors {
+            if let Some(prev_state) = self.neighbor_previous_state.get(id) {
+                // Only report if state actually changed
+                if prev_state != &neighbor.state {
+                    transitions.insert(*id, (prev_state.clone(), neighbor.state.clone()));
+                }
+            }
+        }
+        
+        // Update previous states to current states for next comparison
+        for (id, neighbor) in &self.neighbors {
+            self.neighbor_previous_state.insert(*id, neighbor.state.clone());
+        }
+        
+        transitions
     }
     
     fn check_dead_neighbors(&mut self) {
@@ -130,7 +153,7 @@ impl OSPFNeighborManager {
                     console_log!("Neighbor {} went down due to dead timer", id);
                 }
             }
-            self.neighbor_last_hello.remove(&id);
+            // Don't remove from neighbor_last_hello here - let the neighbor be properly removed
         }
     }
     
@@ -153,17 +176,24 @@ impl OSPFNeighborManager {
                         None
                     }
                 }
-                OSPFNeighborState::TwoWay | OSPFNeighborState::ExStart | 
-                OSPFNeighborState::Exchange | OSPFNeighborState::Loading | 
-                OSPFNeighborState::Full => {
-                    // Higher states should not be downgraded by hello processing
-                    // Only validate bidirectional communication is still maintained
+                OSPFNeighborState::TwoWay => {
+                    // In TwoWay state, maintain bidirectional communication
                     if !hello_neighbors.contains(&router_id.to_string()) {
-                        console_log!("Warning: Neighbor {} in state {:?} but bidirectional communication lost", 
-                            neighbor_id, current_state);
-                        // Could potentially downgrade to Init, but this is typically handled by dead timer
+                        console_log!("Neighbor {} lost bidirectional communication, moving back to Init", neighbor_id);
+                        Some(OSPFNeighborState::Init)
+                    } else {
+                        None
                     }
-                    None // Don't change state for established adjacencies
+                }
+                OSPFNeighborState::ExStart | OSPFNeighborState::Exchange | 
+                OSPFNeighborState::Loading | OSPFNeighborState::Full => {
+                    // Higher states should NEVER be downgraded by hello processing
+                    // These states are managed by DD exchange and LSA synchronization
+                    if !hello_neighbors.contains(&router_id.to_string()) {
+                        console_log!("Warning: Neighbor {} in state {:?} but bidirectional communication lost - NOT downgrading state", 
+                            neighbor_id, current_state);
+                    }
+                    None // Don't change state for active adjacencies
                 }
             };
             

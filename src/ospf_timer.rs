@@ -55,8 +55,9 @@ impl OSPFTimerManager {
     }
     
     pub fn start_hello_timer(&mut self) {
-        self.next_hello_time = self.current_time + self.hello_interval;
-        console_log!("Router {} started hello timer, next hello at {:.1}s", 
+        // Send first Hello immediately (with small delay to allow initialization)
+        self.next_hello_time = self.current_time + 0.1;
+        console_log!("Router {} started hello timer, first hello at {:.1}s", 
             self.router_id, self.next_hello_time);
     }
     
@@ -161,6 +162,9 @@ impl OSPFTimerManager {
         
         // Check hello timer
         if self.is_hello_due() {
+            console_log!("Router {} hello timer due at {:.1}s (next at {:.1}s -> {:.1}s)", 
+                self.router_id, self.current_time, self.next_hello_time, 
+                self.current_time + self.hello_interval);
             expired_events.push(OSPFTimerEvent::HelloTimer);
             self.schedule_next_hello();
         }

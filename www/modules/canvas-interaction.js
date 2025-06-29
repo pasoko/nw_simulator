@@ -95,6 +95,15 @@ class CanvasInteraction {
         const x = event.clientX - rect.left;
         const y = event.clientY - rect.top;
         
+        // Check for double-click to show router details
+        if (event.detail === 2) {
+            const router = this.findRouterAt(x, y);
+            if (router) {
+                this.showRouterDetails(router);
+                return;
+            }
+        }
+        
         const mode = uiController.getMode();
         
         switch (mode) {
@@ -380,6 +389,85 @@ class CanvasInteraction {
         const connectionsJson = stateManager.simulator.get_connections_json();
         if (connectionsJson) {
             stateManager.connections = JSON.parse(connectionsJson);
+        }
+    }
+    
+    showRouterDetails(router) {
+        if (!stateManager.simulator) return;
+        
+        const detailsJson = stateManager.simulator.get_router_details_json(router.id);
+        if (!detailsJson) return;
+        
+        try {
+            const details = JSON.parse(detailsJson);
+            const modal = document.getElementById('router-details-modal');
+            const title = document.getElementById('router-details-title');
+            const content = document.getElementById('router-details-content');
+            
+            title.textContent = `Router ${details.name} (ID: ${details.id}) Details`;
+            
+            let html = '<h3>General Information</h3>';
+            html += `<p>OSPF Status: ${details.ospf_enabled ? 'Enabled' : 'Disabled'}</p>`;
+            if (details.ospf_enabled) {
+                html += `<p>OSPF Neighbors: ${details.ospf_neighbors}</p>`;
+                html += `<p>LSA Database Size: ${details.lsa_database_size}</p>`;
+            }
+            
+            // Interfaces
+            html += '<h3>Interfaces</h3>';
+            if (details.interfaces && Object.keys(details.interfaces).length > 0) {
+                html += '<table class="routing-table">';
+                html += '<tr><th>ID</th><th>IP Address</th><th>Connected To</th><th>Cost</th><th>Status</th></tr>';
+                for (const [id, iface] of Object.entries(details.interfaces)) {
+                    html += `<tr>`;
+                    html += `<td>${id}</td>`;
+                    html += `<td>${iface.ip_address}/${iface.netmask}</td>`;
+                    html += `<td>${iface.connected_router_id || 'N/A'}</td>`;
+                    html += `<td>${iface.cost}</td>`;
+                    html += `<td>${iface.enabled ? 'Up' : 'Down'}</td>`;
+                    html += `</tr>`;
+                }
+                html += '</table>';
+            } else {
+                html += '<p>No interfaces configured</p>';
+            }
+            
+            // Routing Table
+            html += '<h3>Routing Table</h3>';
+            if (details.routing_table && details.routing_table.length > 0) {
+                html += '<table class="routing-table">';
+                html += '<tr><th>Destination</th><th>Netmask</th><th>Next Hop</th><th>Interface</th><th>Metric</th><th>Protocol</th></tr>';
+                for (const route of details.routing_table) {
+                    html += `<tr>`;
+                    html += `<td>${route.destination}</td>`;
+                    html += `<td>${route.netmask}</td>`;
+                    html += `<td>${route.next_hop}</td>`;
+                    html += `<td>${route.interface_id}</td>`;
+                    html += `<td>${route.metric}</td>`;
+                    html += `<td>${route.protocol}</td>`;
+                    html += `</tr>`;
+                }
+                html += '</table>';
+            } else {
+                html += '<p>No routes in routing table</p>';
+            }
+            
+            content.innerHTML = html;
+            modal.style.display = 'block';
+            
+            // Setup close handlers
+            const closeBtn = modal.querySelector('.close');
+            closeBtn.onclick = () => modal.style.display = 'none';
+            
+            window.onclick = (event) => {
+                if (event.target === modal) {
+                    modal.style.display = 'none';
+                }
+            };
+            
+        } catch (error) {
+            console.error('Error showing router details:', error);
+            eventLogger.log('Error displaying router details');
         }
     }
 }
