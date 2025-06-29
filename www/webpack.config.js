@@ -30,5 +30,10 @@ module.exports = {
   },
   optimization: {
     minimize: true
+  },
+  performance: {
+    hints: false, // Disable performance warnings
+    maxAssetSize: 512000, // Increase limit to 512KB for WASM files
+    maxEntrypointSize: 512000
   }
 };

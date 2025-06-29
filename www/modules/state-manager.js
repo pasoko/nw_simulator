@@ -12,6 +12,12 @@ class StateManager {
         this.routers = [];
         this.connections = [];
         
+        // Canvas and rendering state
+        this.canvas = null;
+        this.ctx = null;
+        this.packetVisualizer = null;
+        this.canvasRenderer = null;
+        
         // Available modes
         this.modes = {
             ADD_ROUTER: 'add-router',

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use wasm_bindgen::prelude::*;
 
 mod router;
@@ -6,12 +7,20 @@ mod ospf;
 mod protocol;
 mod simulation;
 mod ospf_engine;
+mod ospf_neighbor;
+mod ospf_lsa_manager;
+mod ospf_packet_processor;
+mod ospf_timer;
+mod event_manager;
+mod failure_manager;
+mod route_calculator;
 mod spf;
 mod ui_state;
+mod serialization;
 
 use simulation::NetworkSimulation;
-use ui_state::{UIState, RouterUI, ConnectionUI};
-use serde_json;
+use ui_state::UIState;
+use serialization::SerializationHelper;
 
 #[wasm_bindgen]
 extern "C" {
@@ -126,109 +135,31 @@ impl NetworkSimulator {
     }
 
     pub fn get_routers_json(&self) -> String {
-        let routers: Vec<RouterUI> = self.simulation.topology.routers.iter().map(|(id, state)| {
-            let (x, y) = self.ui_state.get_router_position(id)
-                .copied()
-                .unwrap_or((0.0, 0.0));
-            RouterUI {
-                id: *id,
-                name: state.name.clone(),
-                x,
-                y,
-                ospf_enabled: state.ospf_state.is_some(),
-                is_failed: state.is_failed,
-            }
-        }).collect();
-        serde_json::to_string(&routers).unwrap_or_default()
+        SerializationHelper::routers_to_json(&self.simulation, &self.ui_state)
     }
 
     pub fn get_connections_json(&self) -> String {
-        let connections: Vec<ConnectionUI> = self.simulation.topology.links.values().map(|link| {
-            ConnectionUI {
-                from_router_id: link.router1_id,
-                from_interface_id: link.router1_interface_id,
-                to_router_id: link.router2_id,
-                to_interface_id: link.router2_interface_id,
-                cost: link.cost,
-                is_failed: link.is_failed,
-            }
-        }).collect();
-        serde_json::to_string(&connections).unwrap_or_default()
+        SerializationHelper::connections_to_json(&self.simulation)
     }
 
     pub fn get_recent_events_json(&self, count: usize) -> String {
-        let events = self.simulation.get_recent_events(count);
-        serde_json::to_string(&events).unwrap_or_default()
+        SerializationHelper::recent_events_to_json(&self.simulation, count)
     }
     
     pub fn get_router_summary_json(&self, router_id: u32) -> String {
-        if let Some(router) = self.simulation.topology.routers.get(&router_id) {
-            let neighbor_count = self.simulation.get_ospf_neighbor_count(router_id);
-            let route_count = router.routing_table.len();
-            
-            // Get latest OSPF event for this router
-            let recent_events = self.simulation.get_recent_events(20);
-            let latest_ospf_event = recent_events.iter()
-                .filter(|e| match &e.event_type {
-                    crate::simulation::SimulationEventType::OSPFEnabled { router_id: rid } => *rid == router_id,
-                    crate::simulation::SimulationEventType::NeighborStateChanged { router_id: rid, .. } => *rid == router_id,
-                    crate::simulation::SimulationEventType::RoutingTableUpdated { router_id: rid } => *rid == router_id,
-                    _ => false
-                })
-                .last()
-                .map(|e| e.description.clone())
-                .unwrap_or_else(|| "No recent OSPF events".to_string());
-            
-            let summary = serde_json::json!({
-                "id": router_id,
-                "name": router.name,
-                "ospf_enabled": router.ospf_state.is_some(),
-                "neighbor_count": neighbor_count,
-                "route_count": route_count,
-                "latest_event": latest_ospf_event
-            });
-            
-            serde_json::to_string(&summary).unwrap_or_default()
-        } else {
-            "{}".to_string()
-        }
+        SerializationHelper::router_summary_to_json(&self.simulation, router_id)
     }
     
     pub fn get_all_events_json(&self) -> String {
-        serde_json::to_string(&self.simulation.simulation_log).unwrap_or_default()
+        SerializationHelper::all_events_to_json(&self.simulation)
     }
     
     pub fn get_router_details_json(&self, router_id: u32) -> String {
-        if let Some(router) = self.simulation.topology.routers.get(&router_id) {
-            // Get neighbor count from OSPF engine through public method
-            let ospf_neighbor_count = self.simulation.get_ospf_neighbor_count(router_id);
-            let lsa_count = self.simulation.get_ospf_lsa_count(router_id);
-            
-            let details = serde_json::json!({
-                "id": router.id,
-                "name": router.name,
-                "interfaces": router.interfaces,
-                "routing_table": router.routing_table,
-                "ospf_enabled": router.ospf_state.is_some(),
-                "ospf_neighbors": ospf_neighbor_count,
-                "lsa_database_size": lsa_count
-            });
-            serde_json::to_string(&details).unwrap_or_default()
-        } else {
-            "{}".to_string()
-        }
+        SerializationHelper::router_details_to_json(&self.simulation, router_id)
     }
     
     pub fn get_simulation_stats_json(&self) -> String {
-        let stats = serde_json::json!({
-            "total_routers": self.simulation.topology.routers.len(),
-            "total_links": self.simulation.topology.links.len(),
-            "ospf_enabled_routers": self.simulation.topology.routers.values()
-                .filter(|r| r.ospf_state.is_some()).count(),
-            "simulation_time": self.simulation.simulation_time,
-            "total_events": self.simulation.simulation_log.len(),
-        });
-        serde_json::to_string(&stats).unwrap_or_default()
+        SerializationHelper::simulation_stats_to_json(&self.simulation)
     }
     
     pub fn toggle_link_failure(&mut self, from_id: u32, to_id: u32) -> bool {

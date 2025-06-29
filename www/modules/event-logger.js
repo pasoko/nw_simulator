@@ -10,6 +10,11 @@ class EventLogger {
         this.maxLogEntries = 1000;
     }
     
+    init() {
+        // Initialize event logger
+        console.log('Event logger initialized');
+    }
+    
     log(message) {
         const logContent = document.getElementById('log-content');
         const entry = document.createElement('div');

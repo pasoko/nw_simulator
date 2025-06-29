@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Router API Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .test-section { margin: 20px 0; padding: 20px; border: 1px solid #ccc; }
+        .router-info { background: #f0f0f0; padding: 10px; margin: 10px 0; }
+        pre { background: #e0e0e0; padding: 10px; overflow: auto; }
+    </style>
+</head>
+<body>
+    <h1>Router API Direct Test</h1>
+    
+    <div class="test-section">
+        <h2>Test 1: Add Routers and Get List</h2>
+        <button onclick="testAddRouters()">Run Test</button>
+        <div id="test1-result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Test 2: Get Router Details</h2>
+        <button onclick="testRouterDetails()">Run Test</button>
+        <div id="test2-result"></div>
+    </div>
+    
+    <script type="module">
+        import initWasm, { NetworkSimulator } from './pkg/nw_simulator.js';
+        
+        let simulator = null;
+        
+        async function initializeSimulator() {
+            try {
+                await initWasm();
+                simulator = new NetworkSimulator();
+                console.log('Simulator initialized');
+                return true;
+            } catch (error) {
+                console.error('Failed to initialize:', error);
+                return false;
+            }
+        }
+        
+        window.testAddRouters = async function() {
+            const resultDiv = document.getElementById('test1-result');
+            resultDiv.innerHTML = '<p>Running test...</p>';
+            
+            if (!simulator && !await initializeSimulator()) {
+                resultDiv.innerHTML = '<p style="color: red;">Failed to initialize simulator</p>';
+                return;
+            }
+            
+            try {
+                // Add some routers
+                const router1Id = simulator.add_router('Router 1', 100, 100);
+                const router2Id = simulator.add_router('Router 2', 200, 200);
+                const router3Id = simulator.add_router('Router 3', 300, 300);
+                
+                console.log('Added routers:', router1Id, router2Id, router3Id);
+                
+                // Enable OSPF
+                simulator.enable_ospf(router1Id);
+                simulator.enable_ospf(router2Id);
+                simulator.enable_ospf(router3Id);
+                
+                // Get routers list
+                const routersJson = simulator.get_routers_json();
+                console.log('Raw routers JSON:', routersJson);
+                
+                const routers = JSON.parse(routersJson);
+                
+                resultDiv.innerHTML = `
+                    <h3>✓ Test Passed</h3>
+                    <p>Added ${routers.length} routers</p>
+                    <pre>${JSON.stringify(routers, null, 2)}</pre>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `<p style="color: red;">Error: ${error.message}</p>`;
+                console.error('Test failed:', error);
+            }
+        };
+        
+        window.testRouterDetails = async function() {
+            const resultDiv = document.getElementById('test2-result');
+            resultDiv.innerHTML = '<p>Running test...</p>';
+            
+            if (!simulator && !await initializeSimulator()) {
+                resultDiv.innerHTML = '<p style="color: red;">Failed to initialize simulator</p>';
+                return;
+            }
+            
+            try {
+                // First add a router if needed
+                const routersJson = simulator.get_routers_json();
+                const routers = JSON.parse(routersJson);
+                
+                if (routers.length === 0) {
+                    const routerId = simulator.add_router('Test Router', 150, 150);
+                    simulator.enable_ospf(routerId);
+                    console.log('Added test router with ID:', routerId);
+                }
+                
+                // Get updated list
+                const updatedRoutersJson = simulator.get_routers_json();
+                const updatedRouters = JSON.parse(updatedRoutersJson);
+                
+                let html = '<h3>Router Details Test</h3>';
+                
+                for (const router of updatedRouters) {
+                    console.log(`Testing router ${router.id} (type: ${typeof router.id})`);
+                    
+                    // Test with number
+                    const summaryJson = simulator.get_router_summary_json(router.id);
+                    const detailsJson = simulator.get_router_details_json(router.id);
+                    
+                    console.log(`Summary for router ${router.id}:`, summaryJson);
+                    console.log(`Details for router ${router.id}:`, detailsJson);
+                    
+                    html += `<div class="router-info">`;
+                    html += `<h4>Router ${router.name} (ID: ${router.id})</h4>`;
+                    
+                    if (summaryJson) {
+                        const summary = JSON.parse(summaryJson);
+                        html += `<p><strong>Summary:</strong></p><pre>${JSON.stringify(summary, null, 2)}</pre>`;
+                    } else {
+                        html += `<p style="color: red;">No summary data returned</p>`;
+                    }
+                    
+                    if (detailsJson) {
+                        const details = JSON.parse(detailsJson);
+                        html += `<p><strong>Details:</strong></p><pre>${JSON.stringify(details, null, 2)}</pre>`;
+                    } else {
+                        html += `<p style="color: red;">No details data returned</p>`;
+                    }
+                    
+                    html += `</div>`;
+                }
+                
+                resultDiv.innerHTML = html;
+                
+            } catch (error) {
+                resultDiv.innerHTML = `<p style="color: red;">Error: ${error.message}</p>`;
+                console.error('Test failed:', error);
+            }
+        };
+        
+        // Initialize on load
+        initializeSimulator();
+    </script>
+</body>
+</html>
