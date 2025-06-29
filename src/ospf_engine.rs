@@ -505,10 +505,16 @@ impl OSPFEngine {
         // Increment sequence number for next LSA
         self.lsa_sequence_number += 1;
         
-        crate::router::LSA {
+        let lsa = crate::router::LSA {
             header,
             data: LSAData::Router(router_lsa),
-        }
+        };
+        
+        // Add the generated LSA to our own database
+        self.update_lsa_database(lsa.clone());
+        console_log!("Router {} added own Router LSA to database", self.router_id);
+        
+        lsa
     }
     
     pub fn update_lsa_database(&mut self, lsa: crate::router::LSA) {
