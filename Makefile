@@ -16,6 +16,7 @@ help:
 
 # Build Docker image
 build:
+	@echo "Note: Using legacy Docker builder (buildx not available)" 
 	docker build -t ospf-network-simulator:latest .
 
 # Run in production mode
@@ -48,5 +49,6 @@ rebuild: clean
 	@echo "Starting clean rebuild..."
 	cd www && yarn install
 	PATH="$$HOME/.cargo/bin:$$PATH" wasm-pack build --target web --out-dir www/pkg
+	@echo "Note: Using legacy Docker builder (buildx not available)" 
 	docker build -t ospf-network-simulator:latest .
 	@echo "Rebuild complete!"

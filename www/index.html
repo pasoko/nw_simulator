@@ -210,6 +210,64 @@
             border-radius: 3px;
             font-size: 12px;
         }
+        
+        /* Modal styles for router details */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+        
+        .modal-content {
+            background-color: #fefefe;
+            margin: 5% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 800px;
+            max-height: 80vh;
+            overflow-y: auto;
+            border-radius: 8px;
+        }
+        
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        
+        .close:hover,
+        .close:focus {
+            color: black;
+        }
+        
+        .routing-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        
+        .routing-table th,
+        .routing-table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        
+        .routing-table th {
+            background-color: #f2f2f2;
+        }
+        
+        .routing-table tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
     </style>
 </head>
 <body>
@@ -245,6 +303,16 @@
             <div id="log-content"></div>
         </div>
     </div>
+    
+    <!-- Router Details Modal -->
+    <div id="router-details-modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2 id="router-details-title">Router Details</h2>
+            <div id="router-details-content"></div>
+        </div>
+    </div>
+    
     <script type="module" src="index.js"></script>
 </body>
 </html>

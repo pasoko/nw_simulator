@@ -12,11 +12,15 @@ class CanvasRenderer {
         this.packetVisualizer = null;
     }
     
-    initialize(canvas, packetVisualizer) {
+    init(canvas, ctx) {
         this.canvas = canvas;
-        this.ctx = canvas.getContext('2d');
-        this.packetVisualizer = packetVisualizer;
+        this.ctx = ctx;
+        // Get packetVisualizer from stateManager since it's already initialized there
+        this.packetVisualizer = stateManager.packetVisualizer;
         this.setupCanvas();
+        
+        // Store reference in stateManager for other modules
+        stateManager.canvasRenderer = this;
     }
     
     setupCanvas() {
