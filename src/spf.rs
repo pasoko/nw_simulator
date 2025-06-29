@@ -65,10 +65,16 @@ impl SPFCalculator {
         source_router_id: u32,
         topology: &NetworkTopology,  // Still needed for interface info
     ) -> HashMap<u32, RoutingTableEntry> {
+        console_log!("SPF CALLED for router {}", source_router_id);
         let mut adjacencies: HashMap<u32, Vec<(u32, u32)>> = HashMap::new();  // router_id -> [(neighbor_id, cost)]
         
         // Build adjacency graph from Router LSAs
         console_log!("SPF: Building adjacency graph from {} LSAs", lsa_database.len());
+        console_log!("SPF: LSA database contents:");
+        for (key, lsa) in lsa_database {
+            console_log!("SPF:   Key: {} - Advertising Router: {}", key, lsa.header.advertising_router);
+        }
+        
         for lsa in lsa_database.values() {
             if let LSAData::Router(router_lsa) = &lsa.data {
                 let advertising_router = lsa.header.advertising_router
@@ -77,8 +83,20 @@ impl SPFCalculator {
                     .and_then(|s| s.parse::<u32>().ok())
                     .unwrap_or(0);
                 
+                // Debug Router ID extraction for all LSAs
+                console_log!("SPF: Extracted router ID {} from advertising_router '{}'", 
+                    advertising_router, lsa.header.advertising_router);
+                console_log!("SPF: Router {} processing Router LSA from {} with {} links", 
+                    source_router_id, advertising_router, router_lsa.links.len());
+                
                 console_log!("SPF: Processing Router LSA from router {} with {} links", 
                     advertising_router, router_lsa.links.len());
+                    
+                // Log all links in this LSA
+                for (i, link) in router_lsa.links.iter().enumerate() {
+                    console_log!("SPF:   Link {}: ID={}, Type={:?}, Metric={}", 
+                        i, link.link_id, link.link_type, link.metric);
+                }
                 
                 let mut neighbors = Vec::new();
                 
@@ -98,16 +116,27 @@ impl SPFCalculator {
                 }
                 
                 adjacencies.insert(advertising_router, neighbors);
+            } else {
+                console_log!("SPF: Skipping non-Router LSA from advertising router {}", 
+                    lsa.header.advertising_router);
             }
         }
         
         // If no LSAs exist, return empty routing table
         if adjacencies.is_empty() {
-            console_log!("SPF: No adjacencies found, returning empty routing table");
+            console_log!("SPF: No adjacencies found for router {}, returning empty routing table", source_router_id);
+            console_log!("SPF: LSA database contained {} LSAs but no valid adjacencies built", lsa_database.len());
+            console_log!("SPF EMPTY EXIT: Router {} no adjacencies", source_router_id);
             return HashMap::new();
         }
         
         console_log!("SPF: Found adjacencies for {} routers", adjacencies.len());
+        
+        // Debug: Show all adjacencies built for ALL routers
+        console_log!("SPF Router {}: Adjacencies built:", source_router_id);
+        for (router_id, neighbors) in &adjacencies {
+            console_log!("  Router {} -> {:?}", router_id, neighbors);
+        }
         
         // Run Dijkstra on the LSA-derived graph
         let mut distances: HashMap<u32, u32> = HashMap::new();
@@ -157,6 +186,16 @@ impl SPFCalculator {
         
         console_log!("SPF: Dijkstra complete, found paths to {} routers", next_hops.len());
         
+        // Debug: Show Dijkstra results for ALL routers
+        console_log!("SPF Router {}: Dijkstra distances found:", source_router_id);
+        for (dest_id, dist) in &distances {
+            console_log!("  Router {} distance: {}", dest_id, dist);
+        }
+        console_log!("SPF Router {}: Next hops found:", source_router_id);
+        for (dest_id, next_hop) in &next_hops {
+            console_log!("  Router {} next hop: {}", dest_id, next_hop);
+        }
+        
         // Build routing table entries using topology for interface info
         for (dest_router_id, &next_hop) in &next_hops {
             if *dest_router_id == source_router_id {
@@ -165,23 +204,45 @@ impl SPFCalculator {
             
             console_log!("SPF: Building route to router {} via next hop {}", dest_router_id, next_hop);
             
+            // Debug: Route building attempt for ALL routers
+            console_log!("SPF Router {}: Attempting to build route to {} via {}", 
+                source_router_id, dest_router_id, next_hop);
+            
             // Find interface from topology (excluding failed links)
-            let interface_info = topology.links.values()
+            console_log!("SPF: Looking for interface from router {} to next hop {}", source_router_id, next_hop);
+            
+            let link_found = topology.links.values()
                 .find(|link| {
-                    !link.is_failed && (
+                    let matches = !link.is_failed && (
                         (link.router1_id == source_router_id && link.router2_id == next_hop) ||
                         (link.router2_id == source_router_id && link.router1_id == next_hop)
-                    )
-                })
-                .and_then(|link| {
-                    if link.router1_id == source_router_id {
-                        topology.routers.get(&source_router_id)
-                            .and_then(|r| r.interfaces.get(&link.router1_interface_id))
-                    } else {
-                        topology.routers.get(&source_router_id)
-                            .and_then(|r| r.interfaces.get(&link.router2_interface_id))
+                    );
+                    if matches {
+                        console_log!("SPF: Found matching link: router{}-router{} (interface {}-{})", 
+                            link.router1_id, link.router2_id, 
+                            link.router1_interface_id, link.router2_interface_id);
                     }
+                    matches
                 });
+            
+            let interface_info = link_found.and_then(|link| {
+                let interface_id = if link.router1_id == source_router_id {
+                    link.router1_interface_id
+                } else {
+                    link.router2_interface_id
+                };
+                
+                console_log!("SPF: Looking for interface {} on router {}", interface_id, source_router_id);
+                
+                let interface = topology.routers.get(&source_router_id)
+                    .and_then(|r| r.interfaces.get(&interface_id));
+                
+                if interface.is_none() {
+                    console_log!("SPF: ERROR - Interface {} not found on router {}", interface_id, source_router_id);
+                }
+                
+                interface
+            });
             
             if let Some(interface) = interface_info {
                 let entry = RoutingTableEntry {
@@ -195,11 +256,28 @@ impl SPFCalculator {
                 
                 console_log!("SPF:   Route entry: {} via {} on interface {} (metric {})", 
                     entry.destination, entry.next_hop, entry.interface_id, entry.metric);
+                console_log!("SPF Router {}: SUCCESS - Route to {} via {} added to routing table", 
+                    source_router_id, dest_router_id, next_hop);
                 
                 routing_table.insert(*dest_router_id, entry);
             } else {
-                console_log!("SPF:   WARNING: No interface found for route to {}", dest_router_id);
+                console_log!("SPF Router {}: FAILED - No interface found for route to {} via {}", 
+                    source_router_id, dest_router_id, next_hop);
+                console_log!("SPF: Available links for router {}:", source_router_id);
+                for link in topology.links.values() {
+                    if link.router1_id == source_router_id || link.router2_id == source_router_id {
+                        console_log!("SPF:   Link: router{}-router{} (interfaces {}-{}, failed: {})", 
+                            link.router1_id, link.router2_id, 
+                            link.router1_interface_id, link.router2_interface_id, link.is_failed);
+                    }
+                }
             }
+        }
+        
+        console_log!("SPF FINISHED for router {} with {} routes", source_router_id, routing_table.len());
+        for (dest_id, route) in &routing_table {
+            console_log!("SPF Router {}:   Route to {} -> {} via interface {} (metric {})", 
+                source_router_id, dest_id, route.next_hop, route.interface_id, route.metric);
         }
         
         routing_table

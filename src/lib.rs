@@ -19,9 +19,14 @@ extern "C" {
     fn log(s: &str);
 }
 
+// Public wrapper for the external log function
+pub fn console_log_impl(s: &str) {
+    log(s);
+}
+
 #[macro_export]
 macro_rules! console_log {
-    ($($t:tt)*) => (crate::log(&format_args!($($t)*).to_string()))
+    ($($t:tt)*) => ($crate::console_log_impl(&format_args!($($t)*).to_string()))
 }
 
 // Set up panic hook for better debugging

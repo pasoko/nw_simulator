@@ -5,6 +5,7 @@ use crate::protocol::{ProtocolEngine, PacketEvent, ProtocolPacket};
 use crate::ospf::{OSPFPacket, OSPFPacketType, OSPFPacketData, HelloPacket};
 use crate::ospf_engine::OSPFEngine;
 use crate::spf::SPFCalculator;
+use crate::router::LSAData;
 use crate::console_log;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -68,9 +69,19 @@ impl NetworkSimulation {
         if let Some(link) = self.topology.links.get(&link_id) {
             if let Some(engine1) = self.ospf_engines.get_mut(&router1_id) {
                 engine1.add_router_link(router2_id, link.router1_interface_id, cost);
+                // Regenerate Router LSA with the new link
+                console_log!("Router {} regenerating LSA after link addition", router1_id);
+                let events = engine1.regenerate_router_lsa();
+                // Note: We don't schedule these events immediately as simulation might not be running
+                // They will be flooded when simulation starts
             }
             if let Some(engine2) = self.ospf_engines.get_mut(&router2_id) {
                 engine2.add_router_link(router1_id, link.router2_interface_id, cost);
+                // Regenerate Router LSA with the new link
+                console_log!("Router {} regenerating LSA after link addition", router2_id);
+                let events = engine2.regenerate_router_lsa();
+                // Note: We don't schedule these events immediately as simulation might not be running
+                // They will be flooded when simulation starts
             }
         }
         
@@ -208,6 +219,10 @@ impl NetworkSimulation {
             }
         }
         
+        // Generate initial Router LSA immediately upon OSPF enabling
+        ospf_engine.generate_router_lsa();
+        console_log!("Router {} initial Router LSA generated", router_id);
+        
         self.ospf_engines.insert(router_id, ospf_engine);
         
         self.log_event(SimulationEvent {
@@ -215,6 +230,10 @@ impl NetworkSimulation {
             event_type: SimulationEventType::OSPFEnabled { router_id },
             description: format!("OSPF enabled on router {} at simulation time {}", router_id, self.simulation_time),
         });
+        
+        // Calculate initial routes after OSPF is enabled
+        console_log!("OSPF enabled on router {}, calculating initial routes", router_id);
+        self.calculate_routes_for_router(router_id);
         
         // If simulation is running, schedule hello packets immediately
         if self.running {
@@ -608,9 +627,13 @@ impl NetworkSimulation {
         }
         
         // If LSAs were updated, recalculate routes
+        console_log!("Router {} LSA trigger check: lsa_updated={}, lsa_database_changed={}, lsa_count={}", 
+            to_router_id, lsa_updated, lsa_database_changed, lsa_count);
         if (lsa_updated || lsa_database_changed) && lsa_count > 0 {
             console_log!("Router {} LSA database changed, running SPF calculation", to_router_id);
             self.calculate_routes_for_router(to_router_id);
+        } else {
+            console_log!("Router {} SPF NOT triggered - condition not met", to_router_id);
         }
         
         // Process state transitions
@@ -679,6 +702,8 @@ impl NetworkSimulation {
     
     fn calculate_routes_for_router(&mut self, router_id: u32) {
         // Debug: Log when route calculation is triggered
+        console_log!("=== CALCULATING ROUTES FOR ROUTER {} ===", router_id);
+        
         self.log_event(SimulationEvent {
             timestamp: self.simulation_time,
             event_type: SimulationEventType::RoutingTableUpdated { router_id },
@@ -689,6 +714,24 @@ impl NetworkSimulation {
         let (routes, lsa_count) = if let Some(engine) = self.ospf_engines.get(&router_id) {
             let lsa_count = engine.get_lsa_count();
             console_log!("Router {} has {} LSAs in database", router_id, lsa_count);
+            console_log!("Router {} DEBUG TEST ACTIVE", router_id);
+            
+            // Enhanced debugging for ALL routers
+            console_log!("=== ROUTER {} SPF DEBUG START ===", router_id);
+            console_log!("Router {} LSA count: {}", router_id, lsa_count);
+            console_log!("Router {} LSA database keys:", router_id);
+            for (key, lsa) in engine.get_lsa_database() {
+                console_log!("  Key: {} - Type: {:?} - Adv Router: {}", 
+                    key, lsa.header.ls_type, lsa.header.advertising_router);
+                if let LSAData::Router(ref rlsa) = lsa.data {
+                    console_log!("    Router LSA with {} links:", rlsa.links.len());
+                    for (i, link) in rlsa.links.iter().enumerate() {
+                        console_log!("      Link {}: ID={}, Type={:?}, Metric={}", 
+                            i, link.link_id, link.link_type, link.metric);
+                    }
+                }
+            }
+            console_log!("=== ROUTER {} SPF DEBUG END ===", router_id);
             
             let routes = SPFCalculator::calculate_routes_from_lsa(
                 engine.get_lsa_database(),
@@ -696,10 +739,21 @@ impl NetworkSimulation {
                 &self.topology
             );
             
-            console_log!("SPF calculation for router {} returned {} routes", router_id, routes.len());
-            for (dest_id, route) in &routes {
-                console_log!("  Route to {}: {} -> {} (metric {})", 
-                    dest_id, route.destination, route.next_hop, route.metric);
+            console_log!("Router {} SPF returned {} routes", router_id, routes.len());
+            if routes.is_empty() {
+                console_log!("  WARNING: No routes calculated for router {}", router_id);
+                // Check router's interfaces
+                if let Some(router) = self.topology.routers.get(&router_id) {
+                    console_log!("  Router {} has {} interfaces:", router_id, router.interfaces.len());
+                    for (id, interface) in &router.interfaces {
+                        console_log!("    Interface {}: IP {}", id, interface.ip_address);
+                    }
+                }
+            } else {
+                for (dest_id, route) in &routes {
+                    console_log!("  Route to {}: {} -> {} (metric {}) interface {}", 
+                        dest_id, route.destination, route.next_hop, route.metric, route.interface_id);
+                }
             }
             
             (routes, Some(lsa_count))
@@ -721,11 +775,16 @@ impl NetworkSimulation {
         if let Some(router) = self.topology.routers.get_mut(&router_id) {
             // Store old routing table for comparison
             let old_routes = router.routing_table.clone();
+            console_log!("Router {} old routing table has {} entries", router_id, old_routes.len());
             
             // Update routing table
+            console_log!("Router {} updating routing table with {} new routes", router_id, routes.len());
             for (_dest_id, route) in &routes {
+                console_log!("  Updating route: {} -> {} via {}", 
+                    route.destination, route.next_hop, route.interface_id);
                 router.update_routing_table(route.clone());
             }
+            console_log!("Router {} new routing table has {} entries", router_id, router.routing_table.len());
             
             // Build detailed description of routing table changes
             let mut route_details = Vec::new();
