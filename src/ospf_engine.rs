@@ -534,6 +534,10 @@ impl OSPFEngine {
         self.lsa_manager.get_router_links()
     }
     
+    pub fn get_area_id(&self) -> &str {
+        &self.area_id
+    }
+    
     pub fn flood_lsa_except(&self, lsa: &RouterLSA, except_neighbor: u32) -> Vec<PacketEvent> {
         let mut events = Vec::new();
         

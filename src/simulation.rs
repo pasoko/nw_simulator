@@ -517,6 +517,19 @@ impl NetworkSimulation {
     }
     
     fn process_ospf_packet(&mut self, packet: OSPFPacket, from_router_id: u32, to_router_id: u32) {
+        // RFC 2328 Section 9.2 - Area ID Validation
+        // Check if packet's area ID matches the receiving router's area ID
+        if let Some(engine) = self.ospf_engines.get(&to_router_id) {
+            if packet.area_id != engine.get_area_id() {
+                console_log!("Router {} discarding packet from {} - Area ID mismatch (packet area: {}, router area: {})", 
+                    to_router_id, from_router_id, packet.area_id, engine.get_area_id());
+                self.event_manager.log_packet_discarded(to_router_id, from_router_id, 
+                    format!("Area ID mismatch: packet area {} != router area {}", 
+                        packet.area_id, engine.get_area_id()));
+                return;
+            }
+        }
+        
         // Get interface ID before mutable borrow
         let interface_id = if matches!(&packet.data, OSPFPacketData::Hello(_)) {
             self.get_interface_id(from_router_id, to_router_id)

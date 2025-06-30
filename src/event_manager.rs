@@ -22,6 +22,7 @@ pub enum SimulationEventType {
     LinkRecovery { from_router: u32, to_router: u32 },
     RouterFailure { router_id: u32 },
     RouterRecovery { router_id: u32 },
+    PacketDiscarded { router_id: u32, from_router: u32, reason: String },
 }
 
 /// Event Management System
@@ -174,6 +175,15 @@ impl EventManager {
         });
     }
     
+    pub fn log_packet_discarded(&mut self, router_id: u32, from_router: u32, reason: String) {
+        self.log_event(SimulationEvent {
+            timestamp: self.current_time,
+            event_type: SimulationEventType::PacketDiscarded { router_id, from_router, reason: reason.clone() },
+            description: format!("Packet Discarded: Router {} dropped packet from Router {} - {}", 
+                router_id, from_router, reason),
+        });
+    }
+    
     pub fn get_recent_events(&self, count: usize) -> Vec<SimulationEvent> {
         let start = self.simulation_log.len().saturating_sub(count);
         self.simulation_log[start..].to_vec()
@@ -220,6 +230,7 @@ impl EventManager {
                 SimulationEventType::LinkRecovery { .. } => stats.link_recoveries += 1,
                 SimulationEventType::RouterFailure { .. } => stats.router_failures += 1,
                 SimulationEventType::RouterRecovery { .. } => stats.router_recoveries += 1,
+                SimulationEventType::PacketDiscarded { .. } => stats.packets_discarded += 1,
             }
         }
         
@@ -241,6 +252,8 @@ impl EventManager {
                 *from_router == router_id || *to_router == router_id,
             SimulationEventType::RouterFailure { router_id: id } |
             SimulationEventType::RouterRecovery { router_id: id } => *id == router_id,
+            SimulationEventType::PacketDiscarded { router_id: id, from_router, .. } => 
+                *id == router_id || *from_router == router_id,
         }
     }
 }
@@ -258,6 +271,7 @@ pub struct EventStatistics {
     pub link_recoveries: usize,
     pub router_failures: usize,
     pub router_recoveries: usize,
+    pub packets_discarded: usize,
 }
 
 #[cfg(test)]
