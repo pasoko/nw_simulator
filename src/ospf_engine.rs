@@ -102,6 +102,19 @@ impl OSPFEngine {
                         self.router_id, neighbor_id);
                     // Handle retransmission logic
                 }
+                OSPFTimerEvent::DDRetransmissionTimer(neighbor_id) => {
+                    console_log!("Router {} DD retransmission timer expired for neighbor {}", 
+                        self.router_id, neighbor_id);
+                    // Handle DD retransmission as per RFC 2328 Section 10.8
+                    if let Some(dd_packet) = self.packet_processor.get_last_dd_packet(neighbor_id) {
+                        console_log!("Router {} retransmitting DD packet to neighbor {}", 
+                            self.router_id, neighbor_id);
+                        let event = self.packet_processor.create_dd_retransmit_event(neighbor_id, dd_packet);
+                        events.push(event);
+                        // Restart the DD retransmission timer
+                        self.timer_manager.start_dd_retransmission_timer(neighbor_id);
+                    }
+                }
             }
         }
         
@@ -164,10 +177,18 @@ impl OSPFEngine {
                             }
                             
                             // Send Database Description packet
-                            events.push(self.packet_processor.create_dd_packet_event(
+                            let dd_event = self.packet_processor.create_dd_packet_event(
                                 from_router_id, 
                                 self.lsa_manager.get_lsa_database()
-                            ));
+                            );
+                            events.push(dd_event);
+                            
+                            // Start DD retransmission timer (RFC 2328 Section 10.8)
+                            if self.packet_processor.should_start_dd_retransmit(from_router_id) {
+                                self.timer_manager.start_dd_retransmission_timer(from_router_id);
+                                console_log!("Router {} started DD retransmission timer for neighbor {}", 
+                                    self.router_id, from_router_id);
+                            }
                         }
                     }
                 }
@@ -196,6 +217,11 @@ impl OSPFEngine {
                 from_router_id, 
                 current_state
             );
+            
+            // Stop DD retransmission timer if we received acknowledgment
+            if !self.packet_processor.should_start_dd_retransmit(from_router_id) {
+                self.timer_manager.stop_dd_retransmission_timer(from_router_id);
+            }
             
             // Update neighbor state if needed
             if let Some(state) = new_state {
@@ -240,10 +266,16 @@ impl OSPFEngine {
             
             // Send DD packet if needed
             if should_send_dd {
-                events.push(self.packet_processor.create_dd_packet_event(
+                let dd_event = self.packet_processor.create_dd_packet_event(
                     from_router_id, 
                     self.lsa_manager.get_lsa_database()
-                ));
+                );
+                events.push(dd_event);
+                
+                // Start DD retransmission timer if sending new DD packet
+                if self.packet_processor.should_start_dd_retransmit(from_router_id) {
+                    self.timer_manager.start_dd_retransmission_timer(from_router_id);
+                }
             }
         }
         

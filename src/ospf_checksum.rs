@@ -127,7 +127,7 @@ pub fn verify_lsa_checksum(lsa: &LSA) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::router::{LSAHeader, LSAType, RouterLSA, LinkType};
+    use crate::router::{LSAHeader, LSAType, RouterLSA};
 
     #[test]
     fn test_fletcher_checksum() {

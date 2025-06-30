@@ -8,6 +8,7 @@ pub enum OSPFTimerEvent {
     DeadTimer(u32),  // neighbor_id
     LSARefresh,
     RetransmissionTimer(u32), // neighbor_id
+    DDRetransmissionTimer(u32), // neighbor_id - RFC 2328 Section 10.8
 }
 
 /// OSPF Timer Management
@@ -17,17 +18,20 @@ pub enum OSPFTimerEvent {
 /// - Dead timers for neighbors
 /// - LSA refresh timers
 /// - Retransmission timers
+/// - DD retransmission timers (RFC 2328 Section 10.8)
 pub struct OSPFTimerManager {
     router_id: String,
     hello_interval: f64,
     dead_interval: f64,
     lsa_refresh_interval: f64,
     retransmission_interval: f64,
+    dd_retransmission_interval: f64,  // RFC 2328: RxmtInterval for DD packets
     
     next_hello_time: f64,
     next_lsa_refresh: f64,
     neighbor_dead_times: HashMap<u32, f64>,
     neighbor_retransmission_times: HashMap<u32, f64>,
+    neighbor_dd_retransmission_times: HashMap<u32, f64>,  // DD retransmission timers
     
     current_time: f64,
 }
@@ -40,11 +44,13 @@ impl OSPFTimerManager {
             dead_interval: 40.0,
             lsa_refresh_interval: 1800.0, // 30 minutes
             retransmission_interval: 5.0,
+            dd_retransmission_interval: 5.0,  // RFC 2328 default RxmtInterval
             
             next_hello_time: 0.0,
             next_lsa_refresh: 1800.0,
             neighbor_dead_times: HashMap::new(),
             neighbor_retransmission_times: HashMap::new(),
+            neighbor_dd_retransmission_times: HashMap::new(),
             
             current_time: 0.0,
         }
@@ -112,6 +118,26 @@ impl OSPFTimerManager {
             .collect()
     }
     
+    pub fn start_dd_retransmission_timer(&mut self, neighbor_id: u32) {
+        let dd_retrans_time = self.current_time + self.dd_retransmission_interval;
+        self.neighbor_dd_retransmission_times.insert(neighbor_id, dd_retrans_time);
+        console_log!("Router {} started DD retransmission timer for neighbor {}, expires at {:.1}s", 
+            self.router_id, neighbor_id, dd_retrans_time);
+    }
+    
+    pub fn stop_dd_retransmission_timer(&mut self, neighbor_id: u32) {
+        self.neighbor_dd_retransmission_times.remove(&neighbor_id);
+        console_log!("Router {} stopped DD retransmission timer for neighbor {}", 
+            self.router_id, neighbor_id);
+    }
+    
+    pub fn get_expired_dd_retransmission_timers(&self) -> Vec<u32> {
+        self.neighbor_dd_retransmission_times.iter()
+            .filter(|(_, &dd_retrans_time)| self.current_time >= dd_retrans_time)
+            .map(|(&neighbor_id, _)| neighbor_id)
+            .collect()
+    }
+    
     pub fn is_lsa_refresh_due(&self) -> bool {
         self.current_time >= self.next_lsa_refresh
     }
@@ -154,6 +180,14 @@ impl OSPFTimerManager {
             }
         }
         
+        // Check DD retransmission timers
+        for (&neighbor_id, &dd_retrans_time) in &self.neighbor_dd_retransmission_times {
+            if dd_retrans_time < next_time {
+                next_time = dd_retrans_time;
+                next_event = Some(OSPFTimerEvent::DDRetransmissionTimer(neighbor_id));
+            }
+        }
+        
         next_event.map(|event| (next_time, event))
     }
     
@@ -189,12 +223,20 @@ impl OSPFTimerManager {
             // Don't remove retransmission timer - it will be restarted
         }
         
+        // Check DD retransmission timers
+        let expired_dd_retrans = self.get_expired_dd_retransmission_timers();
+        for neighbor_id in expired_dd_retrans {
+            expired_events.push(OSPFTimerEvent::DDRetransmissionTimer(neighbor_id));
+            // Don't remove DD retransmission timer - it will be restarted
+        }
+        
         expired_events
     }
     
     pub fn clear_all_neighbor_timers(&mut self, neighbor_id: u32) {
         self.neighbor_dead_times.remove(&neighbor_id);
         self.neighbor_retransmission_times.remove(&neighbor_id);
+        self.neighbor_dd_retransmission_times.remove(&neighbor_id);
         console_log!("Router {} cleared all timers for neighbor {}", 
             self.router_id, neighbor_id);
     }

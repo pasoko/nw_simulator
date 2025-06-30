@@ -404,7 +404,7 @@ mod tests {
         // Create simple network
         let r1 = topology.add_router("R1".to_string());
         let r2 = topology.add_router("R2".to_string());
-        let r3 = topology.add_router("R3".to_string());
+        let _r3 = topology.add_router("R3".to_string());
         
         // Connect R1-R2
         topology.connect_routers(r1, r2, 10).unwrap();
