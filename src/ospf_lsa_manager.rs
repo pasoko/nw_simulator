@@ -1,6 +1,12 @@
 use std::collections::HashMap;
 use crate::router::{LSA, LSAData, LSAType, LSAHeader as RouterLSAHeader, RouterLSA, RouterLink, LinkType};
+use crate::ospf_checksum::calculate_lsa_checksum;
 use crate::console_log;
+
+const MAX_SEQUENCE_NUMBER: u32 = 0x7FFFFFFF;
+const INITIAL_SEQUENCE_NUMBER: u32 = 0x80000001;
+const MAX_AGE: u16 = 3600;
+const MIN_LS_INTERVAL: f64 = 5.0;
 
 /// OSPF LSA Database Management
 /// 
@@ -15,16 +21,20 @@ pub struct OSPFLSAManager {
     router_id: String,
     router_links: Vec<(u32, u32, u32)>, // (neighbor_id, interface_id, cost)
     recent_lsa_updates: HashMap<String, f64>, // Track recent LSA updates to prevent flooding loops
+    current_time: f64, // Track current simulation time
+    maxage_lsas_pending_purge: HashMap<String, f64>, // Track MaxAge LSAs pending deletion
 }
 
 impl OSPFLSAManager {
     pub fn new(router_id: String) -> Self {
         OSPFLSAManager {
             lsa_database: HashMap::new(),
-            lsa_sequence_number: 0x80000001,
+            lsa_sequence_number: INITIAL_SEQUENCE_NUMBER,
             router_id,
             router_links: Vec::new(),
             recent_lsa_updates: HashMap::new(),
+            current_time: 0.0,
+            maxage_lsas_pending_purge: HashMap::new(),
         }
     }
     
@@ -61,6 +71,9 @@ impl OSPFLSAManager {
             links,
         };
         
+        // Increment sequence number BEFORE using it
+        self.lsa_sequence_number = self.increment_sequence_number();
+        
         let header = RouterLSAHeader {
             ls_age: 0,
             ls_type: LSAType::RouterLSA,
@@ -71,17 +84,18 @@ impl OSPFLSAManager {
             length: 20 + (router_lsa.links.len() * 12) as u16,
         };
         
-        self.lsa_sequence_number += 1;
-        
-        let lsa = LSA {
+        let mut lsa = LSA {
             header,
             data: LSAData::Router(router_lsa.clone()),
         };
         
+        // Calculate checksum
+        lsa.header.ls_checksum = calculate_lsa_checksum(&lsa);
+        
         // Add to database
         self.update_lsa_database(lsa.clone());
-        console_log!("Router {} generated Router LSA with {} links", 
-            self.router_id, router_lsa.num_links);
+        console_log!("Router {} generated Router LSA with {} links, seq num {}, checksum {}", 
+            self.router_id, router_lsa.num_links, self.lsa_sequence_number, lsa.header.ls_checksum);
         
         lsa
     }
@@ -94,7 +108,7 @@ impl OSPFLSAManager {
         );
         
         // Track update time to prevent flooding loops
-        self.recent_lsa_updates.insert(key.clone(), 0.0);  // Current time should be passed
+        self.recent_lsa_updates.insert(key.clone(), self.current_time);
         
         console_log!("Router {} updating LSA database with key: {}", self.router_id, key);
         if let LSAData::Router(ref rlsa) = lsa.data {
@@ -117,32 +131,43 @@ impl OSPFLSAManager {
         self.lsa_database.get(key)
     }
     
-    pub fn age_lsas(&mut self, time_delta: f64) {
-        const MAX_AGE: u16 = 3600; // 1 hour in seconds
-        const RECENT_UPDATE_WINDOW: f64 = 5.0; // 5 seconds window for recent updates
-        let mut expired_lsas = Vec::new();
+    pub fn age_lsas(&mut self, time_delta: f64) -> Vec<LSA> {
+        let mut maxage_lsas = Vec::new();
         
         for (key, lsa) in self.lsa_database.iter_mut() {
             let new_age = lsa.header.ls_age as f64 + time_delta;
             if new_age >= MAX_AGE as f64 {
-                expired_lsas.push(key.clone());
+                // Set to MaxAge but don't remove yet - need to reflood first
+                lsa.header.ls_age = MAX_AGE;
+                maxage_lsas.push(lsa.clone());
+                self.maxage_lsas_pending_purge.insert(key.clone(), self.current_time);
+                console_log!("Router {} LSA {} reached MaxAge, marking for reflooding", self.router_id, key);
             } else {
                 lsa.header.ls_age = new_age as u16;
             }
         }
         
-        // Remove expired LSAs
-        for key in expired_lsas {
+        // Remove LSAs that have been MaxAge for more than 60 seconds (grace period for reflooding)
+        let mut lsas_to_remove = Vec::new();
+        for (key, reflood_time) in &self.maxage_lsas_pending_purge {
+            if self.current_time - reflood_time > 60.0 {
+                lsas_to_remove.push(key.clone());
+            }
+        }
+        
+        for key in lsas_to_remove {
             self.lsa_database.remove(&key);
             self.recent_lsa_updates.remove(&key);
-            console_log!("Router {} removed expired LSA: {}", self.router_id, key);
+            self.maxage_lsas_pending_purge.remove(&key);
+            console_log!("Router {} removed expired LSA after MaxAge grace period: {}", self.router_id, key);
         }
         
         // Clean up old entries from recent updates tracking
-        let current_time = time_delta; // This should be actual simulation time
         self.recent_lsa_updates.retain(|_, &mut update_time| {
-            current_time - update_time < RECENT_UPDATE_WINDOW
+            self.current_time - update_time < MIN_LS_INTERVAL
         });
+        
+        maxage_lsas
     }
     
     pub fn find_lsa_to_request(&self, received_headers: &[RouterLSAHeader]) -> Vec<RouterLSAHeader> {
@@ -211,9 +236,7 @@ impl OSPFLSAManager {
     pub fn regenerate_router_lsa(&mut self) -> LSA {
         // Check if we really need to regenerate (topology changed)
         if self.needs_lsa_regeneration() {
-            self.lsa_sequence_number += 1;
-            console_log!("Router {} regenerating Router LSA due to topology change (seq num {})", 
-                self.router_id, self.lsa_sequence_number);
+            console_log!("Router {} regenerating Router LSA due to topology change", self.router_id);
             self.generate_router_lsa()
         } else {
             // Return existing LSA without incrementing sequence number
@@ -221,7 +244,6 @@ impl OSPFLSAManager {
             let key = format!("1:{}:{}", self.router_id, self.router_id);
             self.lsa_database.get(&key).cloned().unwrap_or_else(|| {
                 console_log!("Router {} has no existing LSA, generating new one", self.router_id);
-                self.lsa_sequence_number += 1;
                 self.generate_router_lsa()
             })
         }
@@ -264,8 +286,33 @@ impl OSPFLSAManager {
         self.lsa_database.get(&key)
     }
     
-    pub fn was_recently_updated(&self, lsa_key: &str) -> bool {
-        self.recent_lsa_updates.contains_key(lsa_key)
+    pub fn was_recently_updated(&self, lsa_key: &str, current_time: f64) -> bool {
+        if let Some(&update_time) = self.recent_lsa_updates.get(lsa_key) {
+            current_time - update_time < MIN_LS_INTERVAL
+        } else {
+            false
+        }
+    }
+    
+    pub fn update_time(&mut self, time: f64) {
+        self.current_time = time;
+    }
+    
+    fn increment_sequence_number(&mut self) -> u32 {
+        if self.lsa_sequence_number == MAX_SEQUENCE_NUMBER {
+            console_log!("Router {} sequence number wrapped from {} to {}", 
+                self.router_id, MAX_SEQUENCE_NUMBER, INITIAL_SEQUENCE_NUMBER);
+            INITIAL_SEQUENCE_NUMBER
+        } else {
+            self.lsa_sequence_number + 1
+        }
+    }
+    
+    pub fn get_maxage_lsas(&self) -> Vec<LSA> {
+        self.lsa_database.values()
+            .filter(|lsa| lsa.header.ls_age == MAX_AGE)
+            .cloned()
+            .collect()
     }
 }
 

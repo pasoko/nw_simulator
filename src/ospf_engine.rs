@@ -8,6 +8,7 @@ use crate::ospf_neighbor::OSPFNeighborManager;
 use crate::ospf_lsa_manager::OSPFLSAManager;
 use crate::ospf_packet_processor::OSPFPacketProcessor;
 use crate::ospf_timer::{OSPFTimerManager, OSPFTimerEvent};
+use crate::ospf_checksum::verify_lsa_checksum;
 use crate::console_log;
 
 /// Refactored OSPF Engine
@@ -20,6 +21,7 @@ use crate::console_log;
 pub struct OSPFEngine {
     router_id: String,
     area_id: String,
+    current_time: f64,
     
     // Specialized components
     neighbor_manager: OSPFNeighborManager,
@@ -40,15 +42,30 @@ impl OSPFEngine {
             timer_manager,
             router_id,
             area_id,
+            current_time: 0.0,
         }
     }
     
     pub fn update_time(&mut self, time: f64) -> Vec<PacketEvent> {
+        let time_delta = if self.current_time > 0.0 { time - self.current_time } else { 0.0 };
+        self.current_time = time;
+        
         self.neighbor_manager.update_time(time);
         self.timer_manager.update_time(time);
-        self.lsa_manager.age_lsas(0.1); // Small time delta for aging
+        self.lsa_manager.update_time(time);
+        
+        // Age LSAs and handle MaxAge reflooding
+        let maxage_lsas = self.lsa_manager.age_lsas(time_delta);
         
         let mut events = Vec::new();
+        
+        // Reflood MaxAge LSAs before deletion
+        for lsa in maxage_lsas {
+            console_log!("Router {} reflooding MaxAge LSA: {}:{}", 
+                self.router_id, lsa.header.link_state_id, lsa.header.advertising_router);
+            let flood_events = self.flood_lsa(&lsa);
+            events.extend(flood_events);
+        }
         
         // Process expired timers
         let expired_events = self.timer_manager.process_expired_timers();
@@ -264,25 +281,47 @@ impl OSPFEngine {
         // Update LSA database and track which LSAs were actually updated
         let mut lsas_updated = false;
         let mut updated_lsa_keys = Vec::new();
-        for lsa in updated_lsas {
-            if self.lsa_manager.should_update_lsa(&lsa) {
+        let mut verified_ack_headers = Vec::new();
+        
+        for (idx, lsa) in updated_lsas.iter().enumerate() {
+            // Verify checksum before accepting LSA
+            if !verify_lsa_checksum(lsa) {
+                console_log!("Router {} rejected LSA from {} due to checksum mismatch", 
+                    self.router_id, from_router_id);
+                continue;
+            }
+            
+            if self.lsa_manager.should_update_lsa(lsa) {
                 let key = format!("{}:{}:{}", 
                     lsa.header.ls_type.clone() as u8,
                     lsa.header.link_state_id,
                     lsa.header.advertising_router
                 );
+                
+                // Check if we can update (MinLSInterval)
+                if self.lsa_manager.was_recently_updated(&key, self.current_time) {
+                    console_log!("Router {} skipping update of LSA {} due to MinLSInterval", 
+                        self.router_id, key);
+                    continue;
+                }
+                
                 console_log!("Router {} updating LSA: {}", self.router_id, key);
-                self.lsa_manager.update_lsa_database(lsa);
+                self.lsa_manager.update_lsa_database(lsa.clone());
                 updated_lsa_keys.push(key);
                 lsas_updated = true;
             }
+            
+            // Only acknowledge LSAs that passed checksum verification
+            if idx < ack_headers.len() {
+                verified_ack_headers.push(ack_headers[idx].clone());
+            }
         }
         
-        // Send acknowledgment for received LSAs
-        if !ack_headers.is_empty() {
+        // Send acknowledgment for received LSAs that passed verification
+        if !verified_ack_headers.is_empty() {
             console_log!("Router {} sending LSAck to router {} for {} LSAs", 
-                self.router_id, from_router_id, ack_headers.len());
-            let lsack_event = self.packet_processor.create_lsack_packet_event(from_router_id, &ack_headers);
+                self.router_id, from_router_id, verified_ack_headers.len());
+            let lsack_event = self.packet_processor.create_lsack_packet_event(from_router_id, &verified_ack_headers);
             events.push(lsack_event);
         }
         
@@ -403,6 +442,19 @@ impl OSPFEngine {
     
     pub fn flood_lsa(&self, lsa: &RouterLSA) -> Vec<PacketEvent> {
         let mut events = Vec::new();
+        
+        // Check if we recently flooded this LSA (MinLSInterval)
+        let lsa_key = format!("{}:{}:{}", 
+            lsa.header.ls_type.clone() as u8,
+            lsa.header.link_state_id,
+            lsa.header.advertising_router
+        );
+        
+        if self.lsa_manager.was_recently_updated(&lsa_key, self.current_time) {
+            console_log!("Router {} skipping flood of LSA {} due to MinLSInterval", 
+                self.router_id, lsa_key);
+            return events;
+        }
         
         // Get neighbors in Exchange or Full state
         let exchange_neighbors = self.neighbor_manager.get_neighbors_in_state(OSPFNeighborState::Exchange);

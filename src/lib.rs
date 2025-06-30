@@ -11,12 +11,16 @@ mod ospf_neighbor;
 mod ospf_lsa_manager;
 mod ospf_packet_processor;
 mod ospf_timer;
+mod ospf_checksum;
 mod event_manager;
 mod failure_manager;
 mod route_calculator;
 mod spf;
 mod ui_state;
 mod serialization;
+
+#[cfg(test)]
+mod ospf_test;
 
 use simulation::NetworkSimulation;
 use ui_state::UIState;

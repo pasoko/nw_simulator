@@ -3,6 +3,7 @@ use crate::ospf::{OSPFPacket, OSPFPacketType, OSPFPacketData, HelloPacket, Datab
     LinkStateRequestPacket, LinkStateUpdatePacket, LinkStateAcknowledgmentPacket, LSA, LSAHeader, LSARequest};
 use crate::router::{OSPFNeighborState, LSAType, LSAHeader as RouterLSAHeader};
 use crate::protocol::{ProtocolPacket, PacketEvent};
+use crate::ospf_checksum::verify_lsa_checksum;
 use crate::console_log;
 
 /// Database Description Exchange State
@@ -289,8 +290,14 @@ impl OSPFPacketProcessor {
                 data: lsa.data.clone(),
             };
             
-            updated_lsas.push(router_lsa);
-            ack_headers.push(lsa.header.clone());
+            // Verify checksum before processing
+            if verify_lsa_checksum(&router_lsa) {
+                updated_lsas.push(router_lsa);
+                ack_headers.push(lsa.header.clone());
+            } else {
+                console_log!("Router {} rejected LSA from {} due to checksum mismatch", 
+                    self.router_id, from_router_id);
+            }
         }
         
         // Check if we can move to Full state

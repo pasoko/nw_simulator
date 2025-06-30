@@ -288,7 +288,7 @@ impl NetworkSimulation {
         // Update all OSPF engines' time after processing events
         let mut ospf_events = Vec::new();
         for (_router_id, engine) in self.ospf_engines.iter_mut() {
-            let events = engine.update_time(self.simulation_time);
+            let events = engine.update_time(target_time);
             if !events.is_empty() {
                 console_log!("Router {} generated {} events from timer processing", _router_id, events.len());
             }
