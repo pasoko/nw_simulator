@@ -22,6 +22,7 @@ pub struct OSPFEngine {
     router_id: String,
     area_id: String,
     current_time: f64,
+    spf_calculation_pending: bool,  // RFC 2328 Section 16.1 - Track if SPF is scheduled
     
     // Specialized components
     neighbor_manager: OSPFNeighborManager,
@@ -43,6 +44,7 @@ impl OSPFEngine {
             router_id,
             area_id,
             current_time: 0.0,
+            spf_calculation_pending: false,
         }
     }
     
@@ -114,6 +116,12 @@ impl OSPFEngine {
                         // Restart the DD retransmission timer
                         self.timer_manager.start_dd_retransmission_timer(neighbor_id);
                     }
+                }
+                OSPFTimerEvent::SPFDelay => {
+                    console_log!("Router {} SPF delay timer expired, calculation can proceed", 
+                        self.router_id);
+                    self.spf_calculation_pending = false;
+                    // The actual SPF calculation will be triggered by the simulation layer
                 }
             }
         }
@@ -536,6 +544,21 @@ impl OSPFEngine {
     
     pub fn get_area_id(&self) -> &str {
         &self.area_id
+    }
+    
+    pub fn request_spf_calculation(&mut self) {
+        // RFC 2328 Section 16.1 - Delay SPF calculation to avoid CPU overload
+        if !self.spf_calculation_pending {
+            console_log!("Router {} requesting SPF calculation with delay", self.router_id);
+            self.spf_calculation_pending = true;
+            self.timer_manager.start_spf_delay_timer();
+        } else {
+            console_log!("Router {} SPF calculation already pending", self.router_id);
+        }
+    }
+    
+    pub fn is_spf_pending(&self) -> bool {
+        self.spf_calculation_pending
     }
     
     pub fn flood_lsa_except(&self, lsa: &RouterLSA, except_neighbor: u32) -> Vec<PacketEvent> {
