@@ -3,6 +3,7 @@ use wasm_bindgen::prelude::*;
 
 mod router;
 mod network;
+mod network_type;
 mod ospf;
 mod protocol;
 mod simulation;
@@ -12,6 +13,7 @@ mod ospf_lsa_manager;
 mod ospf_packet_processor;
 mod ospf_timer;
 mod ospf_checksum;
+mod ospf_dr_election;
 mod event_manager;
 mod failure_manager;
 mod route_calculator;

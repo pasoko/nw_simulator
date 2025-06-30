@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
 use crate::router::{RouterState, RouterInterface};
+use crate::network_type::OSPFNetworkType;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NetworkLink {
@@ -13,6 +14,7 @@ pub struct NetworkLink {
     pub bandwidth: u64,
     pub delay: u32,
     pub is_failed: bool,
+    pub network_type: OSPFNetworkType,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,6 +51,16 @@ impl NetworkTopology {
         router2_id: u32,
         cost: u32,
     ) -> Result<u32, String> {
+        self.connect_routers_with_type(router1_id, router2_id, cost, None)
+    }
+    
+    pub fn connect_routers_with_type(
+        &mut self,
+        router1_id: u32,
+        router2_id: u32,
+        cost: u32,
+        network_type: Option<OSPFNetworkType>,
+    ) -> Result<u32, String> {
         if !self.routers.contains_key(&router1_id) {
             return Err(format!("Router {} not found", router1_id));
         }
@@ -64,10 +76,25 @@ impl NetworkTopology {
         let interface2_id = self.next_interface_id;
         self.next_interface_id += 1;
 
+        // Determine network type
+        let net_type = network_type.unwrap_or_else(|| {
+            // Auto-detect: if exactly 2 routers connected, use Point-to-Point
+            let router1_links = self.get_neighbors(router1_id).len();
+            let router2_links = self.get_neighbors(router2_id).len();
+            
+            if router1_links == 0 && router2_links == 0 {
+                OSPFNetworkType::PointToPoint
+            } else {
+                OSPFNetworkType::default() // Point-to-Multipoint
+            }
+        });
+        
+        let netmask = net_type.default_network_mask();
+        
         let interface1 = RouterInterface {
             id: interface1_id,
             ip_address: format!("10.0.{}.1", link_id),
-            netmask: "255.255.255.252".to_string(),
+            netmask: netmask.to_string(),
             connected_router_id: Some(router2_id),
             cost,
             enabled: true,
@@ -76,7 +103,7 @@ impl NetworkTopology {
         let interface2 = RouterInterface {
             id: interface2_id,
             ip_address: format!("10.0.{}.2", link_id),
-            netmask: "255.255.255.252".to_string(),
+            netmask: netmask.to_string(),
             connected_router_id: Some(router1_id),
             cost,
             enabled: true,
@@ -100,6 +127,7 @@ impl NetworkTopology {
             bandwidth: 100_000_000,
             delay: 10,
             is_failed: false,
+            network_type: net_type,
         };
 
         self.links.insert(link_id, link);
