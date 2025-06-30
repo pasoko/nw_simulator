@@ -9,6 +9,8 @@ use crate::ospf_lsa_manager::OSPFLSAManager;
 use crate::ospf_packet_processor::OSPFPacketProcessor;
 use crate::ospf_timer::{OSPFTimerManager, OSPFTimerEvent};
 use crate::ospf_checksum::verify_lsa_checksum;
+use crate::ospf_dr_election::{DRElectionManager, DRElectionCandidate};
+use crate::network_type::OSPFNetworkType;
 use crate::console_log;
 
 /// Refactored OSPF Engine
@@ -18,6 +20,7 @@ use crate::console_log;
 /// - OSPFLSAManager: LSA database management
 /// - OSPFPacketProcessor: Packet processing
 /// - OSPFTimerManager: Timer management
+/// - DRElectionManager: DR/BDR election management
 pub struct OSPFEngine {
     router_id: String,
     area_id: String,
@@ -29,6 +32,7 @@ pub struct OSPFEngine {
     lsa_manager: OSPFLSAManager,
     packet_processor: OSPFPacketProcessor,
     timer_manager: OSPFTimerManager,
+    dr_election_managers: HashMap<u32, DRElectionManager>,  // Per-interface DR election
 }
 
 impl OSPFEngine {
@@ -45,6 +49,7 @@ impl OSPFEngine {
             area_id,
             current_time: 0.0,
             spf_calculation_pending: false,
+            dr_election_managers: HashMap::new(),
         }
     }
     
@@ -217,6 +222,33 @@ impl OSPFEngine {
                     if !hello_neighbors.contains(&self.router_id) {
                         console_log!("Warning: Router {} not in neighbor {}'s hello packet while in state {:?}", 
                             self.router_id, from_router_id, current_state);
+                    }
+                }
+            }
+            
+            // Run DR election if interface supports it
+            if let Some(dr_manager) = self.dr_election_managers.get(&interface_id) {
+                if dr_manager.is_election_required() {
+                    // Collect Hello packets from neighbors on this interface
+                    let mut interface_neighbors = Vec::new();
+                    
+                    // Get all neighbors on this interface that have sent Hello packets
+                    // For now, only include the current Hello packet sender
+                    // TODO: Store Hello packets from all neighbors on this interface
+                    interface_neighbors.push((from_router_id, packet.clone()));
+                    
+                    // Run DR election with collected neighbors
+                    let election_changed = self.run_dr_election(interface_id, interface_neighbors);
+                    
+                    if election_changed {
+                        console_log!("Router {} DR election changed on interface {}, may need to regenerate LSA", 
+                            self.router_id, interface_id);
+                        
+                        // If DR/BDR changed, we may need to regenerate LSAs
+                        if self.lsa_manager.needs_lsa_regeneration() {
+                            let regen_events = self.regenerate_router_lsa();
+                            events.extend(regen_events);
+                        }
                     }
                 }
             }
@@ -443,7 +475,8 @@ impl OSPFEngine {
     
     pub fn generate_hello_packet(&self) -> HelloPacket {
         let active_neighbors = self.neighbor_manager.get_all_active_neighbors();
-        self.packet_processor.generate_hello_packet(&active_neighbors)
+        // For compatibility, return default DR/BDR values when interface is not specified
+        self.packet_processor.generate_hello_packet(&active_neighbors, "0.0.0.0".to_string(), "0.0.0.0".to_string())
     }
     
     pub fn add_router_link(&mut self, neighbor_id: u32, interface_id: u32, cost: u32) {
@@ -650,11 +683,17 @@ impl OSPFEngine {
             return events;
         }
         
-        // Generate Hello packet with current active neighbor list
-        let hello_packet = self.generate_hello_packet();
+        // Get active neighbors for Hello packet
+        let active_neighbors = self.neighbor_manager.get_all_active_neighbors();
         
         // Create Hello packet event for each physical neighbor
-        for (neighbor_id, _interface_id, _cost) in router_links {
+        for (neighbor_id, interface_id, _cost) in router_links {
+            // Get DR/BDR for this interface
+            let (dr, bdr) = self.get_interface_dr_bdr(*interface_id);
+            
+            // Generate interface-specific Hello packet
+            let hello_packet = self.packet_processor.generate_hello_packet(&active_neighbors, dr, bdr);
+            
             let packet = ProtocolPacket::OSPF(OSPFPacket {
                 version: 2,
                 packet_type: OSPFPacketType::Hello,
@@ -663,7 +702,7 @@ impl OSPFEngine {
                 checksum: 0,
                 auth_type: 0,
                 authentication: 0,
-                data: OSPFPacketData::Hello(hello_packet.clone()),
+                data: OSPFPacketData::Hello(hello_packet),
             });
             
             let event = PacketEvent {
@@ -680,6 +719,79 @@ impl OSPFEngine {
             self.router_id, events.len(), 
             router_links.iter().map(|(id, _, _)| id).collect::<Vec<_>>());
         events
+    }
+    
+    /// Initialize DR election manager for an interface
+    pub fn initialize_interface_dr_election(&mut self, interface_id: u32, network_type: OSPFNetworkType, priority: u8) {
+        if !self.dr_election_managers.contains_key(&interface_id) {
+            let dr_manager = DRElectionManager::new(self.router_id.clone(), priority, network_type);
+            self.dr_election_managers.insert(interface_id, dr_manager);
+            console_log!("Router {} initialized DR election for interface {} with network type {:?}", 
+                self.router_id, interface_id, network_type);
+        }
+    }
+    
+    /// Run DR/BDR election for an interface
+    pub fn run_dr_election(&mut self, interface_id: u32, neighbors: Vec<(u32, HelloPacket)>) -> bool {
+        if let Some(dr_manager) = self.dr_election_managers.get_mut(&interface_id) {
+            if !dr_manager.is_election_required() {
+                return false;
+            }
+            
+            // Build candidate list including ourselves
+            let mut candidates = vec![
+                DRElectionCandidate {
+                    router_id: self.router_id.clone(),
+                    router_priority: dr_manager.get_priority(),
+                    current_dr: dr_manager.get_dr().to_string(),
+                    current_bdr: dr_manager.get_bdr().to_string(),
+                    interface_ip: format!("10.0.{}.1", interface_id), // Simplified IP
+                }
+            ];
+            
+            // Add neighbors to candidate list
+            for (neighbor_id, hello) in neighbors {
+                candidates.push(DRElectionCandidate {
+                    router_id: format!("1.1.1.{}", neighbor_id),
+                    router_priority: hello.router_priority,
+                    current_dr: hello.designated_router.clone(),
+                    current_bdr: hello.backup_designated_router.clone(),
+                    interface_ip: format!("10.0.{}.{}", interface_id, neighbor_id),
+                });
+            }
+            
+            let (changed, new_dr, new_bdr) = dr_manager.run_election(candidates);
+            
+            if changed {
+                console_log!("Router {} DR election changed on interface {}: DR={}, BDR={}", 
+                    self.router_id, interface_id, new_dr, new_bdr);
+                
+                // If we became DR or BDR, regenerate LSAs immediately
+                if dr_manager.is_dr() || dr_manager.is_bdr() {
+                    console_log!("Router {} became DR/BDR on interface {}, LSA regeneration needed", 
+                        self.router_id, interface_id);
+                    // LSA regeneration will be handled by the caller after DR election
+                }
+            }
+            
+            changed
+        } else {
+            false
+        }
+    }
+    
+    /// Get DR/BDR for an interface
+    pub fn get_interface_dr_bdr(&self, interface_id: u32) -> (String, String) {
+        if let Some(dr_manager) = self.dr_election_managers.get(&interface_id) {
+            (dr_manager.get_dr().to_string(), dr_manager.get_bdr().to_string())
+        } else {
+            ("0.0.0.0".to_string(), "0.0.0.0".to_string())
+        }
+    }
+    
+    /// Get all interface IDs with DR election
+    pub fn get_dr_election_interfaces(&self) -> Vec<u32> {
+        self.dr_election_managers.keys().cloned().collect()
     }
 }
 

@@ -194,12 +194,16 @@ impl NetworkSimulation {
         let router_ip = format!("{}.{}.{}.{}", 1, 1, 1, router_id);
         let mut ospf_engine = OSPFEngine::new(router_ip.clone(), "0.0.0.0".to_string());
         
-        // Add router links to OSPF engine
+        // Add router links to OSPF engine and initialize DR election
         for link in self.topology.links.values() {
             if link.router1_id == router_id {
                 ospf_engine.add_router_link(link.router2_id, link.router1_interface_id, link.cost);
+                // Initialize DR election for this interface
+                ospf_engine.initialize_interface_dr_election(link.router1_interface_id, link.network_type.clone(), 1);
             } else if link.router2_id == router_id {
                 ospf_engine.add_router_link(link.router1_id, link.router2_interface_id, link.cost);
+                // Initialize DR election for this interface
+                ospf_engine.initialize_interface_dr_election(link.router2_interface_id, link.network_type.clone(), 1);
             }
         }
         
@@ -699,6 +703,11 @@ impl NetworkSimulation {
                 }
             }
         }
+    }
+    
+    #[cfg(test)]
+    pub fn get_ospf_engine(&self, router_id: u32) -> Option<&OSPFEngine> {
+        self.ospf_engines.get(&router_id)
     }
 }
 

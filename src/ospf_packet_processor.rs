@@ -51,14 +51,14 @@ impl OSPFPacketProcessor {
         }
     }
     
-    pub fn generate_hello_packet(&self, active_neighbors: &[String]) -> HelloPacket {
+    pub fn generate_hello_packet(&self, active_neighbors: &[String], dr: String, bdr: String) -> HelloPacket {
         // Only log if we have neighbors or every 10th time to reduce log spam
         static mut HELLO_LOG_COUNT: u32 = 0;
         unsafe {
             HELLO_LOG_COUNT = (HELLO_LOG_COUNT + 1) % 10;
             if !active_neighbors.is_empty() || HELLO_LOG_COUNT == 0 {
-                console_log!("Router {} generating Hello packet with {} neighbors: {:?}", 
-                    self.router_id, active_neighbors.len(), active_neighbors);
+                console_log!("Router {} generating Hello packet with {} neighbors: {:?}, DR={}, BDR={}", 
+                    self.router_id, active_neighbors.len(), active_neighbors, dr, bdr);
             }
         }
         
@@ -68,8 +68,8 @@ impl OSPFPacketProcessor {
             options: 0x02, // E-bit set
             router_priority: 1,
             router_dead_interval: self.dead_interval,
-            designated_router: "0.0.0.0".to_string(),
-            backup_designated_router: "0.0.0.0".to_string(),
+            designated_router: dr,
+            backup_designated_router: bdr,
             neighbors: active_neighbors.to_vec(),
         }
     }
