@@ -78,14 +78,16 @@ impl NetworkTopology {
 
         // Determine network type
         let net_type = network_type.unwrap_or_else(|| {
-            // Auto-detect: if exactly 2 routers connected, use Point-to-Point
+            // Auto-detect: if exactly 2 routers with no other connections, use Point-to-Point
             let router1_links = self.get_neighbors(router1_id).len();
             let router2_links = self.get_neighbors(router2_id).len();
             
             if router1_links == 0 && router2_links == 0 {
+                // Only these two routers connected to each other
                 OSPFNetworkType::PointToPoint
             } else {
-                OSPFNetworkType::default() // Point-to-Multipoint
+                // Multiple routers, use Broadcast (default)
+                OSPFNetworkType::default()
             }
         });
         

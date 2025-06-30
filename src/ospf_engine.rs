@@ -173,9 +173,37 @@ impl OSPFEngine {
                         &self.router_id
                     );
                     
+                    // Check for TwoWay state to trigger DR election
+                    if state_changed {
+                        if let Some(OSPFNeighborState::TwoWay) = self.neighbor_manager.get_neighbor_state(from_router_id) {
+                            console_log!("Router {} neighbor {} reached TwoWay state, checking DR election", 
+                                self.router_id, from_router_id);
+                            
+                            // Run DR election for this interface if required
+                            if let Some(dr_manager) = self.dr_election_managers.get(&interface_id) {
+                                if dr_manager.is_election_required() {
+                                    console_log!("Router {} running DR election on interface {} due to TwoWay state", 
+                                        self.router_id, interface_id);
+                                    
+                                    // Collect Hello packets from neighbors on this interface
+                                    let mut interface_neighbors = Vec::new();
+                                    interface_neighbors.push((from_router_id, packet.clone()));
+                                    
+                                    // Run DR election with collected neighbors
+                                    let election_changed = self.run_dr_election(interface_id, interface_neighbors);
+                                    
+                                    if election_changed {
+                                        console_log!("Router {} DR election changed on interface {} in TwoWay state", 
+                                            self.router_id, interface_id);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
                     // Check if should form adjacency
                     if state_changed && self.neighbor_manager.should_form_adjacency(from_router_id) {
-                        console_log!("Router {} neighbor {} is in TwoWay state, starting adjacency formation", 
+                        console_log!("Router {} neighbor {} is ready for adjacency formation", 
                             self.router_id, from_router_id);
                         if self.neighbor_manager.start_adjacency(from_router_id) {
                             console_log!("Router {} neighbor {} moved to ExStart", 
@@ -222,33 +250,6 @@ impl OSPFEngine {
                     if !hello_neighbors.contains(&self.router_id) {
                         console_log!("Warning: Router {} not in neighbor {}'s hello packet while in state {:?}", 
                             self.router_id, from_router_id, current_state);
-                    }
-                }
-            }
-            
-            // Run DR election if interface supports it
-            if let Some(dr_manager) = self.dr_election_managers.get(&interface_id) {
-                if dr_manager.is_election_required() {
-                    // Collect Hello packets from neighbors on this interface
-                    let mut interface_neighbors = Vec::new();
-                    
-                    // Get all neighbors on this interface that have sent Hello packets
-                    // For now, only include the current Hello packet sender
-                    // TODO: Store Hello packets from all neighbors on this interface
-                    interface_neighbors.push((from_router_id, packet.clone()));
-                    
-                    // Run DR election with collected neighbors
-                    let election_changed = self.run_dr_election(interface_id, interface_neighbors);
-                    
-                    if election_changed {
-                        console_log!("Router {} DR election changed on interface {}, may need to regenerate LSA", 
-                            self.router_id, interface_id);
-                        
-                        // If DR/BDR changed, we may need to regenerate LSAs
-                        if self.lsa_manager.needs_lsa_regeneration() {
-                            let regen_events = self.regenerate_router_lsa();
-                            events.extend(regen_events);
-                        }
                     }
                 }
             }
@@ -476,7 +477,8 @@ impl OSPFEngine {
     pub fn generate_hello_packet(&self) -> HelloPacket {
         let active_neighbors = self.neighbor_manager.get_all_active_neighbors();
         // For compatibility, return default DR/BDR values when interface is not specified
-        self.packet_processor.generate_hello_packet(&active_neighbors, "0.0.0.0".to_string(), "0.0.0.0".to_string())
+        // Use broadcast network mask as default
+        self.packet_processor.generate_hello_packet(&active_neighbors, "0.0.0.0".to_string(), "0.0.0.0".to_string(), "255.255.255.0".to_string())
     }
     
     pub fn add_router_link(&mut self, neighbor_id: u32, interface_id: u32, cost: u32) {
@@ -691,8 +693,21 @@ impl OSPFEngine {
             // Get DR/BDR for this interface
             let (dr, bdr) = self.get_interface_dr_bdr(*interface_id);
             
+            // Get network mask for this interface
+            let network_mask = if let Some(dr_manager) = self.dr_election_managers.get(interface_id) {
+                // Get mask based on network type
+                match dr_manager.get_network_type() {
+                    OSPFNetworkType::PointToPoint => "255.255.255.252",
+                    OSPFNetworkType::Broadcast => "255.255.255.0",
+                    OSPFNetworkType::NBMA => "255.255.255.0",
+                    OSPFNetworkType::PointToMultipoint => "255.255.255.0",
+                }.to_string()
+            } else {
+                "255.255.255.0".to_string() // Default broadcast mask
+            };
+            
             // Generate interface-specific Hello packet
-            let hello_packet = self.packet_processor.generate_hello_packet(&active_neighbors, dr, bdr);
+            let hello_packet = self.packet_processor.generate_hello_packet(&active_neighbors, dr, bdr, network_mask);
             
             let packet = ProtocolPacket::OSPF(OSPFPacket {
                 version: 2,

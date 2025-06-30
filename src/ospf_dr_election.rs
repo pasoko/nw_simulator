@@ -162,6 +162,11 @@ impl DRElectionManager {
     pub fn is_bdr(&self) -> bool {
         self.backup_designated_router == self.router_id && self.backup_designated_router != "0.0.0.0"
     }
+    
+    /// Get the network type for this interface
+    pub fn get_network_type(&self) -> OSPFNetworkType {
+        self.network_type.clone()
+    }
 }
 
 #[cfg(test)]

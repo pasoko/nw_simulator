@@ -26,8 +26,8 @@ pub enum OSPFNetworkType {
 
 impl Default for OSPFNetworkType {
     fn default() -> Self {
-        // Default to Point-to-Multipoint for current behavior
-        OSPFNetworkType::PointToMultipoint
+        // Default to Broadcast for DR/BDR election
+        OSPFNetworkType::Broadcast
     }
 }
 

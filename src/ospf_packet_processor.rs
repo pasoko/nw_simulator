@@ -51,19 +51,19 @@ impl OSPFPacketProcessor {
         }
     }
     
-    pub fn generate_hello_packet(&self, active_neighbors: &[String], dr: String, bdr: String) -> HelloPacket {
+    pub fn generate_hello_packet(&self, active_neighbors: &[String], dr: String, bdr: String, network_mask: String) -> HelloPacket {
         // Only log if we have neighbors or every 10th time to reduce log spam
         static mut HELLO_LOG_COUNT: u32 = 0;
         unsafe {
             HELLO_LOG_COUNT = (HELLO_LOG_COUNT + 1) % 10;
             if !active_neighbors.is_empty() || HELLO_LOG_COUNT == 0 {
-                console_log!("Router {} generating Hello packet with {} neighbors: {:?}, DR={}, BDR={}", 
-                    self.router_id, active_neighbors.len(), active_neighbors, dr, bdr);
+                console_log!("Router {} generating Hello packet with {} neighbors: {:?}, DR={}, BDR={}, Mask={}", 
+                    self.router_id, active_neighbors.len(), active_neighbors, dr, bdr, network_mask);
             }
         }
         
         HelloPacket {
-            network_mask: "255.255.255.252".to_string(),
+            network_mask,
             hello_interval: self.hello_interval,
             options: 0x02, // E-bit set
             router_priority: 1,
