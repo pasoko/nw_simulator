@@ -22,6 +22,18 @@ mod serialization;
 #[cfg(test)]
 mod ospf_test;
 
+#[cfg(test)]
+mod ospf_dd_retransmit_test;
+
+#[cfg(test)]
+mod ospf_dd_retransmit_simple_test;
+
+#[cfg(test)]
+mod ospf_area_test;
+
+#[cfg(test)]
+mod ospf_spf_delay_test;
+
 use simulation::NetworkSimulation;
 use ui_state::UIState;
 use serialization::SerializationHelper;
@@ -34,7 +46,10 @@ extern "C" {
 
 // Public wrapper for the external log function
 pub fn console_log_impl(s: &str) {
+    #[cfg(target_arch = "wasm32")]
     log(s);
+    #[cfg(not(target_arch = "wasm32"))]
+    println!("{}", s);
 }
 
 #[macro_export]

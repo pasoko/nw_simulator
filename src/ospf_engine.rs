@@ -22,6 +22,7 @@ pub struct OSPFEngine {
     router_id: String,
     area_id: String,
     current_time: f64,
+    spf_calculation_pending: bool,  // RFC 2328 Section 16.1 - Track if SPF is scheduled
     
     // Specialized components
     neighbor_manager: OSPFNeighborManager,
@@ -43,6 +44,7 @@ impl OSPFEngine {
             router_id,
             area_id,
             current_time: 0.0,
+            spf_calculation_pending: false,
         }
     }
     
@@ -101,6 +103,25 @@ impl OSPFEngine {
                     console_log!("Router {} retransmission timer expired for neighbor {}", 
                         self.router_id, neighbor_id);
                     // Handle retransmission logic
+                }
+                OSPFTimerEvent::DDRetransmissionTimer(neighbor_id) => {
+                    console_log!("Router {} DD retransmission timer expired for neighbor {}", 
+                        self.router_id, neighbor_id);
+                    // Handle DD retransmission as per RFC 2328 Section 10.8
+                    if let Some(dd_packet) = self.packet_processor.get_last_dd_packet(neighbor_id) {
+                        console_log!("Router {} retransmitting DD packet to neighbor {}", 
+                            self.router_id, neighbor_id);
+                        let event = self.packet_processor.create_dd_retransmit_event(neighbor_id, dd_packet);
+                        events.push(event);
+                        // Restart the DD retransmission timer
+                        self.timer_manager.start_dd_retransmission_timer(neighbor_id);
+                    }
+                }
+                OSPFTimerEvent::SPFDelay => {
+                    console_log!("Router {} SPF delay timer expired, calculation can proceed", 
+                        self.router_id);
+                    self.spf_calculation_pending = false;
+                    // The actual SPF calculation will be triggered by the simulation layer
                 }
             }
         }
@@ -164,10 +185,18 @@ impl OSPFEngine {
                             }
                             
                             // Send Database Description packet
-                            events.push(self.packet_processor.create_dd_packet_event(
+                            let dd_event = self.packet_processor.create_dd_packet_event(
                                 from_router_id, 
                                 self.lsa_manager.get_lsa_database()
-                            ));
+                            );
+                            events.push(dd_event);
+                            
+                            // Start DD retransmission timer (RFC 2328 Section 10.8)
+                            if self.packet_processor.should_start_dd_retransmit(from_router_id) {
+                                self.timer_manager.start_dd_retransmission_timer(from_router_id);
+                                console_log!("Router {} started DD retransmission timer for neighbor {}", 
+                                    self.router_id, from_router_id);
+                            }
                         }
                     }
                 }
@@ -196,6 +225,11 @@ impl OSPFEngine {
                 from_router_id, 
                 current_state
             );
+            
+            // Stop DD retransmission timer if we received acknowledgment
+            if !self.packet_processor.should_start_dd_retransmit(from_router_id) {
+                self.timer_manager.stop_dd_retransmission_timer(from_router_id);
+            }
             
             // Update neighbor state if needed
             if let Some(state) = new_state {
@@ -240,10 +274,16 @@ impl OSPFEngine {
             
             // Send DD packet if needed
             if should_send_dd {
-                events.push(self.packet_processor.create_dd_packet_event(
+                let dd_event = self.packet_processor.create_dd_packet_event(
                     from_router_id, 
                     self.lsa_manager.get_lsa_database()
-                ));
+                );
+                events.push(dd_event);
+                
+                // Start DD retransmission timer if sending new DD packet
+                if self.packet_processor.should_start_dd_retransmit(from_router_id) {
+                    self.timer_manager.start_dd_retransmission_timer(from_router_id);
+                }
             }
         }
         
@@ -500,6 +540,25 @@ impl OSPFEngine {
     
     pub fn get_router_links(&self) -> &Vec<(u32, u32, u32)> {
         self.lsa_manager.get_router_links()
+    }
+    
+    pub fn get_area_id(&self) -> &str {
+        &self.area_id
+    }
+    
+    pub fn request_spf_calculation(&mut self) {
+        // RFC 2328 Section 16.1 - Delay SPF calculation to avoid CPU overload
+        if !self.spf_calculation_pending {
+            console_log!("Router {} requesting SPF calculation with delay", self.router_id);
+            self.spf_calculation_pending = true;
+            self.timer_manager.start_spf_delay_timer();
+        } else {
+            console_log!("Router {} SPF calculation already pending", self.router_id);
+        }
+    }
+    
+    pub fn is_spf_pending(&self) -> bool {
+        self.spf_calculation_pending
     }
     
     pub fn flood_lsa_except(&self, lsa: &RouterLSA, except_neighbor: u32) -> Vec<PacketEvent> {
