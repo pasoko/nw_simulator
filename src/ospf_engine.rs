@@ -107,6 +107,18 @@ impl OSPFEngine {
                 OSPFTimerEvent::DDRetransmissionTimer(neighbor_id) => {
                     console_log!("Router {} DD retransmission timer expired for neighbor {}", 
                         self.router_id, neighbor_id);
+                    
+                    // Check if neighbor is in Full state - if so, ignore DD retransmission
+                    if let Some(neighbor_state) = self.neighbor_manager.get_neighbor_state(neighbor_id) {
+                        if neighbor_state == OSPFNeighborState::Full {
+                            console_log!("Router {} ignoring DD retransmission for neighbor {} in Full state", 
+                                self.router_id, neighbor_id);
+                            // Stop the timer to prevent further retransmissions
+                            self.timer_manager.stop_dd_retransmission_timer(neighbor_id);
+                            continue;
+                        }
+                    }
+                    
                     // Handle DD retransmission as per RFC 2328 Section 10.8
                     if let Some(dd_packet) = self.packet_processor.get_last_dd_packet(neighbor_id) {
                         console_log!("Router {} retransmitting DD packet to neighbor {}", 
@@ -240,6 +252,11 @@ impl OSPFEngine {
                         console_log!("Router {} neighbor {} reached Full state", 
                             self.router_id, from_router_id);
                         
+                        // Stop DD retransmission timer when reaching Full state
+                        self.timer_manager.stop_dd_retransmission_timer(from_router_id);
+                        console_log!("Router {} stopped DD retransmission timer for neighbor {} (Full state)", 
+                            self.router_id, from_router_id);
+                        
                         // When first neighbor reaches Full state, flood our LSA
                         let full_neighbor_count = self.neighbor_manager.get_neighbors_in_state(OSPFNeighborState::Full).len();
                         console_log!("Router {} now has {} Full neighbors", self.router_id, full_neighbor_count);
@@ -370,6 +387,11 @@ impl OSPFEngine {
             self.neighbor_manager.update_neighbor_state(from_router_id, OSPFNeighborState::Full);
             
             console_log!("Router {} neighbor {} reached Full state via LSU", 
+                self.router_id, from_router_id);
+            
+            // Stop DD retransmission timer when reaching Full state
+            self.timer_manager.stop_dd_retransmission_timer(from_router_id);
+            console_log!("Router {} stopped DD retransmission timer for neighbor {} (Full state via LSU)", 
                 self.router_id, from_router_id);
             
             // Don't regenerate LSA just because a neighbor reached Full state

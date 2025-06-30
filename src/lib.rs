@@ -34,6 +34,9 @@ mod ospf_area_test;
 #[cfg(test)]
 mod ospf_spf_delay_test;
 
+#[cfg(test)]
+mod ospf_dd_full_state_test;
+
 use simulation::NetworkSimulation;
 use ui_state::UIState;
 use serialization::SerializationHelper;
