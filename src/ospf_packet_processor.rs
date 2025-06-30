@@ -18,6 +18,9 @@ pub struct DDExchangeState {
     pub dd_exchange_done: bool,
     pub dd_exchange_count: u32,  // Track number of DD packets exchanged
     pub dd_exchange_start_time: f64,  // Track when DD exchange started
+    pub last_sent_dd_packet: Option<DatabaseDescriptionPacket>,  // For retransmission
+    pub dd_retransmit_count: u32,  // Number of retransmissions
+    pub awaiting_ack: bool,  // True if waiting for acknowledgment
 }
 
 /// OSPF Packet Processing
@@ -126,6 +129,9 @@ impl OSPFPacketProcessor {
                         dd_exchange_done: false,
                         dd_exchange_count: 0,
                         dd_exchange_start_time: 0.0,  // Should be set by caller
+                        last_sent_dd_packet: None,
+                        dd_retransmit_count: 0,
+                        awaiting_ack: false,
                     };
                     self.neighbor_dd_state.insert(from_router_id, dd_state);
                 }
@@ -158,6 +164,24 @@ impl OSPFPacketProcessor {
                     
                     // Update last received sequence number
                     dd_state.last_received_dd_seq = packet.dd_sequence_number;
+                    
+                    // Check if this packet acknowledges our last sent DD
+                    if dd_state.awaiting_ack {
+                        if dd_state.is_master {
+                            // Master: slave should echo our sequence number
+                            if packet.dd_sequence_number == dd_state.dd_seq_num {
+                                console_log!("Router {} received DD acknowledgment from {}", 
+                                    self.router_id, from_router_id);
+                                dd_state.awaiting_ack = false;
+                                // Acknowledgment received - stop retransmission
+                            }
+                        } else {
+                            // Slave: receiving new sequence number is acknowledgment
+                            console_log!("Router {} (slave) received next DD from {} (acknowledgment)", 
+                                self.router_id, from_router_id);
+                            dd_state.awaiting_ack = false;
+                        }
+                    }
                     
                     // Process received LSA headers
                     for lsa_header in &packet.lsa_headers {
@@ -319,7 +343,7 @@ impl OSPFPacketProcessor {
         (updated_lsas, ack_headers, neighbor_to_full)
     }
     
-    pub fn create_dd_packet_event(&mut self, to_router_id: u32, lsa_database: &HashMap<String, crate::router::LSA>) -> PacketEvent {
+    pub fn create_dd_packet_event(&mut self, to_router_id: u32, lsa_database: &HashMap<String, crate::router::LSA>) -> (PacketEvent, bool) {
         let mut flags = 0u8;
         let dd_seq_num;
         let mut lsa_headers_to_send = Vec::new();
@@ -341,6 +365,9 @@ impl OSPFPacketProcessor {
                 dd_exchange_done: false,
                 dd_exchange_count: 0,
                 dd_exchange_start_time: 0.0,  // Should be set by caller
+                last_sent_dd_packet: None,
+                dd_retransmit_count: 0,
+                awaiting_ack: false,
             };
             self.neighbor_dd_state.insert(to_router_id, dd_state);
             
@@ -441,19 +468,32 @@ impl OSPFPacketProcessor {
             checksum: 0,
             auth_type: 0,
             authentication: 0,
-            data: OSPFPacketData::DatabaseDescription(dd_packet),
+            data: OSPFPacketData::DatabaseDescription(dd_packet.clone()),
         };
         
         let from_id = self.router_id.split('.').last()
             .and_then(|s| s.parse::<u32>().ok())
             .unwrap_or(1);
         
-        PacketEvent {
+        // Cache DD packet for retransmission if in ExStart or Exchange state
+        let should_start_retransmit = if let Some(dd_state) = self.neighbor_dd_state.get_mut(&to_router_id) {
+            dd_state.last_sent_dd_packet = Some(dd_packet);
+            dd_state.awaiting_ack = true;
+            dd_state.dd_retransmit_count = 0;
+            // Start retransmit timer for ExStart and Exchange states
+            true
+        } else {
+            false
+        };
+        
+        let event = PacketEvent {
             timestamp: 0.0,
             from_router_id: from_id,
             to_router_id,
             packet: ProtocolPacket::OSPF(ospf_packet),
-        }
+        };
+        
+        (event, should_start_retransmit)
     }
     
     pub fn create_lsr_packet_event(&self, to_router_id: u32, lsa_headers: &[RouterLSAHeader]) -> PacketEvent {
@@ -549,6 +589,50 @@ impl OSPFPacketProcessor {
             from_router_id: from_id,
             to_router_id,
             packet: ProtocolPacket::OSPF(ospf_packet),
+        }
+    }
+    
+    pub fn get_dd_for_retransmission(&mut self, neighbor_id: u32) -> Option<PacketEvent> {
+        if let Some(dd_state) = self.neighbor_dd_state.get_mut(&neighbor_id) {
+            if let Some(dd_packet) = &dd_state.last_sent_dd_packet {
+                if dd_state.awaiting_ack {
+                    dd_state.dd_retransmit_count += 1;
+                    console_log!("Router {} retransmitting DD to {} (attempt #{})", 
+                        self.router_id, neighbor_id, dd_state.dd_retransmit_count);
+                    
+                    // Create OSPF packet
+                    let ospf_packet = OSPFPacket {
+                        version: 2,
+                        packet_type: OSPFPacketType::DatabaseDescription,
+                        router_id: self.router_id.clone(),
+                        area_id: self.area_id.clone(),
+                        checksum: 0,
+                        auth_type: 0,
+                        authentication: 0,
+                        data: OSPFPacketData::DatabaseDescription(dd_packet.clone()),
+                    };
+                    
+                    let from_id = self.router_id.split('.').last()
+                        .and_then(|s| s.parse::<u32>().ok())
+                        .unwrap_or(1);
+                    
+                    return Some(PacketEvent {
+                        timestamp: 0.0,
+                        from_router_id: from_id,
+                        to_router_id: neighbor_id,
+                        packet: ProtocolPacket::OSPF(ospf_packet),
+                    });
+                }
+            }
+        }
+        None
+    }
+    
+    pub fn is_dd_acknowledged(&self, neighbor_id: u32) -> bool {
+        if let Some(dd_state) = self.neighbor_dd_state.get(&neighbor_id) {
+            !dd_state.awaiting_ack
+        } else {
+            true  // No DD state means no pending DD
         }
     }
 }

@@ -27,6 +27,7 @@ pub struct NetworkSimulation {
     failure_manager: FailureManager,
     route_calculator: RouteCalculator,
     ospf_engines: HashMap<u32, OSPFEngine>,
+    routers_needing_spf: Vec<u32>,  // Track routers with pending SPF calculations
 }
 
 impl NetworkSimulation {
@@ -40,6 +41,7 @@ impl NetworkSimulation {
             failure_manager: FailureManager::new(),
             route_calculator: RouteCalculator::new(),
             ospf_engines: HashMap::new(),
+            routers_needing_spf: Vec::new(),
         }
     }
 
@@ -174,13 +176,13 @@ impl NetworkSimulation {
                   (event.from_router_id == router2_id && event.to_router_id == router1_id))
             });
             
-            // Recalculate routes for affected routers
-            self.route_calculator.calculate_routes_for_router(
-                router1_id, &mut self.topology, &self.ospf_engines, &mut self.event_manager
-            );
-            self.route_calculator.calculate_routes_for_router(
-                router2_id, &mut self.topology, &self.ospf_engines, &mut self.event_manager
-            );
+            // Request delayed SPF calculation for affected routers
+            if let Some(engine1) = self.ospf_engines.get_mut(&router1_id) {
+                engine1.request_spf_calculation();
+            }
+            if let Some(engine2) = self.ospf_engines.get_mut(&router2_id) {
+                engine2.request_spf_calculation();
+            }
             
             self.event_manager.log_link_created(router1_id, router2_id, 0);
             true
@@ -287,18 +289,35 @@ impl NetworkSimulation {
         
         // Update all OSPF engines' time after processing events
         let mut ospf_events = Vec::new();
-        for (_router_id, engine) in self.ospf_engines.iter_mut() {
-            let events = engine.update_time(target_time);
+        for (router_id, engine) in self.ospf_engines.iter_mut() {
+            let (events, needs_spf) = engine.update_time(target_time);
             if !events.is_empty() {
-                console_log!("Router {} generated {} events from timer processing", _router_id, events.len());
+                console_log!("Router {} generated {} events from timer processing", router_id, events.len());
             }
             ospf_events.extend(events);
+            
+            // If SPF calculation is needed (timer expired), add to list
+            if needs_spf && !self.routers_needing_spf.contains(router_id) {
+                console_log!("Router {} SPF timer expired, scheduling SPF calculation", router_id);
+                self.routers_needing_spf.push(*router_id);
+            }
         }
         
         // Schedule OSPF timer events
         for mut event in ospf_events {
             event.timestamp = self.simulation_time + 0.1; // Small delay for packet processing
             self.protocol_engine.schedule_event(event);
+        }
+        
+        // Process routers that need SPF calculation (timer expired)
+        let routers_to_calculate = self.routers_needing_spf.clone();
+        self.routers_needing_spf.clear();
+        
+        for router_id in routers_to_calculate {
+            console_log!("Router {} running delayed SPF calculation", router_id);
+            self.route_calculator.calculate_routes_for_router(
+                router_id, &mut self.topology, &self.ospf_engines, &mut self.event_manager
+            );
         }
     }
     
@@ -517,6 +536,23 @@ impl NetworkSimulation {
     }
     
     fn process_ospf_packet(&mut self, packet: OSPFPacket, from_router_id: u32, to_router_id: u32) {
+        // Area ID validation (RFC 2328 Section 9.2)
+        // Must be done before any other processing
+        if let Some(engine) = self.ospf_engines.get(&to_router_id) {
+            if packet.area_id != engine.get_area_id() {
+                console_log!("Router {} discarding packet from {} - Area ID mismatch (packet: {}, interface: {})", 
+                    to_router_id, from_router_id, packet.area_id, engine.get_area_id());
+                self.event_manager.log_packet_discarded(
+                    to_router_id, from_router_id, 
+                    format!("Area ID mismatch - expected {} but got {}", engine.get_area_id(), packet.area_id)
+                );
+                return;
+            }
+        } else {
+            // No engine for this router - should not happen
+            return;
+        }
+        
         // Get interface ID before mutable borrow
         let interface_id = if matches!(&packet.data, OSPFPacketData::Hello(_)) {
             self.get_interface_id(from_router_id, to_router_id)
@@ -566,10 +602,10 @@ impl NetworkSimulation {
         // Trigger route calculation only for LinkStateUpdate packets
         // Don't calculate routes during DD exchange
         if matches!(&packet.data, OSPFPacketData::LinkStateUpdate(_)) && lsa_database_changed && lsa_count > 0 {
-            console_log!("Router {} LSA database changed due to LSU, running SPF calculation", to_router_id);
-            self.route_calculator.calculate_routes_for_router(
-                to_router_id, &mut self.topology, &self.ospf_engines, &mut self.event_manager
-            );
+            console_log!("Router {} LSA database changed due to LSU, requesting delayed SPF calculation", to_router_id);
+            if let Some(engine) = self.ospf_engines.get_mut(&to_router_id) {
+                engine.request_spf_calculation();
+            }
         }
         
         // Process neighbor state transitions
@@ -606,30 +642,31 @@ impl NetworkSimulation {
                 to_router_id, neighbor_id, prev_state_name, new_state_name
             );
             
-            // Recalculate routes when adjacency is established or lost
+            // Request delayed SPF calculation when adjacency is established or lost
             match new_state {
                 OSPFNeighborState::Full => {
-                    self.route_calculator.calculate_routes_for_router(
-                        to_router_id, &mut self.topology, &self.ospf_engines, &mut self.event_manager
-                    );
-                    self.route_calculator.calculate_routes_for_router(
-                        from_router_id, &mut self.topology, &self.ospf_engines, &mut self.event_manager
-                    );
+                    // Request SPF for routers involved in the new adjacency
+                    if let Some(engine) = self.ospf_engines.get_mut(&to_router_id) {
+                        engine.request_spf_calculation();
+                    }
+                    if let Some(engine) = self.ospf_engines.get_mut(&from_router_id) {
+                        engine.request_spf_calculation();
+                    }
                     
-                    // Trigger route calculation for all other OSPF routers
+                    // Request SPF for all other OSPF routers
                     let ospf_routers: Vec<u32> = self.ospf_engines.keys().cloned().collect();
                     for router_id in ospf_routers {
                         if router_id != to_router_id && router_id != from_router_id {
-                            self.route_calculator.calculate_routes_for_router(
-                                router_id, &mut self.topology, &self.ospf_engines, &mut self.event_manager
-                            );
+                            if let Some(engine) = self.ospf_engines.get_mut(&router_id) {
+                                engine.request_spf_calculation();
+                            }
                         }
                     }
                 }
                 OSPFNeighborState::Down => {
-                    self.route_calculator.calculate_routes_for_router(
-                        to_router_id, &mut self.topology, &self.ospf_engines, &mut self.event_manager
-                    );
+                    if let Some(engine) = self.ospf_engines.get_mut(&to_router_id) {
+                        engine.request_spf_calculation();
+                    }
                 }
                 _ => {}
             }

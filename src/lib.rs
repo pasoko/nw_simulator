@@ -22,6 +22,9 @@ mod serialization;
 #[cfg(test)]
 mod ospf_test;
 
+#[cfg(test)]
+mod ospf_area_test;
+
 use simulation::NetworkSimulation;
 use ui_state::UIState;
 use serialization::SerializationHelper;

@@ -8,6 +8,7 @@ pub enum OSPFTimerEvent {
     DeadTimer(u32),  // neighbor_id
     LSARefresh,
     RetransmissionTimer(u32), // neighbor_id
+    SPFDelay,  // Delay before SPF calculation
 }
 
 /// OSPF Timer Management
@@ -17,15 +18,18 @@ pub enum OSPFTimerEvent {
 /// - Dead timers for neighbors
 /// - LSA refresh timers
 /// - Retransmission timers
+/// - SPF delay timer
 pub struct OSPFTimerManager {
     router_id: String,
     hello_interval: f64,
     dead_interval: f64,
     lsa_refresh_interval: f64,
     retransmission_interval: f64,
+    spf_delay_interval: f64,
     
     next_hello_time: f64,
     next_lsa_refresh: f64,
+    next_spf_time: Option<f64>,
     neighbor_dead_times: HashMap<u32, f64>,
     neighbor_retransmission_times: HashMap<u32, f64>,
     
@@ -40,9 +44,11 @@ impl OSPFTimerManager {
             dead_interval: 40.0,
             lsa_refresh_interval: 1800.0, // 30 minutes
             retransmission_interval: 5.0,
+            spf_delay_interval: 5.0,  // RFC 2328 typical SPF delay
             
             next_hello_time: 0.0,
             next_lsa_refresh: 1800.0,
+            next_spf_time: None,
             neighbor_dead_times: HashMap::new(),
             neighbor_retransmission_times: HashMap::new(),
             
@@ -110,6 +116,29 @@ impl OSPFTimerManager {
             .filter(|(_, &retrans_time)| self.current_time >= retrans_time)
             .map(|(&neighbor_id, _)| neighbor_id)
             .collect()
+    }
+    
+    pub fn start_spf_delay_timer(&mut self) {
+        // Only start if not already scheduled
+        if self.next_spf_time.is_none() {
+            let spf_time = self.current_time + self.spf_delay_interval;
+            self.next_spf_time = Some(spf_time);
+            console_log!("Router {} scheduled SPF calculation at {:.1}s (delay: {}s)", 
+                self.router_id, spf_time, self.spf_delay_interval);
+        } else {
+            console_log!("Router {} SPF already scheduled, not rescheduling", self.router_id);
+        }
+    }
+    
+    pub fn cancel_spf_delay_timer(&mut self) {
+        if self.next_spf_time.is_some() {
+            self.next_spf_time = None;
+            console_log!("Router {} cancelled SPF delay timer", self.router_id);
+        }
+    }
+    
+    pub fn is_spf_scheduled(&self) -> bool {
+        self.next_spf_time.is_some()
     }
     
     pub fn is_lsa_refresh_due(&self) -> bool {
@@ -187,6 +216,16 @@ impl OSPFTimerManager {
         for neighbor_id in expired_retrans {
             expired_events.push(OSPFTimerEvent::RetransmissionTimer(neighbor_id));
             // Don't remove retransmission timer - it will be restarted
+        }
+        
+        // Check SPF delay timer
+        if let Some(spf_time) = self.next_spf_time {
+            if self.current_time >= spf_time {
+                console_log!("Router {} SPF delay timer expired at {:.1}s", 
+                    self.router_id, self.current_time);
+                expired_events.push(OSPFTimerEvent::SPFDelay);
+                self.next_spf_time = None;
+            }
         }
         
         expired_events
