@@ -1,0 +1,96 @@
+name: PR Checks
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  check-commits:
+    name: Check Commit Messages
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Check commit messages
+      run: |
+        # Get all commits in the PR
+        commits=$(git log --format="%s" origin/${{ github.base_ref }}..HEAD)
+        
+        # Check each commit message
+        echo "$commits" | while read -r commit; do
+          if [[ ! "$commit" =~ ^(feat|fix|docs|style|refactor|test|chore|build|ci|perf|revert)(\(.+\))?: ]]; then
+            echo "Error: Commit message doesn't follow conventional commits format:"
+            echo "  $commit"
+            echo ""
+            echo "Expected format: type(scope): description"
+            echo "Valid types: feat, fix, docs, style, refactor, test, chore, build, ci, perf, revert"
+            exit 1
+          fi
+        done
+
+  size-check:
+    name: Check PR Size
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Check PR size
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const { data: pr } = await github.rest.pulls.get({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            pull_number: context.issue.number
+          });
+          
+          if (pr.additions + pr.deletions > 1000) {
+            core.warning(`This PR contains ${pr.additions + pr.deletions} changes. Consider breaking it into smaller PRs.`);
+          }
+
+  test-coverage-diff:
+    name: Test Coverage Diff
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@stable
+    
+    - name: Install cargo-tarpaulin
+      run: cargo install cargo-tarpaulin
+    
+    - name: Generate base coverage
+      run: |
+        git checkout origin/${{ github.base_ref }}
+        cargo tarpaulin --out Json --output-dir base-coverage --all-features || true
+    
+    - name: Generate PR coverage
+      run: |
+        git checkout ${{ github.head_ref }}
+        cargo tarpaulin --out Json --output-dir pr-coverage --all-features
+    
+    - name: Compare coverage
+      run: |
+        # This is a placeholder - you would need a script to compare JSON files
+        echo "Coverage comparison would go here"
+      continue-on-error: true
+
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Run cargo audit
+      uses: actions-rs/audit-check@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}

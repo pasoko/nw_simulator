@@ -35,6 +35,8 @@ class ApplicationInitializer {
             // Create simulator instance
             console.log('Step 2: Creating simulator instance...');
             stateManager.simulator = new NetworkSimulator();
+            // Make simulator globally accessible for testing
+            window.networkSimulator = stateManager.simulator;
             console.log('✓ Simulator instance created successfully');
             
             // Setup canvas

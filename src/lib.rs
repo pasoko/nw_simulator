@@ -21,6 +21,12 @@ mod spf;
 mod ui_state;
 mod serialization;
 
+// New refactored OSPF modules (Phase 1)
+pub mod ospf_refactored;
+
+// WebAssembly interface for refactored code
+pub mod wasm_interface;
+
 #[cfg(test)]
 mod ospf_test;
 
@@ -42,9 +48,21 @@ mod ospf_dd_full_state_test;
 #[cfg(test)]
 mod ospf_dr_election_test;
 
+#[cfg(test)]
+mod lib_test;
+
+#[cfg(test)]
+mod router_test;
+
+#[cfg(test)]
+mod network_test;
+
 use simulation::NetworkSimulation;
 use ui_state::UIState;
 use serialization::SerializationHelper;
+
+// Re-export WASM interface types
+pub use wasm_interface::{RefactoredOSPFEngine, FeatureFlagController};
 
 #[wasm_bindgen]
 extern "C" {
@@ -79,6 +97,10 @@ fn set_panic_hook() {
 pub struct NetworkSimulator {
     simulation: NetworkSimulation,
     ui_state: UIState,
+    /// Optional refactored engine for gradual migration
+    refactored_engine: Option<RefactoredOSPFEngine>,
+    /// Feature flags for controlling migration
+    feature_flags: FeatureFlagController,
 }
 
 
@@ -91,6 +113,8 @@ impl NetworkSimulator {
         NetworkSimulator {
             simulation: NetworkSimulation::new(),
             ui_state: UIState::new(),
+            refactored_engine: None,
+            feature_flags: FeatureFlagController::new(),
         }
     }
 
@@ -195,5 +219,57 @@ impl NetworkSimulator {
     
     pub fn toggle_router_failure(&mut self, router_id: u32) -> bool {
         self.simulation.toggle_router_failure(router_id)
+    }
+    
+    // Methods for refactored engine integration
+    
+    /// Enable the refactored OSPF engine with configuration
+    pub fn enable_refactored_engine(&mut self, config_json: String) -> Result<(), JsValue> {
+        match RefactoredOSPFEngine::new(config_json) {
+            Ok(engine) => {
+                self.refactored_engine = Some(engine);
+                console_log!("Refactored OSPF engine enabled");
+                Ok(())
+            }
+            Err(e) => {
+                console_log!("Failed to enable refactored engine: {:?}", e);
+                Err(e)
+            }
+        }
+    }
+    
+    /// Get feature flags controller
+    pub fn get_feature_flags(&self) -> String {
+        self.feature_flags.get_flags()
+    }
+    
+    /// Enable specific refactored features
+    pub fn enable_refactored_hello(&mut self) {
+        self.feature_flags.enable_refactored_hello();
+        console_log!("Refactored hello processing enabled");
+    }
+    
+    /// Enable all refactored features
+    pub fn enable_all_refactored(&mut self) {
+        self.feature_flags.enable_all_refactored();
+        console_log!("All refactored features enabled");
+    }
+    
+    /// Process packet through refactored engine if enabled
+    pub fn process_packet_refactored(
+        &mut self,
+        packet_type: u8,
+        packet_data: String,
+        from_router: u32,
+        interface_id: u32,
+    ) -> Result<String, JsValue> {
+        match &mut self.refactored_engine {
+            Some(engine) => {
+                engine.process_packet(packet_type, packet_data, from_router, interface_id)
+            }
+            None => {
+                Err(JsValue::from_str("Refactored engine not enabled"))
+            }
+        }
     }
 }

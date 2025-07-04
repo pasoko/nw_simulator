@@ -18,6 +18,11 @@
     "build-www": "cd www && yarn build",
     "start": "cd www && yarn start",
     "setup": "yarn install && cd www && yarn install",
+    "test": "cargo test && cd www && yarn test --run",
+    "test:rust": "cargo test --all-features",
+    "test:js": "cd www && yarn test --run",
+    "build:validated": "yarn test && yarn build",
+    "coverage": "echo 'Coverage reporting not yet configured. Install cargo-tarpaulin for Rust coverage.'",
     "docker:build": "docker build -t ospf-network-simulator:latest .",
     "docker:run": "docker-compose up -d",
     "docker:dev": "docker-compose -f docker-compose.dev.yml up"

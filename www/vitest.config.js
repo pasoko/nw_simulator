@@ -1,0 +1,23 @@
+import { defineConfig } from 'vitest/config';
+
+export default defineConfig({
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'html'],
+      exclude: [
+        'node_modules/',
+        'pkg/',
+        'webpack.config.js',
+        'vitest.config.js'
+      ],
+      include: [
+        'modules/**/*.js',
+        'index.js',
+        'packet-visualizer.js'
+      ]
+    }
+  }
+});

@@ -5,6 +5,11 @@ use crate::console_log;
 /// Fletcher's checksum implementation according to RFC 2328 Appendix B
 /// This is used for OSPF LSA integrity verification
 pub fn fletcher_checksum(data: &[u8]) -> u16 {
+    // Special case for empty data
+    if data.is_empty() {
+        return 0xFFFF;
+    }
+    
     let mut c0: u32 = 0;
     let mut c1: u32 = 0;
     

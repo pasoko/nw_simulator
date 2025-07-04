@@ -4,6 +4,10 @@ use crate::router::{RoutingTableEntry, LSA, LSAData};
 use crate::network::NetworkTopology;
 use crate::console_log;
 
+#[cfg(test)]
+#[path = "spf_test.rs"]
+mod spf_test;
+
 #[derive(Debug, Clone)]
 struct DijkstraNode {
     router_id: u32,

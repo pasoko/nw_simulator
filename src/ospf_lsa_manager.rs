@@ -135,6 +135,11 @@ impl OSPFLSAManager {
         let mut maxage_lsas = Vec::new();
         
         for (key, lsa) in self.lsa_database.iter_mut() {
+            // Skip if already at MaxAge
+            if lsa.header.ls_age == MAX_AGE {
+                continue;
+            }
+            
             let new_age = lsa.header.ls_age as f64 + time_delta;
             if new_age >= MAX_AGE as f64 {
                 // Set to MaxAge but don't remove yet - need to reflood first
@@ -346,11 +351,23 @@ mod tests {
         let mut manager = OSPFLSAManager::new("1.1.1.1".to_string());
         let mut lsa = manager.generate_router_lsa();
         lsa.header.ls_age = 3500; // Close to expiration
-        manager.update_lsa_database(lsa);
+        manager.update_lsa_database(lsa.clone());
         
-        // Age LSAs
-        manager.age_lsas(200.0); // Should cause expiration
+        // Age LSAs to MaxAge
+        let maxage_lsas = manager.age_lsas(200.0); // Should reach MaxAge
         
+        // Should return LSAs that reached MaxAge
+        assert_eq!(maxage_lsas.len(), 1);
+        assert_eq!(maxage_lsas[0].header.ls_age, MAX_AGE);
+        
+        // LSA should still be in database (pending purge)
+        assert_eq!(manager.get_lsa_count(), 1);
+        
+        // Advance time past grace period
+        manager.update_time(61.0);
+        manager.age_lsas(0.0); // Trigger cleanup
+        
+        // Now it should be removed
         assert_eq!(manager.get_lsa_count(), 0);
     }
 }
