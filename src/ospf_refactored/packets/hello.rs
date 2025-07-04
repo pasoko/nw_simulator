@@ -3,7 +3,7 @@
 // Hello packets are used for neighbor discovery and maintenance.
 // This module separates the packet definition from processing logic.
 
-use super::{OSPFHeader, PacketType, PacketError, OSPFPacket};
+use super::{OSPFHeader, PacketType, PacketError};
 use crate::ospf_refactored::events::{OSPFEvent, EventResult};
 use serde::{Deserialize, Serialize};
 use std::net::Ipv4Addr;
@@ -171,7 +171,7 @@ impl HelloPacketHandler {
     }
     
     /// Generate a hello packet
-    pub fn generate_hello(&self, interface_id: u32) -> HelloPacket {
+    pub fn generate_hello(&self, _interface_id: u32) -> HelloPacket {
         let mut packet = HelloPacket::new(
             self.router_id,
             self.area_id,

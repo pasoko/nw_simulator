@@ -194,7 +194,7 @@ impl LSAckPacketHandler {
         }
         
         // Process each acknowledgment
-        let mut acks_processed = 0;
+        let mut _acks_processed = 0;
         if let Some(pending) = self.pending_acks.get_mut(&from_neighbor) {
             for ack_header in &packet.lsa_headers {
                 let lsa_key = LSAKey {
@@ -205,7 +205,7 @@ impl LSAckPacketHandler {
                 };
                 
                 if pending.remove(&lsa_key) {
-                    acks_processed += 1;
+                    _acks_processed += 1;
                     
                     // Generate event for acknowledged LSA
                     events.push(OSPFEvent::LSAAcknowledged {

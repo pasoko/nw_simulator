@@ -3,7 +3,7 @@
 // Implements the neighbor state machine as defined in RFC 2328.
 // Uses the State pattern for clean, maintainable state transitions.
 
-use super::{StateContext, StateResult, StateError};
+use super::StateContext;
 use crate::ospf_refactored::events::OSPFEvent;
 use std::fmt;
 use serde::{Serialize, Deserialize};
@@ -384,7 +384,7 @@ impl NeighborStateHandler for FullStateHandler {
         StateTransition::None
     }
     
-    fn on_enter(&self, ctx: &mut StateContext) -> Vec<OSPFEvent> {
+    fn on_enter(&self, _ctx: &mut StateContext) -> Vec<OSPFEvent> {
         // Adjacency fully established - trigger SPF calculation
         vec![
             OSPFEvent::SPFCalculationRequired {
@@ -394,7 +394,7 @@ impl NeighborStateHandler for FullStateHandler {
         ]
     }
     
-    fn on_exit(&self, ctx: &mut StateContext) -> Vec<OSPFEvent> {
+    fn on_exit(&self, _ctx: &mut StateContext) -> Vec<OSPFEvent> {
         // Adjacency lost - trigger SPF recalculation
         vec![
             OSPFEvent::SPFCalculationRequired {

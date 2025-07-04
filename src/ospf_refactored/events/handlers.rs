@@ -3,7 +3,7 @@
 // This module defines the traits and base implementations for event handlers
 // in the OSPF event system.
 
-use super::{OSPFEvent, EventResult, EventError};
+use super::{OSPFEvent, EventResult};
 use std::sync::{Arc, Mutex};
 
 /// Trait for components that can handle OSPF events
@@ -46,7 +46,7 @@ impl EventHandler for CompositeEventHandler {
             if h.should_handle(event) {
                 match h.handle(event) {
                     Ok(events) => all_events.extend(events),
-                    Err(e) => {
+                    Err(_e) => {
                         // TODO: Add proper error logging
                         // console_log!("Handler {} failed: {:?}", h.id(), e);
                         // Continue with other handlers
@@ -88,7 +88,7 @@ impl LoggingEventHandler {
 }
 
 impl EventHandler for LoggingEventHandler {
-    fn handle(&mut self, event: &OSPFEvent) -> EventResult {
+    fn handle(&mut self, _event: &OSPFEvent) -> EventResult {
         // TODO: Add proper logging with level support
         // console_log!("[{}] Event: {:?}", self.id, event);
         Ok(vec![]) // Logging handler doesn't generate new events

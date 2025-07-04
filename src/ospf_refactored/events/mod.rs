@@ -3,8 +3,6 @@
 // This module implements an event-driven architecture for OSPF protocol handling.
 // It decouples components and makes the system more modular and testable.
 
-use std::collections::VecDeque;
-use std::sync::{Arc, Mutex};
 use serde::{Serialize, Deserialize};
 
 pub mod event_bus;

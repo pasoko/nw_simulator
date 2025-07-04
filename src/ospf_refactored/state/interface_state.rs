@@ -3,7 +3,6 @@
 // Implements the interface state machine as defined in RFC 2328 Section 9.
 // This manages the state of OSPF interfaces and DR/BDR election.
 
-use super::{StateContext, StateResult, StateError};
 use crate::ospf_refactored::events::OSPFEvent;
 use crate::network_type::OSPFNetworkType as NetworkType;
 use std::fmt;

@@ -124,7 +124,7 @@ impl RefactoredOSPFEngine {
     }
     
     /// Generate a hello packet
-    pub fn generate_hello(&self, interface_id: u32) -> Result<String, JsValue> {
+    pub fn generate_hello(&self, _interface_id: u32) -> Result<String, JsValue> {
         let config = &self.config;
         let router_id = config.router_id.parse::<Ipv4Addr>()
             .map_err(|e| JsValue::from_str(&format!("Invalid router ID: {}", e)))?;

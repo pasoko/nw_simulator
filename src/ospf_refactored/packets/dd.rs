@@ -273,7 +273,7 @@ impl DDPacketHandler {
     }
     
     /// Check if we need this LSA
-    fn need_lsa(&self, lsa_header: &LsaHeader) -> bool {
+    fn need_lsa(&self, _lsa_header: &LsaHeader) -> bool {
         // Simplified: always request LSAs for now
         // In real implementation, would check against local LSDB
         true

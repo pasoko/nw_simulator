@@ -118,7 +118,7 @@ impl std::error::Error for PacketError {}
 
 /// Utility functions for packet handling
 pub mod utils {
-    use super::*;
+    
     
     /// Calculate OSPF packet checksum
     pub fn calculate_checksum(data: &[u8]) -> u16 {

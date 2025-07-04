@@ -3,7 +3,7 @@
 // A central event bus that manages event distribution to registered handlers.
 // This implements a pub-sub pattern for loose coupling between components.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 use std::sync::{Arc, Mutex, RwLock};
 use super::{OSPFEvent, EventResult, EventError, EventProcessor};
 
@@ -98,7 +98,7 @@ impl EventBus {
                                 self.publish(new_event)?;
                             }
                         }
-                        Err(e) => {
+                        Err(_e) => {
                             // TODO: Add proper error logging
                         // console_log!("Event processing error: {:?}", e);
                             // Continue processing other events

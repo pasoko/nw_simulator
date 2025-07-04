@@ -4,7 +4,6 @@
 // and circuit breaker functionality.
 
 use std::time::Duration;
-use std::future::Future;
 use serde::{Serialize, Deserialize};
 
 /// Configuration for retry behavior

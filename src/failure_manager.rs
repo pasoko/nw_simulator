@@ -1,4 +1,4 @@
-use std::collections::{HashMap, BTreeMap};
+use std::collections::BTreeMap;
 use crate::network::NetworkTopology;
 use crate::event_manager::EventManager;
 use crate::ospf_engine::OSPFEngine;

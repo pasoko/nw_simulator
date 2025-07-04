@@ -3,20 +3,20 @@
 // This module integrates the new packet definitions with the event system
 // and state machines, providing a clean interface for packet processing.
 
-use crate::ospf_refactored::packets::{OSPFPacket, PacketType, PacketError};
+use crate::ospf_refactored::packets::{OSPFPacket, PacketError};
 use crate::ospf_refactored::packets::hello::{HelloPacket, HelloPacketHandler};
 use crate::ospf_refactored::packets::dd::{DatabaseDescriptionPacket, DDPacketHandler};
 use crate::ospf_refactored::packets::lsr::{LinkStateRequestPacket, LSRPacketHandler};
 use crate::ospf_refactored::packets::lsu::{LinkStateUpdatePacket, LSUPacketHandler};
 use crate::ospf_refactored::packets::lsack::{LinkStateAckPacket, LSAckPacketHandler};
-use crate::ospf_refactored::events::{OSPFEvent, EventBus, EventResult};
-use crate::ospf_refactored::state::{NeighborState, StateContext, NeighborTransitionValidator};
+use crate::ospf_refactored::events::{OSPFEvent, EventBus};
+use crate::ospf_refactored::state::{NeighborState, NeighborTransitionValidator};
 use crate::ospf_refactored::error_handling::{
-    ErrorContext, ErrorLogger, LogLevel, RetryConfig, RetryPolicy, 
-    RecoveryCoordinator, RecoveryAction, ErrorMetrics
+    ErrorContext, ErrorLogger, LogLevel, RetryConfig, 
+    RecoveryCoordinator, ErrorMetrics
 };
 use std::net::Ipv4Addr;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::collections::HashMap;
 
 /// Unified packet processor that coordinates packet handling
@@ -292,7 +292,7 @@ impl UnifiedPacketProcessor {
         &mut self,
         packet: LinkStateRequestPacket,
         from_router: u32,
-        interface_id: u32,
+        _interface_id: u32,
     ) -> Result<Vec<OSPFEvent>, PacketError> {
         // Process LSR and generate LSU response
         let events = self.lsr_handler.handle_lsr_packet(&packet, from_router)
