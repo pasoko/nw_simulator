@@ -4,12 +4,14 @@
  */
 
 import stateManager from './state-manager.js';
+import { RouterIcon } from './router-icon.js';
 
 class CanvasRenderer {
     constructor() {
         this.canvas = null;
         this.ctx = null;
         this.packetVisualizer = null;
+        this.routerIcon = new RouterIcon();
     }
     
     init(canvas, ctx) {
@@ -38,7 +40,15 @@ class CanvasRenderer {
     render() {
         if (!this.ctx) return;
         
+        // Clear canvas with gradient background
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        
+        // Draw gradient background
+        const gradient = this.ctx.createLinearGradient(0, 0, this.canvas.width, this.canvas.height);
+        gradient.addColorStop(0, '#f5f7fa');
+        gradient.addColorStop(1, '#c3cfe2');
+        this.ctx.fillStyle = gradient;
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
         
         // Update router summaries if not in simulation
         if (!stateManager.simulationRunning) {
@@ -84,11 +94,12 @@ class CanvasRenderer {
         const unitX = dx / distance;
         const unitY = dy / distance;
         
-        // Adjust start and end points to not overlap with router circles (radius 20)
-        const startX = from.x + unitX * 20;
-        const startY = from.y + unitY * 20;
-        const endX = to.x - unitX * 20;
-        const endY = to.y - unitY * 20;
+        // Adjust start and end points to not overlap with router icons (half size = 25)
+        const routerEdgeDistance = 30; // Slightly larger than icon half-size for better spacing
+        const startX = from.x + unitX * routerEdgeDistance;
+        const startY = from.y + unitY * routerEdgeDistance;
+        const endX = to.x - unitX * routerEdgeDistance;
+        const endY = to.y - unitY * routerEdgeDistance;
         
         // Save current context state
         this.ctx.save();
@@ -168,14 +179,14 @@ class CanvasRenderer {
         this.ctx.textAlign = 'center';
         this.ctx.textBaseline = 'middle';
         
-        // Interface number at 'from' end
-        const fromLabelX = from.x + unitX * 40;
-        const fromLabelY = from.y + unitY * 40;
+        // Interface number at 'from' end (adjusted for larger router icon)
+        const fromLabelX = from.x + unitX * 50;
+        const fromLabelY = from.y + unitY * 50;
         this.drawInterfaceLabel(fromLabelX, fromLabelY, `if${conn.from_interface_id || '?'}`);
         
-        // Interface number at 'to' end
-        const toLabelX = to.x - unitX * 40;
-        const toLabelY = to.y - unitY * 40;
+        // Interface number at 'to' end (adjusted for larger router icon)
+        const toLabelX = to.x - unitX * 50;
+        const toLabelY = to.y - unitY * 50;
         this.drawInterfaceLabel(toLabelX, toLabelY, `if${conn.to_interface_id || '?'}`);
     }
     
@@ -222,19 +233,20 @@ class CanvasRenderer {
         const isDragging = stateManager.draggingRouter && stateManager.draggingRouter.id === router.id;
         const mode = stateManager.getMode();
         
-        // Draw dragging highlight
-        if (isDragging) {
-            this.ctx.beginPath();
-            this.ctx.arc(router.x, router.y, 25, 0, 2 * Math.PI);
-            this.ctx.strokeStyle = '#2196F3';
-            this.ctx.lineWidth = 3;
-            this.ctx.stroke();
-        }
+        // Prepare router state
+        const routerState = {
+            normal: !isSelected && !isDragging && !router.is_failed,
+            ospfEnabled: router.ospf_enabled,
+            failed: router.is_failed,
+            selected: isSelected,
+            dragging: isDragging
+        };
         
         // Draw selection ring for various modes
         if (isSelected && (mode === 'connect-routers' || mode === 'disconnect-routers')) {
+            this.ctx.save();
             this.ctx.beginPath();
-            this.ctx.arc(router.x, router.y, 25, 0, 2 * Math.PI);
+            this.ctx.arc(router.x, router.y, 35, 0, 2 * Math.PI);
             if (mode === 'connect-routers') {
                 this.ctx.strokeStyle = stateManager.selectedRouters.indexOf(router.id) === 0 ? '#ff9800' : '#4caf50';
             } else {
@@ -242,59 +254,25 @@ class CanvasRenderer {
             }
             this.ctx.lineWidth = 4;
             this.ctx.stroke();
+            this.ctx.restore();
         }
         
         // Highlight router on hover in delete mode
         if (mode === 'delete-router') {
-            const dx = router.x - stateManager.lastMouseX;
-            const dy = router.y - stateManager.lastMouseY;
-            if (dx * dx + dy * dy < 400) { // 20px radius
+            if (this.routerIcon.isPointInRouter(stateManager.lastMouseX, stateManager.lastMouseY, router.x, router.y)) {
+                this.ctx.save();
                 this.ctx.beginPath();
-                this.ctx.arc(router.x, router.y, 25, 0, 2 * Math.PI);
+                this.ctx.arc(router.x, router.y, 35, 0, 2 * Math.PI);
                 this.ctx.strokeStyle = '#dc3545';
                 this.ctx.lineWidth = 3;
                 this.ctx.setLineDash([5, 5]);
                 this.ctx.stroke();
-                this.ctx.setLineDash([]);
+                this.ctx.restore();
             }
         }
         
-        // Draw router circle
-        this.ctx.beginPath();
-        this.ctx.arc(router.x, router.y, 20, 0, 2 * Math.PI);
-        
-        // Set fill color based on failure state and OSPF status
-        if (router.is_failed) {
-            this.ctx.fillStyle = '#ff0000'; // Bright red for failed router
-        } else {
-            this.ctx.fillStyle = router.ospf_enabled ? '#4CAF50' : '#2196F3';
-        }
-        this.ctx.fill();
-        
-        // Draw failure indicator border
-        if (router.is_failed) {
-            this.ctx.strokeStyle = '#8b0000'; // Dark red border
-            this.ctx.lineWidth = 3;
-            this.ctx.stroke();
-        }
-        
-        if (isSelected && mode === 'connect-routers') {
-            this.ctx.strokeStyle = '#000';
-            this.ctx.lineWidth = 2;
-            this.ctx.stroke();
-        }
-        
-        // Draw router name
-        this.ctx.fillStyle = '#fff';
-        this.ctx.font = 'bold 12px Arial';
-        this.ctx.textAlign = 'center';
-        this.ctx.textBaseline = 'middle';
-        this.ctx.fillText(router.name, router.x, router.y);
-        
-        // Draw failure X mark if router is failed
-        if (router.is_failed) {
-            this.drawFailureX(router.x, router.y, 25);
-        }
+        // Draw router icon using the new RouterIcon class
+        this.routerIcon.draw(this.ctx, router.x, router.y, router.id, routerState);
         
         // Draw router details
         this.drawRouterDetails(router);
@@ -356,40 +334,6 @@ class CanvasRenderer {
         }
     }
     
-    drawFailureX(x, y, size) {
-        this.ctx.save();
-        this.ctx.strokeStyle = '#ffffff'; // White color for better contrast
-        this.ctx.lineWidth = 5;
-        this.ctx.lineCap = 'round';
-        
-        // Draw white background X first
-        const offset = size / 2.5;
-        this.ctx.beginPath();
-        this.ctx.moveTo(x - offset, y - offset);
-        this.ctx.lineTo(x + offset, y + offset);
-        this.ctx.stroke();
-        
-        this.ctx.beginPath();
-        this.ctx.moveTo(x - offset, y + offset);
-        this.ctx.lineTo(x + offset, y - offset);
-        this.ctx.stroke();
-        
-        // Draw red X on top
-        this.ctx.strokeStyle = '#ff0000';
-        this.ctx.lineWidth = 3;
-        
-        this.ctx.beginPath();
-        this.ctx.moveTo(x - offset, y - offset);
-        this.ctx.lineTo(x + offset, y + offset);
-        this.ctx.stroke();
-        
-        this.ctx.beginPath();
-        this.ctx.moveTo(x - offset, y + offset);
-        this.ctx.lineTo(x + offset, y - offset);
-        this.ctx.stroke();
-        
-        this.ctx.restore();
-    }
 }
 
 // Export as singleton

@@ -341,6 +341,14 @@ class CanvasInteraction {
     }
 
     findRouterAt(x, y) {
+        // Use the router icon's isPointInRouter method for accurate hit detection
+        if (stateManager.canvasRenderer && stateManager.canvasRenderer.routerIcon) {
+            return stateManager.routers.find(router => {
+                return stateManager.canvasRenderer.routerIcon.isPointInRouter(x, y, router.x, router.y);
+            });
+        }
+        
+        // Fallback to simple radius check
         const ROUTER_RADIUS = 25;
         return stateManager.routers.find(router => {
             const dx = x - router.x;
