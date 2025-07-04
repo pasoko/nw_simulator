@@ -149,7 +149,7 @@ impl<H: EventHandler> EventHandler for FilteringEventHandler<H> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ospf::NeighborState;
+    use crate::ospf_refactored::NeighborState;
     
     struct TestHandler {
         id: String,

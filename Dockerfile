@@ -18,7 +18,7 @@ COPY Cargo.toml ./
 COPY src ./src
 
 # Create dummy benchmark file to satisfy Cargo.toml reference
-RUN mkdir -p benches && touch benches/ospf_benchmark.rs
+RUN mkdir -p benches && echo "fn main() {}" > benches/ospf_benchmark.rs
 
 # Generate Cargo.lock if needed
 RUN cargo generate-lockfile

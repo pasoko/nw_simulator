@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, BTreeMap};
 use crate::network::NetworkTopology;
 use crate::router::{RoutingTableEntry, RoutingProtocol, LSAData};
 use crate::spf::SPFCalculator;
@@ -39,7 +39,7 @@ impl RouteCalculator {
         &mut self,
         router_id: u32,
         topology: &mut NetworkTopology,
-        ospf_engines: &HashMap<u32, OSPFEngine>,
+        ospf_engines: &BTreeMap<u32, OSPFEngine>,
         event_manager: &mut EventManager,
     ) {
         console_log!("=== CALCULATING ROUTES FOR ROUTER {} ===", router_id);
@@ -81,17 +81,13 @@ impl RouteCalculator {
                 
                 (route_vec, Some(lsa_count))
             } else {
-                console_log!("Router {} has no LSAs, skipping route calculation", router_id);
+                console_log!("Router {} has no LSAs, no routes available (OSPFv2 compliance: waiting for protocol convergence)", router_id);
                 (Vec::new(), Some(0))
             }
         } else {
-            console_log!("Router {} has no OSPF engine, using topology-based routing", router_id);
-            // Fallback to topology-based calculation if no OSPF engine
-            let routes = SPFCalculator::calculate_routes(topology, router_id);
-            let route_vec: Vec<RoutingTableEntry> = routes.into_iter()
-                .map(|(_, route)| route)
-                .collect();
-            (route_vec, None)
+            console_log!("Router {} has no OSPF engine, no routes calculated (OSPFv2 compliance)", router_id);
+            // OSPFv2 compliance: No fallback routing. Routes only from OSPF protocol convergence.
+            (Vec::new(), None)
         };
         
         // Cache the calculated routes
@@ -229,7 +225,7 @@ impl RouteCalculator {
         &mut self,
         router_ids: Vec<u32>,
         topology: &mut NetworkTopology,
-        ospf_engines: &HashMap<u32, OSPFEngine>,
+        ospf_engines: &BTreeMap<u32, OSPFEngine>,
         event_manager: &mut EventManager,
     ) {
         console_log!("Batch route calculation for {} routers: {:?}", 
@@ -244,7 +240,7 @@ impl RouteCalculator {
     pub fn recalculate_all_routes(
         &mut self,
         topology: &mut NetworkTopology,
-        ospf_engines: &HashMap<u32, OSPFEngine>,
+        ospf_engines: &BTreeMap<u32, OSPFEngine>,
         event_manager: &mut EventManager,
     ) {
         // Clear cache to force recalculation

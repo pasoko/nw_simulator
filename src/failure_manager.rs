@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, BTreeMap};
 use crate::network::NetworkTopology;
 use crate::event_manager::EventManager;
 use crate::ospf_engine::OSPFEngine;
@@ -32,7 +32,7 @@ impl FailureManager {
         from_id: u32,
         to_id: u32,
         topology: &mut NetworkTopology,
-        ospf_engines: &mut HashMap<u32, OSPFEngine>,
+        ospf_engines: &mut BTreeMap<u32, OSPFEngine>,
         event_manager: &mut EventManager,
     ) -> (bool, Vec<crate::protocol::PacketEvent>) {
         // Find the link
@@ -72,7 +72,7 @@ impl FailureManager {
         &mut self,
         router_id: u32,
         topology: &mut NetworkTopology,
-        ospf_engines: &mut HashMap<u32, OSPFEngine>,
+        ospf_engines: &mut BTreeMap<u32, OSPFEngine>,
         event_manager: &mut EventManager,
     ) -> bool {
         let (router_failed, router_name, has_ospf) = if let Some(router) = topology.routers.get_mut(&router_id) {
@@ -99,7 +99,7 @@ impl FailureManager {
         from_id: u32,
         to_id: u32,
         topology: &NetworkTopology,
-        ospf_engines: &mut HashMap<u32, OSPFEngine>,
+        ospf_engines: &mut BTreeMap<u32, OSPFEngine>,
         event_manager: &mut EventManager,
     ) -> Vec<crate::protocol::PacketEvent> {
         console_log!("Processing link failure between {} and {}", from_id, to_id);
@@ -159,7 +159,7 @@ impl FailureManager {
         from_id: u32,
         to_id: u32,
         topology: &NetworkTopology,
-        ospf_engines: &mut HashMap<u32, OSPFEngine>,
+        ospf_engines: &mut BTreeMap<u32, OSPFEngine>,
         _event_manager: &mut EventManager,
     ) -> Vec<crate::protocol::PacketEvent> {
         console_log!("Processing link recovery between {} and {}", from_id, to_id);
@@ -196,7 +196,7 @@ impl FailureManager {
         &mut self,
         router_id: u32,
         topology: &mut NetworkTopology,
-        ospf_engines: &mut HashMap<u32, OSPFEngine>,
+        ospf_engines: &mut BTreeMap<u32, OSPFEngine>,
         event_manager: &mut EventManager,
     ) {
         console_log!("Processing router failure for router {}", router_id);
@@ -242,7 +242,7 @@ impl FailureManager {
         router_id: u32,
         had_ospf: bool,
         topology: &mut NetworkTopology,
-        ospf_engines: &mut HashMap<u32, OSPFEngine>,
+        ospf_engines: &mut BTreeMap<u32, OSPFEngine>,
         _event_manager: &mut EventManager,
     ) {
         console_log!("Processing router recovery for router {}", router_id);
@@ -268,7 +268,7 @@ impl FailureManager {
         }
     }
     
-    fn schedule_lsa_regeneration(&mut self, router_ids: Vec<u32>, ospf_engines: &mut HashMap<u32, OSPFEngine>) {
+    fn schedule_lsa_regeneration(&mut self, router_ids: Vec<u32>, ospf_engines: &mut BTreeMap<u32, OSPFEngine>) {
         for router_id in router_ids {
             if let Some(engine) = ospf_engines.get_mut(&router_id) {
                 // Only regenerate LSA if we have neighbors and router links
@@ -288,7 +288,7 @@ impl FailureManager {
         initial_router: u32,
         _delay_seconds: f64,
         topology: &mut NetworkTopology,
-        ospf_engines: &mut HashMap<u32, OSPFEngine>,
+        ospf_engines: &mut BTreeMap<u32, OSPFEngine>,
         event_manager: &mut EventManager,
     ) -> Vec<u32> {
         let mut failed_routers = Vec::new();

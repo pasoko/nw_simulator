@@ -164,7 +164,7 @@ impl Default for EventBus {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ospf::NeighborState;
+    use crate::ospf_refactored::NeighborState;
     
     struct TestProcessor {
         handled_types: Vec<&'static str>,

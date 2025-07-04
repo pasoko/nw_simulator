@@ -66,9 +66,10 @@ impl OSPFTimerManager {
     }
     
     pub fn start_hello_timer(&mut self) {
-        // Send first Hello immediately (with small delay to allow initialization)
-        self.next_hello_time = self.current_time + 0.1;
-        console_log!("Router {} started hello timer, first hello at {:.1}s", 
+        // OSPFv2 compliance: First Hello should be sent after a full Hello interval
+        // This prevents immediate route propagation and ensures proper protocol behavior
+        self.next_hello_time = self.current_time + self.hello_interval;
+        console_log!("Router {} started hello timer, first hello at {:.1}s (OSPFv2 compliant)", 
             self.router_id, self.next_hello_time);
     }
     

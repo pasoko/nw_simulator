@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, BTreeMap};
 use crate::network::NetworkTopology;
 use crate::protocol::{ProtocolEngine, PacketEvent, ProtocolPacket};
 use crate::ospf::{OSPFPacket, OSPFPacketType, OSPFPacketData, HelloPacket};
@@ -26,7 +26,7 @@ pub struct NetworkSimulation {
     event_manager: EventManager,
     failure_manager: FailureManager,
     route_calculator: RouteCalculator,
-    ospf_engines: HashMap<u32, OSPFEngine>,
+    ospf_engines: BTreeMap<u32, OSPFEngine>,  // Use BTreeMap for deterministic iteration order
     spf_needed: Vec<u32>,  // Track routers needing SPF calculation
 }
 
@@ -40,7 +40,7 @@ impl NetworkSimulation {
             event_manager: EventManager::new(),
             failure_manager: FailureManager::new(),
             route_calculator: RouteCalculator::new(),
-            ospf_engines: HashMap::new(),
+            ospf_engines: BTreeMap::new(),
             spf_needed: Vec::new(),
         }
     }
@@ -215,11 +215,18 @@ impl NetworkSimulation {
         self.ospf_engines.insert(router_id, ospf_engine);
         self.event_manager.log_ospf_enabled(router_id);
         
-        // Calculate initial routes after OSPF is enabled - no delay for initial setup
-        console_log!("OSPF enabled on router {}, calculating initial routes", router_id);
-        self.route_calculator.calculate_routes_for_router(
-            router_id, &mut self.topology, &self.ospf_engines, &mut self.event_manager
-        );
+        // OSPFv2 compliance: Do NOT calculate initial routes
+        // Routes should only be calculated after:
+        // 1. Neighbor adjacencies reach Full state
+        // 2. LSA database is populated
+        // 3. SPF calculation is triggered (with delay)
+        console_log!("OSPF enabled on router {}, routes will be calculated after protocol convergence", router_id);
+        
+        // Clear any existing routes for this router to ensure clean state
+        if let Some(router) = self.topology.routers.get_mut(&router_id) {
+            router.routing_table.clear();
+            console_log!("Router {} routing table cleared for OSPFv2 compliance", router_id);
+        }
         
         // OSPF engine will manage Hello timers internally
         

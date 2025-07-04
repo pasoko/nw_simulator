@@ -57,6 +57,9 @@ mod router_test;
 #[cfg(test)]
 mod network_test;
 
+#[cfg(test)]
+mod ospfv2_compliance_test;
+
 use simulation::NetworkSimulation;
 use ui_state::UIState;
 use serialization::SerializationHelper;
