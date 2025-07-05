@@ -235,11 +235,15 @@ export class AnimationEffects {
                     anim.startTime = now;
                     progress = 0;
                 } else if (progress > 1) {
-                    progress = 1;
+                    // Don't draw if animation is complete
                     completed.push(id);
+                    return;
                 }
                 
-                anim.draw(progress);
+                // Only draw if progress is valid
+                if (progress >= 0 && progress <= 1) {
+                    anim.draw(progress);
+                }
             });
             
             // Remove completed animations
@@ -253,6 +257,33 @@ export class AnimationEffects {
         };
         
         animate();
+    }
+    
+    // Draw all active animations (called from canvas renderer)
+    drawAnimations(ctx) {
+        const now = Date.now();
+        const completed = [];
+        
+        this.animations.forEach((anim, id) => {
+            const elapsed = now - anim.startTime;
+            let progress = elapsed / anim.duration;
+            
+            if (anim.loop && progress > 1) {
+                anim.startTime = now;
+                progress = 0;
+            } else if (progress > 1) {
+                completed.push(id);
+                return;
+            }
+            
+            // Only draw if progress is valid
+            if (progress >= 0 && progress <= 1) {
+                anim.draw(progress);
+            }
+        });
+        
+        // Remove completed animations
+        completed.forEach(id => this.animations.delete(id));
     }
     
     // Easing functions

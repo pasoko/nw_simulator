@@ -128,7 +128,17 @@ class DisplayUpdater {
             
             // Add packet arrival effect
             if (stateManager.canvasRenderer && stateManager.canvasRenderer.ctx) {
-                const packetColor = stateManager.packetVisualizer.packetConfigs[event.event_type.PacketSent.packet_type]?.color || '#666666';
+                // Safely get packet color
+                const packetType = event.event_type.PacketSent.packet_type;
+                let packetColor = '#666666'; // Default color
+                
+                if (stateManager.packetVisualizer.packetConfigs && packetType) {
+                    const config = stateManager.packetVisualizer.packetConfigs[packetType];
+                    if (config && config.color) {
+                        packetColor = config.color;
+                    }
+                }
+                
                 animationEffects.animatePacketBurst(
                     stateManager.canvasRenderer.ctx,
                     toRouter.x,

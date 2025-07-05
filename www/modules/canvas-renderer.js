@@ -99,15 +99,7 @@ class CanvasRenderer {
             }
         });
         
-        // Draw connection animations
-        animationEffects.animations.forEach(anim => {
-            if (anim.type === 'connection-change') {
-                const progress = (Date.now() - anim.startTime) / anim.duration;
-                if (progress <= 1) {
-                    anim.draw(progress);
-                }
-            }
-        });
+        // Animation effects will be drawn separately
     }
     
     drawConnection(from, to, conn) {
@@ -327,15 +319,8 @@ class CanvasRenderer {
             this.drawRouter(router);
         });
         
-        // Draw animation effects on top
-        animationEffects.animations.forEach(anim => {
-            if (anim.type.startsWith('router-')) {
-                const progress = (Date.now() - anim.startTime) / anim.duration;
-                if (progress <= 1) {
-                    anim.draw(progress);
-                }
-            }
-        });
+        // Draw all animation effects
+        animationEffects.drawAnimations(this.ctx);
     }
     
     drawRouter(router) {
