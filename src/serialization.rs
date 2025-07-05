@@ -152,16 +152,88 @@ impl SerializationHelper {
     
     /// Get OSPF neighbors details for a router
     fn get_ospf_neighbors_details(simulation: &NetworkSimulation, router_id: u32) -> Vec<serde_json::Value> {
-        // For now, return empty array since we need access to OSPF engine internals
-        // This would need to be implemented with proper access to OSPF engine state
-        vec![]
+        if let Some(engine) = simulation.get_ospf_engine(router_id) {
+            engine.get_neighbors().iter().map(|(neighbor_id, neighbor)| {
+                // Get router name from topology
+                let router_name = simulation.topology.routers.get(neighbor_id)
+                    .map(|r| r.name.clone())
+                    .unwrap_or_else(|| format!("Router {}", neighbor_id));
+                
+                // Get interface information for this neighbor
+                let (interface_ip, interface_id) = simulation.topology.routers.get(&router_id)
+                    .and_then(|r| {
+                        r.interfaces.values()
+                            .find(|iface| iface.connected_router_id == Some(*neighbor_id))
+                            .map(|iface| (iface.ip_address.clone(), iface.id))
+                    })
+                    .unwrap_or_else(|| ("Unknown".to_string(), 0));
+                
+                // Get DR/BDR status for this interface
+                let (dr_router, bdr_router) = engine.get_interface_dr_bdr(interface_id);
+                let is_dr = dr_router == neighbor.router_id;
+                let is_bdr = bdr_router == neighbor.router_id;
+                
+                serde_json::json!({
+                    "router_id": neighbor_id,
+                    "router_name": router_name,
+                    "state": format!("{:?}", neighbor.state),
+                    "ip_address": interface_ip,
+                    "priority": neighbor.priority,
+                    "is_dr": is_dr,
+                    "is_bdr": is_bdr,
+                })
+            }).collect()
+        } else {
+            vec![]
+        }
     }
     
     /// Get LSA database details for a router
     fn get_lsa_database_details(simulation: &NetworkSimulation, router_id: u32) -> Vec<serde_json::Value> {
-        // For now, return empty array since we need access to OSPF engine internals
-        // This would need to be implemented with proper access to OSPF engine state
-        vec![]
+        use crate::router::{LSAData, LSAType};
+        
+        if let Some(engine) = simulation.get_ospf_engine(router_id) {
+            engine.get_lsa_database().iter().map(|(_key, lsa)| {
+                let lsa_type_name = match lsa.header.ls_type {
+                    LSAType::RouterLSA => "RouterLSA",
+                    LSAType::NetworkLSA => "NetworkLSA",
+                    LSAType::SummaryLSA => "SummaryLSA",
+                    LSAType::SummaryASBR => "SummaryASBR",
+                    LSAType::ASExternalLSA => "ASExternalLSA",
+                };
+                
+                // Extract additional details based on LSA type
+                let connected_routers = match &lsa.data {
+                    LSAData::Router(router_lsa) => {
+                        router_lsa.links.iter()
+                            .filter_map(|link| {
+                                if link.link_type == crate::router::LinkType::PointToPoint {
+                                    Some(link.link_id.clone())
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect::<Vec<_>>()
+                    },
+                    LSAData::Network(network_lsa) => {
+                        network_lsa.attached_routers.clone()
+                    },
+                    _ => vec![]
+                };
+                
+                serde_json::json!({
+                    "lsa_type": lsa_type_name,
+                    "link_state_id": lsa.header.link_state_id,
+                    "advertising_router": lsa.header.advertising_router,
+                    "sequence_number": format!("0x{:08X}", lsa.header.ls_sequence_number),
+                    "age": lsa.header.ls_age,
+                    "checksum": format!("0x{:04X}", lsa.header.ls_checksum),
+                    "connected_routers": connected_routers,
+                })
+            }).collect()
+        } else {
+            vec![]
+        }
     }
 }
 

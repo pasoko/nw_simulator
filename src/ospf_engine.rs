@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use crate::ospf::{HelloPacket, DatabaseDescriptionPacket, 
     LinkStateRequestPacket, LinkStateUpdatePacket, LinkStateAcknowledgmentPacket,
     OSPFPacket, OSPFPacketType, OSPFPacketData};
-use crate::router::{OSPFNeighborState, LSA as RouterLSA};
+use crate::router::{OSPFNeighborState, LSA as RouterLSA, OSPFNeighbor};
 use crate::protocol::{PacketEvent, ProtocolPacket};
 use crate::ospf_neighbor::OSPFNeighborManager;
 use crate::ospf_lsa_manager::OSPFLSAManager;
@@ -510,6 +510,10 @@ impl OSPFEngine {
     
     pub fn get_lsa_count(&self) -> usize {
         self.lsa_manager.get_lsa_count()
+    }
+    
+    pub fn get_neighbors(&self) -> &HashMap<u32, OSPFNeighbor> {
+        self.neighbor_manager.get_neighbors()
     }
     
     pub fn get_lsa_database(&self) -> &HashMap<String, RouterLSA> {

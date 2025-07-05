@@ -359,6 +359,7 @@ class RouterDetailsUI {
                     <span class="lsa-id">ID: ${lsa.link_state_id}</span>
                     <span class="lsa-seq">Seq: ${lsa.sequence_number}</span>
                     <span class="lsa-age">Age: ${lsa.age}s</span>
+                    <span class="lsa-checksum">Checksum: ${lsa.checksum || 'N/A'}</span>
                 </div>
                 ${lsa.connected_routers ? `
                     <div class="lsa-details">

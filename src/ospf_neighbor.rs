@@ -113,6 +113,10 @@ impl OSPFNeighborManager {
         self.neighbors.keys().cloned().collect()
     }
     
+    pub fn get_neighbors(&self) -> &HashMap<u32, OSPFNeighbor> {
+        &self.neighbors
+    }
+    
     pub fn get_state_transitions(&mut self) -> HashMap<u32, (OSPFNeighborState, OSPFNeighborState)> {
         let mut transitions = HashMap::new();
         

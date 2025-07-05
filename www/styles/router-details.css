@@ -286,6 +286,8 @@
     gap: 12px;
     font-size: 12px;
     color: var(--text-secondary, #666);
+    flex-wrap: wrap;
+    align-items: center;
 }
 
 .lsa-id {
@@ -294,8 +296,10 @@
 }
 
 .lsa-seq,
-.lsa-age {
+.lsa-age,
+.lsa-checksum {
     font-family: monospace;
+    font-size: 11px;
 }
 
 .lsa-details {
