@@ -410,14 +410,44 @@ class CanvasRenderer {
         const stats = this.packetVisualizer.getPacketsByType();
         const activeCount = this.packetVisualizer.getActivePacketCount();
         
-        this.ctx.fillStyle = '#000';
-        this.ctx.font = '12px Arial';
+        // Set text color based on theme
+        this.ctx.fillStyle = themeManager.isDarkMode() ? '#ffffff' : '#000000';
+        this.ctx.font = 'bold 12px Arial';
         this.ctx.textAlign = 'left';
+        
+        // Draw background for better visibility
+        const bgColor = themeManager.isDarkMode() ? 'rgba(0, 0, 0, 0.7)' : 'rgba(255, 255, 255, 0.8)';
+        this.ctx.fillStyle = bgColor;
+        this.ctx.fillRect(5, 30, 150, 25);
+        
+        // Draw active packets count
+        this.ctx.fillStyle = themeManager.isDarkMode() ? '#ffffff' : '#000000';
         this.ctx.fillText(`Active Packets: ${activeCount}`, 10, 50);
+        
+        // Draw background for packet type stats
+        const statsCount = Object.keys(stats).length;
+        if (statsCount > 0) {
+            const bgColor = themeManager.isDarkMode() ? 'rgba(0, 0, 0, 0.7)' : 'rgba(255, 255, 255, 0.8)';
+            this.ctx.fillStyle = bgColor;
+            this.ctx.fillRect(5, 60, 150, statsCount * 20 + 10);
+        }
         
         let y = 70;
         Object.entries(stats).forEach(([type, count]) => {
-            this.ctx.fillStyle = this.packetVisualizer.packetColors[type] || '#666';
+            // Handle both packetColors and packetConfigs for compatibility
+            let color = '#666';
+            if (this.packetVisualizer.packetColors && this.packetVisualizer.packetColors[type]) {
+                color = this.packetVisualizer.packetColors[type];
+            } else if (this.packetVisualizer.packetConfigs && this.packetVisualizer.packetConfigs[type]) {
+                color = this.packetVisualizer.packetConfigs[type].color || '#666';
+            }
+            
+            // Use theme-aware colors
+            if (themeManager.isDarkMode() && color === '#666') {
+                color = '#999';
+            }
+            
+            this.ctx.fillStyle = color;
             this.ctx.fillText(`${type}: ${count}`, 10, y);
             y += 20;
         });
