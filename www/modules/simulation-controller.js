@@ -51,11 +51,14 @@ class SimulationController {
         }
         
         try {
+            console.log('About to call start_simulation()...');
             stateManager.simulator.start_simulation();
+            console.log('start_simulation() called successfully');
             stateManager.setSimulationRunning(true);
             stateManager.setSimulationPaused(false);
         } catch (error) {
             console.error('Error starting simulation:', error);
+            console.error('Error stack:', error.stack);
             eventLogger.log(`Failed to start simulation: ${error.message}`);
             return;
         }
@@ -91,6 +94,11 @@ class SimulationController {
     
     stepSimulation() {
         try {
+            // Log first step to debug
+            if (stateManager.simulationTime === 0) {
+                console.log('First step_simulation call...');
+            }
+            
             stateManager.simulator.step_simulation(this.simulationStepDelta);
             stateManager.incrementSimulationTime(this.simulationStepDelta);
             
@@ -108,6 +116,7 @@ class SimulationController {
             }
         } catch (error) {
             console.error('Error in stepSimulation:', error);
+            console.error('Error stack:', error.stack);
             eventLogger.log(`Simulation error: ${error.message}`);
             this.stopSimulation();
         }

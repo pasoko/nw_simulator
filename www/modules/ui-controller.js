@@ -44,13 +44,7 @@ class UIController {
             });
         }
         
-        const simulateBtn = document.getElementById('simulate-btn');
-        if (simulateBtn) {
-            simulateBtn.addEventListener('click', () => {
-                // Dispatch custom event instead of direct call to avoid circular dependency
-                window.dispatchEvent(new CustomEvent('toggleSimulation'));
-            });
-        }
+        // Simulation button event listener is now handled in sidebar-ui.js to avoid duplication
         
         const exportBtn = document.getElementById('export-log-btn');
         if (exportBtn) {

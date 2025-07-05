@@ -168,9 +168,7 @@ class CanvasInteraction {
             uiController.selectRouter(clickedRouter);
             eventLogger.log(`Selected router "${clickedRouter.name}" as first router`);
             
-            // Update mode indicator
-            const indicator = document.getElementById('mode-indicator');
-            indicator.textContent = 'Mode: Connect Routers - Select second router';
+            // Update mode indicator - removed as it no longer exists in modern UI
         } else if (selectedRouters.length === 1) {
             // Connect to second router
             const firstRouter = selectedRouters[0];
