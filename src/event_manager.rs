@@ -23,6 +23,10 @@ pub enum SimulationEventType {
     RouterFailure { router_id: u32 },
     RouterRecovery { router_id: u32 },
     PacketDiscarded { router_id: u32, from_router: u32, reason: String },
+    LSARegenerated { router_id: u32, lsa_count: usize },
+    SPFCalculationStarted { router_id: u32 },
+    SPFCalculationCompleted { router_id: u32, route_count: usize },
+    NeighborDeadTimerExpired { router_id: u32, neighbor_id: u32 },
 }
 
 /// Event Management System
@@ -184,6 +188,42 @@ impl EventManager {
         });
     }
     
+    pub fn log_lsa_regenerated(&mut self, router_id: u32, lsa_count: usize) {
+        self.log_event(SimulationEvent {
+            timestamp: self.current_time,
+            event_type: SimulationEventType::LSARegenerated { router_id, lsa_count },
+            description: format!("LSA Regenerated: Router {} regenerated LSA (total {} LSAs in database)", 
+                router_id, lsa_count),
+        });
+    }
+    
+    pub fn log_spf_calculation_started(&mut self, router_id: u32) {
+        self.log_event(SimulationEvent {
+            timestamp: self.current_time,
+            event_type: SimulationEventType::SPFCalculationStarted { router_id },
+            description: format!("SPF Calculation Started: Router {} starting SPF calculation", 
+                router_id),
+        });
+    }
+    
+    pub fn log_spf_calculation_completed(&mut self, router_id: u32, route_count: usize) {
+        self.log_event(SimulationEvent {
+            timestamp: self.current_time,
+            event_type: SimulationEventType::SPFCalculationCompleted { router_id, route_count },
+            description: format!("SPF Calculation Completed: Router {} calculated {} routes", 
+                router_id, route_count),
+        });
+    }
+    
+    pub fn log_neighbor_dead_timer_expired(&mut self, router_id: u32, neighbor_id: u32) {
+        self.log_event(SimulationEvent {
+            timestamp: self.current_time,
+            event_type: SimulationEventType::NeighborDeadTimerExpired { router_id, neighbor_id },
+            description: format!("Dead Timer Expired: Router {} neighbor {} dead timer expired", 
+                router_id, neighbor_id),
+        });
+    }
+    
     pub fn get_recent_events(&self, count: usize) -> Vec<SimulationEvent> {
         let start = self.simulation_log.len().saturating_sub(count);
         self.simulation_log[start..].to_vec()
@@ -231,6 +271,10 @@ impl EventManager {
                 SimulationEventType::RouterFailure { .. } => stats.router_failures += 1,
                 SimulationEventType::RouterRecovery { .. } => stats.router_recoveries += 1,
                 SimulationEventType::PacketDiscarded { .. } => stats.packets_discarded += 1,
+                SimulationEventType::LSARegenerated { .. } => stats.lsa_regenerations += 1,
+                SimulationEventType::SPFCalculationStarted { .. } => stats.spf_calculations += 1,
+                SimulationEventType::SPFCalculationCompleted { .. } => stats.spf_completions += 1,
+                SimulationEventType::NeighborDeadTimerExpired { .. } => stats.dead_timer_expirations += 1,
             }
         }
         
@@ -254,6 +298,10 @@ impl EventManager {
             SimulationEventType::RouterRecovery { router_id: id } => *id == router_id,
             SimulationEventType::PacketDiscarded { router_id: id, from_router, .. } => 
                 *id == router_id || *from_router == router_id,
+            SimulationEventType::LSARegenerated { router_id: id, .. } => *id == router_id,
+            SimulationEventType::SPFCalculationStarted { router_id: id } => *id == router_id,
+            SimulationEventType::SPFCalculationCompleted { router_id: id, .. } => *id == router_id,
+            SimulationEventType::NeighborDeadTimerExpired { router_id: id, .. } => *id == router_id,
         }
     }
 }
@@ -272,6 +320,10 @@ pub struct EventStatistics {
     pub router_failures: usize,
     pub router_recoveries: usize,
     pub packets_discarded: usize,
+    pub lsa_regenerations: usize,
+    pub spf_calculations: usize,
+    pub spf_completions: usize,
+    pub dead_timer_expirations: usize,
 }
 
 #[cfg(test)]

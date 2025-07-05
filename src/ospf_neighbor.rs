@@ -27,9 +27,9 @@ impl OSPFNeighborManager {
         }
     }
     
-    pub fn update_time(&mut self, time: f64) {
+    pub fn update_time(&mut self, time: f64) -> Vec<u32> {
         self.current_time = time;
-        self.check_dead_neighbors();
+        self.check_dead_neighbors()
     }
     
     pub fn add_or_update_neighbor(&mut self, neighbor_id: u32, interface_id: u32, priority: u8) -> bool {
@@ -137,28 +137,47 @@ impl OSPFNeighborManager {
         transitions
     }
     
-    fn check_dead_neighbors(&mut self) {
+    fn check_dead_neighbors(&mut self) -> Vec<u32> {
         let mut dead_neighbors = Vec::new();
+        let mut neighbors_to_down = Vec::new();
         
-        for (id, last_hello) in &self.neighbor_last_hello {
-            let time_since_hello = self.current_time - last_hello;
-            if time_since_hello > self.dead_interval as f64 {
-                dead_neighbors.push(*id);
-                console_log!("Marking neighbor {} as dead - last hello {:.1}s ago", 
-                    id, time_since_hello);
+        // Clone the keys to avoid borrowing issues
+        let neighbor_ids: Vec<u32> = self.neighbor_last_hello.keys().cloned().collect();
+        
+        for id in neighbor_ids {
+            if let Some(last_hello) = self.neighbor_last_hello.get(&id) {
+                let time_since_hello = self.current_time - last_hello;
+                if time_since_hello > self.dead_interval as f64 {
+                    dead_neighbors.push(id);
+                    console_log!("Marking neighbor {} as dead - last hello {:.1}s ago (dead interval: {}s)", 
+                        id, time_since_hello, self.dead_interval);
+                } else if time_since_hello > (self.dead_interval as f64 * 0.8) {
+                    // Warning when approaching dead interval
+                    console_log!("Warning: Neighbor {} approaching dead interval - last hello {:.1}s ago", 
+                        id, time_since_hello);
+                }
             }
         }
         
         for id in dead_neighbors {
             if let Some(neighbor) = self.neighbors.get_mut(&id) {
                 if neighbor.state != OSPFNeighborState::Down {
-                    self.neighbor_previous_state.insert(id, neighbor.state.clone());
+                    let prev_state = neighbor.state.clone();
+                    self.neighbor_previous_state.insert(id, prev_state.clone());
                     neighbor.state = OSPFNeighborState::Down;
-                    console_log!("Neighbor {} went down due to dead timer", id);
+                    console_log!("Neighbor {} went down due to dead timer (previous state: {:?})", id, prev_state);
+                    neighbors_to_down.push(id);
                 }
             }
             // Don't remove from neighbor_last_hello here - let the neighbor be properly removed
         }
+        
+        if !neighbors_to_down.is_empty() {
+            console_log!("Dead neighbor detection returned {} neighbors that went Down: {:?}", 
+                neighbors_to_down.len(), neighbors_to_down);
+        }
+        
+        neighbors_to_down
     }
     
     /// State machine progression logic

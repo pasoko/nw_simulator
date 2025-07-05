@@ -35,6 +35,8 @@ impl FailureManager {
         ospf_engines: &mut BTreeMap<u32, OSPFEngine>,
         event_manager: &mut EventManager,
     ) -> (bool, Vec<crate::protocol::PacketEvent>) {
+        console_log!("=== FAILURE MANAGER: toggle_link_failure called for link {}-{} ===", from_id, to_id);
+        
         // Find the link
         let link_id = topology.links
             .iter()
@@ -44,25 +46,35 @@ impl FailureManager {
             })
             .map(|(id, _)| *id);
         
+        console_log!("  Found link_id: {:?}", link_id);
+        
         if let Some(link_id) = link_id {
             let (link_failed, _link_cost) = if let Some(link) = topology.links.get_mut(&link_id) {
                 link.is_failed = !link.is_failed;
+                console_log!("  Link failure state toggled: is_failed = {}", link.is_failed);
                 (link.is_failed, link.cost)
             } else {
+                console_log!("  ERROR: Link not found in topology");
                 return (false, Vec::new());
             };
             
             // Log the event and handle failure/recovery
             let events = if link_failed {
+                console_log!("  Processing link FAILURE");
                 event_manager.log_link_failure(from_id, to_id);
                 self.handle_link_failure(from_id, to_id, topology, ospf_engines, event_manager)
             } else {
+                console_log!("  Processing link RECOVERY");
                 event_manager.log_link_recovery(from_id, to_id);
                 self.handle_link_recovery(from_id, to_id, topology, ospf_engines, event_manager)
             };
             
+            console_log!("  Generated {} events", events.len());
+            console_log!("=== FAILURE MANAGER: toggle_link_failure completed ===");
+            
             (true, events)
         } else {
+            console_log!("  ERROR: Link between {} and {} not found", from_id, to_id);
             (false, Vec::new())
         }
     }
@@ -118,38 +130,89 @@ impl FailureManager {
             });
         
         if let Some(((r1_id, r2_id, _if1_id, _cost1), (_r2_id_rev, _r1_id_rev, _if2_id, _cost2))) = link_info {
-            // Notify OSPF engines about link failure
-            if let Some(engine1) = ospf_engines.get_mut(&r1_id) {
-                if engine1.remove_neighbor(r2_id) {
-                    event_manager.log_neighbor_state_changed(
-                        r1_id, r2_id, "Active".to_string(), "Down".to_string()
-                    );
-                }
-                engine1.remove_link(r2_id);
-            }
-            
-            if let Some(engine2) = ospf_engines.get_mut(&r2_id) {
-                if engine2.remove_neighbor(r1_id) {
-                    event_manager.log_neighbor_state_changed(
-                        r2_id, r1_id, "Active".to_string(), "Down".to_string()
-                    );
-                }
-                engine2.remove_link(r1_id);
-            }
-            
-            // Regenerate LSAs for affected routers and return flooding events
             let mut events = Vec::new();
-            for router_id in vec![r1_id, r2_id] {
-                if let Some(engine) = ospf_engines.get_mut(&router_id) {
-                    if engine.get_neighbor_count() > 0 {
-                        let lsa_events = engine.regenerate_router_lsa();
-                        console_log!("Router {} regenerated LSA after link failure, {} flooding events generated", 
-                            router_id, lsa_events.len());
-                        events.extend(lsa_events);
-                    }
+            
+            // Process Router 1 link failure
+            console_log!("Processing Router {} link failure to Router {}", r1_id, r2_id);
+            if let Some(engine1) = ospf_engines.get_mut(&r1_id) {
+                // Get current neighbor state before removing
+                let prev_state = engine1.get_neighbor_state(r2_id)
+                    .map(|s| format!("{:?}", s))
+                    .unwrap_or_else(|| "Unknown".to_string());
+                
+                console_log!("Router {} neighbor {} previous state: {}", r1_id, r2_id, prev_state);
+                
+                let removed = engine1.remove_neighbor(r2_id);
+                console_log!("Router {} remove_neighbor({}) returned: {}", r1_id, r2_id, removed);
+                
+                if removed {
+                    event_manager.log_neighbor_state_changed(
+                        r1_id, r2_id, prev_state, "Down".to_string()
+                    );
                 }
+                
+                // Always remove link and regenerate LSA, regardless of neighbor removal result
+                console_log!("Router {} calling remove_link({})", r1_id, r2_id);
+                let link_events = engine1.remove_link(r2_id);
+                console_log!("Router {} remove_link({}) generated {} events", r1_id, r2_id, link_events.len());
+                events.extend(link_events);
+                
+                // Log LSA regeneration event
+                let lsa_count = engine1.get_lsa_count();
+                event_manager.log_lsa_regenerated(r1_id, lsa_count);
+                
+                // Force SPF calculation
+                console_log!("Router {} requesting SPF calculation after link failure", r1_id);
+                engine1.request_spf_calculation();
+            } else {
+                console_log!("Warning: Router {} engine not found", r1_id);
             }
+            
+            // Process Router 2 link failure
+            console_log!("Processing Router {} link failure to Router {}", r2_id, r1_id);
+            if let Some(engine2) = ospf_engines.get_mut(&r2_id) {
+                // Get current neighbor state before removing
+                let prev_state = engine2.get_neighbor_state(r1_id)
+                    .map(|s| format!("{:?}", s))
+                    .unwrap_or_else(|| "Unknown".to_string());
+                
+                console_log!("Router {} neighbor {} previous state: {}", r2_id, r1_id, prev_state);
+                
+                let removed = engine2.remove_neighbor(r1_id);
+                console_log!("Router {} remove_neighbor({}) returned: {}", r2_id, r1_id, removed);
+                
+                if removed {
+                    event_manager.log_neighbor_state_changed(
+                        r2_id, r1_id, prev_state, "Down".to_string()
+                    );
+                }
+                
+                // Always remove link and regenerate LSA, regardless of neighbor removal result
+                console_log!("Router {} calling remove_link({})", r2_id, r1_id);
+                let link_events = engine2.remove_link(r1_id);
+                console_log!("Router {} remove_link({}) generated {} events", r2_id, r1_id, link_events.len());
+                events.extend(link_events);
+                
+                // Log LSA regeneration event
+                let lsa_count = engine2.get_lsa_count();
+                event_manager.log_lsa_regenerated(r2_id, lsa_count);
+                
+                // Force SPF calculation
+                console_log!("Router {} requesting SPF calculation after link failure", r2_id);
+                engine2.request_spf_calculation();
+            } else {
+                console_log!("Warning: Router {} engine not found", r2_id);
+            }
+            
+            // Log final event summary
+            console_log!("Link failure processing complete, {} events generated", events.len());
+            for (i, event) in events.iter().enumerate() {
+                console_log!("  Event {}: {} -> {}", i + 1, event.from_router_id, event.to_router_id);
+            }
+            
             return events;
+        } else {
+            console_log!("Warning: Link between {} and {} not found", from_id, to_id);
         }
         Vec::new()
     }
@@ -226,9 +289,14 @@ impl FailureManager {
         let neighbor_count = neighbors.len();
         for neighbor_id in neighbors {
             if let Some(engine) = ospf_engines.get_mut(&neighbor_id) {
+                // Get current neighbor state before removing
+                let prev_state = engine.get_neighbor_state(router_id)
+                    .map(|s| format!("{:?}", s))
+                    .unwrap_or_else(|| "Unknown".to_string());
+                
                 if engine.remove_neighbor(router_id) {
                     event_manager.log_neighbor_state_changed(
-                        neighbor_id, router_id, "Active".to_string(), "Down".to_string()
+                        neighbor_id, router_id, prev_state, "Down".to_string()
                     );
                 }
             }

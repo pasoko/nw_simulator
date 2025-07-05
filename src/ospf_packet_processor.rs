@@ -615,4 +615,13 @@ impl OSPFPacketProcessor {
             .map(|dd_state| dd_state.awaiting_ack && dd_state.last_sent_dd_packet.is_some())
             .unwrap_or(false)
     }
+    
+    /// Clean up DD exchange state for a neighbor
+    /// This should be called when a neighbor goes Down or is removed
+    pub fn cleanup_neighbor_dd_state(&mut self, neighbor_id: u32) {
+        if self.neighbor_dd_state.remove(&neighbor_id).is_some() {
+            console_log!("Router {} cleaned up DD exchange state for neighbor {}", 
+                self.router_id, neighbor_id);
+        }
+    }
 }

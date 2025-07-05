@@ -65,6 +65,9 @@ impl RouteCalculator {
             if lsa_count > 0 {
                 self.log_lsa_database_debug(router_id, engine);
                 
+                // Log SPF calculation start
+                event_manager.log_spf_calculation_started(router_id);
+                
                 let routes = SPFCalculator::calculate_routes_from_lsa(
                     engine.get_lsa_database(),
                     router_id,
@@ -73,6 +76,9 @@ impl RouteCalculator {
                 
                 console_log!("Router {} SPF returned {} routes", router_id, routes.len());
                 self.log_calculated_routes_debug(router_id, &routes);
+                
+                // Log SPF calculation completion
+                event_manager.log_spf_calculation_completed(router_id, routes.len());
                 
                 // Convert HashMap to Vec for easier handling
                 let route_vec: Vec<RoutingTableEntry> = routes.into_iter()

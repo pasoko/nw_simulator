@@ -57,7 +57,11 @@ impl OSPFEngine {
         let time_delta = if self.current_time > 0.0 { time - self.current_time } else { 0.0 };
         self.current_time = time;
         
-        self.neighbor_manager.update_time(time);
+        let dead_neighbors = self.neighbor_manager.update_time(time);
+        // Clean up DD state for neighbors that went down
+        for neighbor_id in dead_neighbors {
+            self.packet_processor.cleanup_neighbor_dd_state(neighbor_id);
+        }
         self.timer_manager.update_time(time);
         self.lsa_manager.update_time(time);
         
@@ -94,6 +98,8 @@ impl OSPFEngine {
                     console_log!("Router {} dead timer expired for neighbor {}", 
                         self.router_id, neighbor_id);
                     self.neighbor_manager.remove_neighbor(neighbor_id);
+                    // Clean up DD exchange state to prevent sequence number persistence
+                    self.packet_processor.cleanup_neighbor_dd_state(neighbor_id);
                 }
                 OSPFTimerEvent::LSARefresh => {
                     console_log!("Router {} LSA refresh timer expired", self.router_id);
@@ -135,10 +141,16 @@ impl OSPFEngine {
                     }
                 }
                 OSPFTimerEvent::SPFDelay => {
-                    console_log!("Router {} SPF delay timer expired, calculation can proceed", 
-                        self.router_id);
+                    console_log!("Router {} SPF delay timer expired at {:.2}s, calculation can proceed", 
+                        self.router_id, self.current_time);
                     self.spf_calculation_pending = false;
                     // The actual SPF calculation will be triggered by the simulation layer
+                    // Mark that SPF is ready to run by ensuring database_updated flag is set
+                    if self.lsa_manager.was_database_updated() {
+                        console_log!("Router {} SPF calculation ready - database was updated", self.router_id);
+                    } else {
+                        console_log!("Router {} SPF timer expired but database was not updated", self.router_id);
+                    }
                 }
             }
         }
@@ -297,13 +309,17 @@ impl OSPFEngine {
                         if full_neighbor_count == 1 && self.lsa_manager.get_lsa_count() > 0 {
                             // This is our first Full neighbor - flood our existing LSA
                             console_log!("Router {} flooding existing LSAs to first Full neighbor", self.router_id);
-                            let lsa_database = self.lsa_manager.get_lsa_database();
-                            for (key, lsa) in lsa_database {
-                                if lsa.header.advertising_router == self.router_id {
-                                    console_log!("Router {} flooding own LSA: {}", self.router_id, key);
-                                    let flood_events = self.flood_lsa(lsa);
-                                    events.extend(flood_events);
-                                }
+                            // Clone the LSAs to avoid borrowing issues
+                            let lsas_to_flood: Vec<(String, RouterLSA)> = self.lsa_manager.get_lsa_database()
+                                .iter()
+                                .filter(|(_, lsa)| lsa.header.advertising_router == self.router_id)
+                                .map(|(k, v)| (k.clone(), v.clone()))
+                                .collect();
+                            
+                            for (key, lsa) in lsas_to_flood {
+                                console_log!("Router {} flooding own LSA: {}", self.router_id, key);
+                                let flood_events = self.flood_lsa(&lsa);
+                                events.extend(flood_events);
                             }
                         }
                     }
@@ -366,6 +382,9 @@ impl OSPFEngine {
     pub fn process_lsu_packet(&mut self, packet: &LinkStateUpdatePacket, from_router_id: u32) -> Vec<PacketEvent> {
         let mut events = Vec::new();
         
+        console_log!("Router {} processing LSU from {} with {} LSAs", 
+            self.router_id, from_router_id, packet.lsas.len());
+        
         let (updated_lsas, ack_headers, neighbor_to_full) = self.packet_processor.process_lsu_packet(packet, from_router_id);
         
         // Update LSA database and track which LSAs were actually updated
@@ -381,7 +400,11 @@ impl OSPFEngine {
                 continue;
             }
             
-            if self.lsa_manager.should_update_lsa(lsa) {
+            let should_update = self.lsa_manager.should_update_lsa(lsa);
+            console_log!("Router {} checking LSA from {}: type={}, should_update={}", 
+                self.router_id, from_router_id, lsa.header.ls_type.clone() as u8, should_update);
+            
+            if should_update {
                 let key = format!("{}:{}:{}", 
                     lsa.header.ls_type.clone() as u8,
                     lsa.header.link_state_id,
@@ -432,24 +455,40 @@ impl OSPFEngine {
             // This prevents flooding loops
         }
         
-        // Only flood LSAs if we actually updated our database
-        if lsas_updated && !neighbor_to_full {
+        // Always flood LSAs if we actually updated our database
+        // RFC 2328 Section 13: LSAs must be flooded regardless of neighbor state transitions
+        console_log!("Router {} LSU processing result: lsas_updated={}, updated_count={}", 
+            self.router_id, lsas_updated, updated_lsa_keys.len());
+        
+        if lsas_updated {
             // Only flood LSAs that were actually updated (not just acknowledged)
             console_log!("Router {} checking which LSAs to flood (except to sender {})", 
                 self.router_id, from_router_id);
             
             // Only flood the LSAs that were actually updated in our database
-            for key in &updated_lsa_keys {
-                if let Some(lsa) = self.lsa_manager.get_lsa_by_key(key) {
-                    // Don't flood LSAs that originated from us
-                    if lsa.header.advertising_router != self.router_id {
-                        console_log!("  Flooding updated LSA {} to other neighbors", key);
-                        let flood_events = self.flood_lsa_except(lsa, from_router_id);
-                        events.extend(flood_events);
-                    } else {
-                        console_log!("  Skipping flood of our own LSA");
-                    }
-                }
+            let lsas_to_flood: Vec<(String, RouterLSA)> = updated_lsa_keys.iter()
+                .filter_map(|key| {
+                    self.lsa_manager.get_lsa_by_key(key)
+                        .filter(|lsa| lsa.header.advertising_router != self.router_id)
+                        .map(|lsa| (key.clone(), lsa.clone()))
+                })
+                .collect();
+            
+            for (key, lsa) in lsas_to_flood {
+                console_log!("  Flooding updated LSA {} to other neighbors", key);
+                let flood_events = self.flood_lsa_except(&lsa, from_router_id);
+                events.extend(flood_events);
+            }
+            
+            // Request SPF calculation when LSA database changes (RFC 2328 Section 16.1)
+            console_log!("Router {} checking SPF: pending={}, database_updated={}", 
+                self.router_id, self.spf_calculation_pending, self.lsa_manager.was_database_updated());
+            
+            if !self.spf_calculation_pending {
+                console_log!("Router {} requesting SPF calculation after LSU updated database", self.router_id);
+                self.request_spf_calculation();
+            } else {
+                console_log!("Router {} SPF already pending, not requesting again", self.router_id);
             }
         }
         
@@ -475,7 +514,11 @@ impl OSPFEngine {
     }
     
     pub fn generate_hello_packet(&self) -> HelloPacket {
+        // RFC 2328 Section 9.5: The neighbor field lists all routers from which
+        // valid Hello packets have been seen recently on the network segment
         let active_neighbors = self.neighbor_manager.get_all_active_neighbors();
+        console_log!("Router {} generating Hello packet with {} active neighbors: {:?}", 
+            self.router_id, active_neighbors.len(), active_neighbors);
         // For compatibility, return default DR/BDR values when interface is not specified
         // Use broadcast network mask as default
         self.packet_processor.generate_hello_packet(&active_neighbors, "0.0.0.0".to_string(), "0.0.0.0".to_string(), "255.255.255.0".to_string())
@@ -488,8 +531,31 @@ impl OSPFEngine {
             self.router_id, neighbor_id);
     }
     
-    pub fn remove_link(&mut self, neighbor_id: u32) {
+    pub fn remove_link(&mut self, neighbor_id: u32) -> Vec<PacketEvent> {
+        console_log!("Router {} remove_link called for neighbor {}", self.router_id, neighbor_id);
         self.lsa_manager.remove_router_link(neighbor_id);
+        
+        // RFC 2328 Section 13.2: Generate new Router-LSA when link state changes
+        // LSA must be regenerated whenever topology changes, regardless of neighbor count
+        console_log!("Router {} regenerating LSA after removing link to {}", 
+            self.router_id, neighbor_id);
+        let events = self.regenerate_router_lsa();
+        console_log!("Router {} regenerate_router_lsa returned {} events", self.router_id, events.len());
+        
+        // Request SPF calculation (RFC 2328 Section 16.1)
+        self.spf_calculation_pending = true;
+        console_log!("Router {} requested SPF calculation after link removal", self.router_id);
+        
+        // If we have neighbors to flood to, return the events
+        let neighbor_count = self.get_neighbor_count();
+        console_log!("Router {} has {} neighbors remaining", self.router_id, neighbor_count);
+        
+        if neighbor_count > 0 {
+            events
+        } else {
+            console_log!("Router {} has no neighbors to flood LSA to", self.router_id);
+            Vec::new()
+        }
     }
     
     pub fn add_link(&mut self, neighbor_id: u32, interface_id: u32, cost: u32) {
@@ -497,15 +563,29 @@ impl OSPFEngine {
     }
     
     pub fn remove_neighbor(&mut self, neighbor_id: u32) -> bool {
+        console_log!("Router {} remove_neighbor called for neighbor {}", self.router_id, neighbor_id);
         let removed = self.neighbor_manager.remove_neighbor(neighbor_id);
+        console_log!("Router {} neighbor_manager.remove_neighbor({}) returned: {}", self.router_id, neighbor_id, removed);
         if removed {
             self.timer_manager.clear_all_neighbor_timers(neighbor_id);
+            // Clean up DD exchange state to prevent sequence number persistence
+            self.packet_processor.cleanup_neighbor_dd_state(neighbor_id);
+            console_log!("Router {} cleaned up timers and DD state for neighbor {}", self.router_id, neighbor_id);
         }
+        
+        // Log current neighbor state
+        let active_neighbors = self.neighbor_manager.get_all_active_neighbors();
+        console_log!("Router {} active neighbors after removal: {:?}", self.router_id, active_neighbors);
+        
         removed
     }
     
     pub fn get_neighbor_count(&self) -> usize {
         self.neighbor_manager.get_neighbor_count()
+    }
+    
+    pub fn get_neighbor_state(&self, neighbor_id: u32) -> Option<OSPFNeighborState> {
+        self.neighbor_manager.get_neighbor_state(neighbor_id)
     }
     
     pub fn get_lsa_count(&self) -> usize {
@@ -529,8 +609,24 @@ impl OSPFEngine {
     }
     
     pub fn regenerate_router_lsa(&mut self) -> Vec<PacketEvent> {
+        console_log!("Router {} regenerate_router_lsa called", self.router_id);
         let router_lsa = self.lsa_manager.regenerate_router_lsa();
-        self.flood_lsa(&router_lsa)
+        
+        // Count links in the LSA
+        let link_count = match &router_lsa.data {
+            crate::router::LSAData::Router(data) => data.links.len(),
+            _ => 0,
+        };
+        console_log!("Router {} LSA regenerated with {} links", 
+            self.router_id, link_count);
+        
+        // Request SPF calculation after LSA regeneration
+        self.spf_calculation_pending = true;
+        console_log!("Router {} requested SPF calculation after LSA regeneration", self.router_id);
+        
+        let events = self.flood_lsa(&router_lsa);
+        console_log!("Router {} flood_lsa returned {} events", self.router_id, events.len());
+        events
     }
     
     pub fn needs_lsa_regeneration(&self) -> bool {
@@ -541,7 +637,7 @@ impl OSPFEngine {
         self.lsa_manager.update_lsa_database(lsa);
     }
     
-    pub fn flood_lsa(&self, lsa: &RouterLSA) -> Vec<PacketEvent> {
+    pub fn flood_lsa(&mut self, lsa: &RouterLSA) -> Vec<PacketEvent> {
         let mut events = Vec::new();
         
         // Check if we recently flooded this LSA (MinLSInterval)
@@ -596,6 +692,11 @@ impl OSPFEngine {
             events.push(lsu_event);
         }
         
+        // Mark LSA as flooded after successfully creating flood events
+        if !events.is_empty() {
+            self.lsa_manager.mark_lsa_flooded(&lsa_key);
+        }
+        
         events
     }
     
@@ -610,7 +711,8 @@ impl OSPFEngine {
     pub fn request_spf_calculation(&mut self) {
         // RFC 2328 Section 16.1 - Delay SPF calculation to avoid CPU overload
         if !self.spf_calculation_pending {
-            console_log!("Router {} requesting SPF calculation with delay", self.router_id);
+            console_log!("Router {} requesting SPF calculation with delay, current_time={:.2}", 
+                self.router_id, self.current_time);
             self.spf_calculation_pending = true;
             self.timer_manager.start_spf_delay_timer();
         } else {
@@ -622,7 +724,17 @@ impl OSPFEngine {
         self.spf_calculation_pending
     }
     
-    pub fn flood_lsa_except(&self, lsa: &RouterLSA, except_neighbor: u32) -> Vec<PacketEvent> {
+    pub fn was_lsa_database_updated(&self) -> bool {
+        // This is tracked by the lsa_manager
+        self.lsa_manager.was_database_updated()
+    }
+    
+    pub fn reset_database_updated_flag(&mut self) {
+        // Reset the flag after SPF calculation
+        self.lsa_manager.reset_database_updated();
+    }
+    
+    pub fn flood_lsa_except(&mut self, lsa: &RouterLSA, except_neighbor: u32) -> Vec<PacketEvent> {
         let mut events = Vec::new();
         
         // Get neighbors in Exchange or Full state

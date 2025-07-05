@@ -141,12 +141,8 @@ impl NetworkSimulation {
                     );
                 }
                 // Remove link and regenerate LSA
-                engine1.remove_link(router2_id);
-                if engine1.get_neighbor_count() > 0 {
-                    let events = engine1.regenerate_router_lsa();
-                    console_log!("Router {} regenerating LSA after link failure", router1_id);
-                    lsa_events.extend(events);
-                }
+                let link_events = engine1.remove_link(router2_id);
+                lsa_events.extend(link_events);
             }
             
             if let Some(engine2) = self.ospf_engines.get_mut(&router2_id) {
@@ -156,12 +152,8 @@ impl NetworkSimulation {
                     );
                 }
                 // Remove link and regenerate LSA
-                engine2.remove_link(router1_id);
-                if engine2.get_neighbor_count() > 0 {
-                    let events = engine2.regenerate_router_lsa();
-                    console_log!("Router {} regenerating LSA after link failure", router2_id);
-                    lsa_events.extend(events);
-                }
+                let link_events = engine2.remove_link(router1_id);
+                lsa_events.extend(link_events);
             }
             
             // Schedule LSA flooding events
@@ -309,9 +301,17 @@ impl NetworkSimulation {
             ospf_events.extend(events);
             
             // Check if SPF timer expired and calculation is ready
-            if !engine.is_spf_pending() {
-                // Check if we have a deferred SPF calculation
-                if spf_needed_snapshot.contains(router_id) {
+            let spf_pending = engine.is_spf_pending();
+            let db_updated = engine.was_lsa_database_updated();
+            let in_snapshot = spf_needed_snapshot.contains(router_id);
+            
+            console_log!("Router {} SPF check: pending={}, db_updated={}, in_snapshot={}", 
+                router_id, spf_pending, db_updated, in_snapshot);
+            
+            if !spf_pending {
+                // Check if we have a deferred SPF calculation and database was updated
+                if in_snapshot && db_updated {
+                    console_log!("Router {} added to SPF ready list", router_id);
                     spf_ready_routers.push(*router_id);
                 }
             }
@@ -330,20 +330,32 @@ impl NetworkSimulation {
                 router_id, &mut self.topology, &self.ospf_engines, &mut self.event_manager
             );
             self.clear_spf_needed(router_id);
+            
+            // Reset the database updated flag after SPF calculation
+            if let Some(engine) = self.ospf_engines.get_mut(&router_id) {
+                engine.reset_database_updated_flag();
+            }
         }
     }
     
     pub fn toggle_link_failure(&mut self, from_id: u32, to_id: u32) -> bool {
+        console_log!("=== LINK FAILURE DEBUG: simulation.rs toggle_link_failure called ===");
+        console_log!("  from_id: {}, to_id: {}, simulation_time: {:.2}s", from_id, to_id, self.simulation_time);
+        
         let (success, events) = self.failure_manager.toggle_link_failure(
             from_id, to_id, &mut self.topology, &mut self.ospf_engines, &mut self.event_manager
         );
         
+        console_log!("  failure_manager.toggle_link_failure returned: success={}, {} events", success, events.len());
+        
         // Schedule flooding events
-        for mut event in events {
+        for (i, mut event) in events.into_iter().enumerate() {
             event.timestamp = self.simulation_time + 0.1;
+            console_log!("  Scheduling event {}: {} -> {}", i + 1, event.from_router_id, event.to_router_id);
             self.protocol_engine.schedule_event(event);
         }
         
+        console_log!("=== LINK FAILURE DEBUG: simulation.rs toggle_link_failure completed ===");
         success
     }
     
@@ -597,8 +609,18 @@ impl NetworkSimulation {
                 let lsa_updated = matches!(&packet.data, OSPFPacketData::LinkStateUpdate(_)) 
                     || matches!(&packet.data, OSPFPacketData::DatabaseDescription(_));
                 let lsa_count = engine.get_lsa_count();
-                let lsa_database_changed = lsa_count != lsa_count_before;
+                
+                // Check if database was actually updated (not just count change)
+                let lsa_database_changed = if matches!(&packet.data, OSPFPacketData::LinkStateUpdate(_)) {
+                    engine.was_lsa_database_updated()
+                } else {
+                    lsa_count != lsa_count_before
+                };
+                
                 let state_transitions = engine.get_neighbor_state_transitions();
+                
+                console_log!("Router {} packet processing result: lsa_count_before={}, lsa_count_after={}, db_changed={}",
+                    to_router_id, lsa_count_before, lsa_count, lsa_database_changed);
                 
                 (new_events, lsa_updated, lsa_count, lsa_database_changed, state_transitions)
             } else {
@@ -613,12 +635,18 @@ impl NetworkSimulation {
         
         // Request SPF calculation when LSA database changes (with delay per RFC 2328 Section 16.1)
         // Don't calculate routes during DD exchange
-        if matches!(&packet.data, OSPFPacketData::LinkStateUpdate(_)) && lsa_database_changed && lsa_count > 0 {
-            console_log!("Router {} LSA database changed due to LSU, requesting SPF calculation", to_router_id);
-            if let Some(engine) = self.ospf_engines.get_mut(&to_router_id) {
-                engine.request_spf_calculation();
-                if !self.spf_needed.contains(&to_router_id) {
-                    self.spf_needed.push(to_router_id);
+        if matches!(&packet.data, OSPFPacketData::LinkStateUpdate(_)) {
+            console_log!("Router {} received LSU: lsa_database_changed={}, lsa_count={}", 
+                to_router_id, lsa_database_changed, lsa_count);
+            
+            if lsa_database_changed && lsa_count > 0 {
+                console_log!("Router {} LSA database changed due to LSU, requesting SPF calculation", to_router_id);
+                if let Some(engine) = self.ospf_engines.get_mut(&to_router_id) {
+                    engine.request_spf_calculation();
+                    if !self.spf_needed.contains(&to_router_id) {
+                        self.spf_needed.push(to_router_id);
+                        console_log!("Router {} added to spf_needed list", to_router_id);
+                    }
                 }
             }
         }
@@ -660,6 +688,24 @@ impl NetworkSimulation {
             // Request SPF calculation when adjacency is established or lost (with delay)
             match new_state {
                 OSPFNeighborState::Full => {
+                    console_log!("Router {} neighbor {} reached Full state, checking if LSA regeneration needed", 
+                        to_router_id, neighbor_id);
+                    
+                    // Check if this router needs to regenerate its LSA
+                    // This is important for link recovery scenarios
+                    if let Some(engine) = self.ospf_engines.get_mut(&to_router_id) {
+                        if engine.needs_lsa_regeneration() {
+                            console_log!("Router {} regenerating LSA after neighbor {} reached Full state", 
+                                to_router_id, neighbor_id);
+                            let events = engine.regenerate_router_lsa();
+                            // Schedule the flooding events
+                            for mut event in events {
+                                event.timestamp = self.simulation_time + 0.1;
+                                self.protocol_engine.schedule_event(event);
+                            }
+                        }
+                    }
+                    
                     // Request delayed SPF for affected routers
                     self.request_spf_for_router(to_router_id);
                     self.request_spf_for_router(from_router_id);

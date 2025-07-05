@@ -23,6 +23,7 @@ pub struct OSPFLSAManager {
     recent_lsa_updates: HashMap<String, f64>, // Track recent LSA updates to prevent flooding loops
     current_time: f64, // Track current simulation time
     maxage_lsas_pending_purge: HashMap<String, f64>, // Track MaxAge LSAs pending deletion
+    database_updated: bool, // Track if database was updated since last check
 }
 
 impl OSPFLSAManager {
@@ -35,6 +36,7 @@ impl OSPFLSAManager {
             recent_lsa_updates: HashMap::new(),
             current_time: 0.0,
             maxage_lsas_pending_purge: HashMap::new(),
+            database_updated: false,
         }
     }
     
@@ -107,16 +109,18 @@ impl OSPFLSAManager {
             lsa.header.advertising_router.clone()
         );
         
-        // Track update time to prevent flooding loops
-        self.recent_lsa_updates.insert(key.clone(), self.current_time);
+        // Do NOT track update time here - it should only be tracked after successful flooding
+        // This prevents MinLSInterval from blocking the initial flood of a newly generated LSA
         
         console_log!("Router {} updating LSA database with key: {}", self.router_id, key);
         if let LSAData::Router(ref rlsa) = lsa.data {
             console_log!("  Router LSA with {} links", rlsa.links.len());
         }
         
-        self.lsa_database.insert(key, lsa);
-        console_log!("  LSA database now contains {} entries", self.lsa_database.len());
+        self.lsa_database.insert(key.clone(), lsa);
+        self.database_updated = true; // Mark that database was updated
+        console_log!("  LSA database now contains {} entries, database_updated set to true for key: {}", 
+            self.lsa_database.len(), key);
     }
     
     pub fn get_lsa_database(&self) -> &HashMap<String, LSA> {
@@ -265,7 +269,36 @@ impl OSPFLSAManager {
                         self.router_id, router_lsa.links.len(), self.router_links.len());
                     return true;
                 }
-                // TODO: Add more detailed checks (link costs, neighbors, etc.)
+                
+                // Check if all current links are present in the LSA
+                for (neighbor_id, interface_id, cost) in &self.router_links {
+                    let link_found = router_lsa.links.iter().any(|link| {
+                        link.link_id == format!("1.1.1.{}", neighbor_id) &&
+                        link.link_data == format!("0.0.0.{}", interface_id) &&
+                        link.metric == *cost as u16
+                    });
+                    
+                    if !link_found {
+                        console_log!("Router {} link to neighbor {} not found in current LSA, regeneration needed", 
+                            self.router_id, neighbor_id);
+                        return true;
+                    }
+                }
+                
+                // Check if LSA contains links that are no longer configured
+                for link in &router_lsa.links {
+                    if let Some(neighbor_id_str) = link.link_id.split('.').last() {
+                        if let Ok(neighbor_id) = neighbor_id_str.parse::<u32>() {
+                            let link_exists = self.router_links.iter().any(|(n, _, _)| *n == neighbor_id);
+                            if !link_exists {
+                                console_log!("Router {} LSA contains link to neighbor {} which is no longer configured, regeneration needed", 
+                                    self.router_id, neighbor_id);
+                                return true;
+                            }
+                        }
+                    }
+                }
+                
                 return false;
             }
         }
@@ -299,6 +332,13 @@ impl OSPFLSAManager {
         }
     }
     
+    pub fn mark_lsa_flooded(&mut self, lsa_key: &str) {
+        // Mark this LSA as recently flooded to prevent flooding loops
+        self.recent_lsa_updates.insert(lsa_key.to_string(), self.current_time);
+        console_log!("Router {} marked LSA {} as flooded at time {:.2}", 
+            self.router_id, lsa_key, self.current_time);
+    }
+    
     pub fn update_time(&mut self, time: f64) {
         self.current_time = time;
     }
@@ -318,6 +358,14 @@ impl OSPFLSAManager {
             .filter(|lsa| lsa.header.ls_age == MAX_AGE)
             .cloned()
             .collect()
+    }
+    
+    pub fn was_database_updated(&self) -> bool {
+        self.database_updated
+    }
+    
+    pub fn reset_database_updated(&mut self) {
+        self.database_updated = false;
     }
 }
 
