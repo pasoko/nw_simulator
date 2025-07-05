@@ -221,17 +221,34 @@ class CanvasRenderer {
         const boxWidth = metrics.width + padding * 2;
         const boxHeight = 24;
         
-        // Draw white background
-        this.ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-        this.ctx.fillRect(x - boxWidth / 2, y - boxHeight / 2, boxWidth, boxHeight);
+        if (themeManager.isDarkMode()) {
+            // Dark mode styling
+            // Draw dark background
+            this.ctx.fillStyle = 'rgba(30, 30, 30, 0.9)';
+            this.ctx.fillRect(x - boxWidth / 2, y - boxHeight / 2, boxWidth, boxHeight);
+            
+            // Draw border
+            this.ctx.strokeStyle = '#666';
+            this.ctx.lineWidth = 1;
+            this.ctx.strokeRect(x - boxWidth / 2, y - boxHeight / 2, boxWidth, boxHeight);
+            
+            // Draw text in white
+            this.ctx.fillStyle = '#ffffff';
+        } else {
+            // Light mode styling
+            // Draw white background
+            this.ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+            this.ctx.fillRect(x - boxWidth / 2, y - boxHeight / 2, boxWidth, boxHeight);
+            
+            // Draw border
+            this.ctx.strokeStyle = '#333';
+            this.ctx.lineWidth = 1;
+            this.ctx.strokeRect(x - boxWidth / 2, y - boxHeight / 2, boxWidth, boxHeight);
+            
+            // Draw text in black
+            this.ctx.fillStyle = '#000';
+        }
         
-        // Draw border
-        this.ctx.strokeStyle = '#333';
-        this.ctx.lineWidth = 1;
-        this.ctx.strokeRect(x - boxWidth / 2, y - boxHeight / 2, boxWidth, boxHeight);
-        
-        // Draw text
-        this.ctx.fillStyle = '#000';
         this.ctx.fillText(text, x, y);
         
         // Reset line width
@@ -241,9 +258,46 @@ class CanvasRenderer {
     drawCostLabel(from, to, conn) {
         const midX = (from.x + to.x) / 2;
         const midY = (from.y + to.y) / 2;
-        this.ctx.font = '12px Arial';
-        this.ctx.fillStyle = '#000';
+        this.ctx.font = 'bold 12px Arial';
+        
+        // Use white text in dark mode, dark text in light mode
+        if (themeManager.isDarkMode()) {
+            // Add background for better visibility in dark mode
+            const text = `Cost: ${conn.cost}`;
+            const metrics = this.ctx.measureText(text);
+            const padding = 4;
+            const boxWidth = metrics.width + padding * 2;
+            const boxHeight = 18;
+            
+            // Semi-transparent background
+            this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            this.ctx.fillRect(midX - boxWidth / 2, midY - boxHeight / 2, boxWidth, boxHeight);
+            
+            // White text
+            this.ctx.fillStyle = '#ffffff';
+        } else {
+            // Light mode - dark text with semi-transparent white background
+            const text = `Cost: ${conn.cost}`;
+            const metrics = this.ctx.measureText(text);
+            const padding = 4;
+            const boxWidth = metrics.width + padding * 2;
+            const boxHeight = 18;
+            
+            // Semi-transparent background
+            this.ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+            this.ctx.fillRect(midX - boxWidth / 2, midY - boxHeight / 2, boxWidth, boxHeight);
+            
+            // Dark text
+            this.ctx.fillStyle = '#000000';
+        }
+        
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
         this.ctx.fillText(`Cost: ${conn.cost}`, midX, midY);
+        
+        // Reset text alignment
+        this.ctx.textAlign = 'left';
+        this.ctx.textBaseline = 'alphabetic';
     }
     
     drawFailureMark(x, y, size) {
