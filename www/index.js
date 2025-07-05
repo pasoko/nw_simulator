@@ -8,9 +8,13 @@
 import appInitializer from './modules/app-initializer.js';
 import eventLogger from './modules/event-logger.js';
 import RefactoredOSPFAdapter from './modules/refactored-ospf-adapter.js';
+import themeManager from './modules/theme-manager.js';
 
 async function main() {
     try {
+        // Initialize theme manager first
+        themeManager.init();
+        
         // Initialize the application
         eventLogger.log('Starting OSPF Network Simulator...');
         await appInitializer.init();

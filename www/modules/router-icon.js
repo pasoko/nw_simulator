@@ -3,35 +3,42 @@
  * Provides SVG-based router icon rendering
  */
 
+import themeManager from './theme-manager.js';
+
 export class RouterIcon {
     constructor() {
         // Define router icon paths for different states
         this.iconSize = 50; // Size of the router icon
+        this.updateColors();
+    }
+    
+    updateColors() {
+        const isDark = themeManager.isDarkMode();
         this.colors = {
             normal: {
-                fill: '#E3F2FD',
-                stroke: '#1976D2',
-                text: '#0D47A1'
+                fill: isDark ? '#1E3A5F' : '#E3F2FD',
+                stroke: isDark ? '#42A5F5' : '#1976D2',
+                text: isDark ? '#90CAF9' : '#0D47A1'
             },
             ospfEnabled: {
-                fill: '#E8F5E9',
-                stroke: '#4CAF50',
-                text: '#1B5E20'
+                fill: isDark ? '#1B5E20' : '#E8F5E9',
+                stroke: isDark ? '#66BB6A' : '#4CAF50',
+                text: isDark ? '#A5D6A7' : '#1B5E20'
             },
             failed: {
-                fill: '#FFEBEE',
-                stroke: '#F44336',
-                text: '#B71C1C'
+                fill: isDark ? '#5D1F1F' : '#FFEBEE',
+                stroke: isDark ? '#EF5350' : '#F44336',
+                text: isDark ? '#FFCDD2' : '#B71C1C'
             },
             selected: {
-                fill: '#FFF3E0',
-                stroke: '#FF9800',
-                text: '#E65100'
+                fill: isDark ? '#5D4037' : '#FFF3E0',
+                stroke: isDark ? '#FFB74D' : '#FF9800',
+                text: isDark ? '#FFCC80' : '#E65100'
             },
             dragging: {
-                fill: '#E1F5FE',
-                stroke: '#03A9F4',
-                text: '#01579B'
+                fill: isDark ? '#01579B' : '#E1F5FE',
+                stroke: isDark ? '#29B6F6' : '#03A9F4',
+                text: isDark ? '#81D4FA' : '#01579B'
             }
         };
     }
@@ -45,6 +52,8 @@ export class RouterIcon {
      * @param {Object} state - Router state (normal, ospfEnabled, failed, selected, dragging)
      */
     draw(ctx, x, y, routerId, state = {}) {
+        // Update colors if theme has changed
+        this.updateColors();
         const colors = this.getColors(state);
         const size = this.iconSize;
         const halfSize = size / 2;

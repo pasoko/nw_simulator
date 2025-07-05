@@ -42,6 +42,7 @@ COPY www/index.html ./
 COPY www/index.js ./
 COPY www/packet-visualizer.js ./
 COPY www/modules ./modules
+COPY www/styles ./styles
 COPY www/webpack.config.js ./
 COPY www/health.html ./
 

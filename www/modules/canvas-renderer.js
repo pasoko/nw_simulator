@@ -5,6 +5,7 @@
 
 import stateManager from './state-manager.js';
 import { RouterIcon } from './router-icon.js';
+import themeManager from './theme-manager.js';
 
 class CanvasRenderer {
     constructor() {
@@ -35,6 +36,13 @@ class CanvasRenderer {
             this.canvas.height = container.clientHeight;
             this.render();
         });
+        
+        // Listen for sidebar resize events
+        window.addEventListener('sidebarResized', () => {
+            this.canvas.width = container.clientWidth;
+            this.canvas.height = container.clientHeight;
+            this.render();
+        });
     }
     
     render() {
@@ -43,10 +51,15 @@ class CanvasRenderer {
         // Clear canvas with gradient background
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         
-        // Draw gradient background
+        // Draw gradient background based on theme
         const gradient = this.ctx.createLinearGradient(0, 0, this.canvas.width, this.canvas.height);
-        gradient.addColorStop(0, '#f5f7fa');
-        gradient.addColorStop(1, '#c3cfe2');
+        if (themeManager.isDarkMode()) {
+            gradient.addColorStop(0, '#1a1a1a');
+            gradient.addColorStop(1, '#2d2d2d');
+        } else {
+            gradient.addColorStop(0, '#f5f7fa');
+            gradient.addColorStop(1, '#c3cfe2');
+        }
         this.ctx.fillStyle = gradient;
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
         
@@ -110,7 +123,7 @@ class CanvasRenderer {
             this.ctx.lineWidth = 4; // Thicker line for failed connection
             this.ctx.setLineDash([8, 4]); // Larger dash pattern
         } else {
-            this.ctx.strokeStyle = '#666';
+            this.ctx.strokeStyle = themeManager.isDarkMode() ? '#999' : '#666';
             this.ctx.lineWidth = 2;
         }
         
@@ -175,7 +188,7 @@ class CanvasRenderer {
     
     drawInterfaceLabels(from, to, conn, unitX, unitY) {
         this.ctx.font = 'bold 20px Arial';
-        this.ctx.fillStyle = '#000';
+        this.ctx.fillStyle = themeManager.isDarkMode() ? '#E0E0E0' : '#000';
         this.ctx.textAlign = 'center';
         this.ctx.textBaseline = 'middle';
         
@@ -303,7 +316,7 @@ class CanvasRenderer {
     drawRouterDetails(router) {
         if (!router.summary) return;
         
-        this.ctx.fillStyle = '#000';
+        this.ctx.fillStyle = themeManager.isDarkMode() ? '#E0E0E0' : '#000';
         this.ctx.font = '10px Arial';
         this.ctx.textAlign = 'center';
         
@@ -323,10 +336,10 @@ class CanvasRenderer {
             const displayEvent = event.length > maxLength ? 
                 event.substring(0, maxLength) + '...' : event;
             this.ctx.font = '9px Arial';
-            this.ctx.fillStyle = '#666';
+            this.ctx.fillStyle = themeManager.isDarkMode() ? '#A0A0A0' : '#666';
             this.ctx.fillText(displayEvent, router.x, router.y + yOffset);
         } else {
-            this.ctx.fillStyle = '#999';
+            this.ctx.fillStyle = themeManager.isDarkMode() ? '#666' : '#999';
             this.ctx.fillText('OSPF Disabled', router.x, router.y + yOffset);
         }
     }
@@ -354,6 +367,11 @@ class CanvasRenderer {
         if (this.canvas) {
             this.canvas.style.cursor = cursor;
         }
+    }
+    
+    updateColors() {
+        // Re-render when theme changes
+        this.render();
     }
     
 }

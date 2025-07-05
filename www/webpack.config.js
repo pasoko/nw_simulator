@@ -9,6 +9,7 @@ module.exports = {
     filename: 'bundle.js',
     clean: true,
     publicPath: '/',
+    assetModuleFilename: '[name][ext]',
   },
   mode: 'production',
   devtool: false,
@@ -20,7 +21,8 @@ module.exports = {
     }),
     new CopyPlugin({
       patterns: [
-        { from: 'pkg', to: 'pkg' }
+        { from: 'pkg', to: 'pkg' },
+        { from: 'styles', to: 'styles' }
       ],
     }),
   ],

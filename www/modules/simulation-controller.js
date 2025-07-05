@@ -50,9 +50,15 @@ class SimulationController {
             eventLogger.log(`Resuming simulation from ${stateManager.simulationTime.toFixed(1)}s...`);
         }
         
-        stateManager.simulator.start_simulation();
-        stateManager.setSimulationRunning(true);
-        stateManager.setSimulationPaused(false);
+        try {
+            stateManager.simulator.start_simulation();
+            stateManager.setSimulationRunning(true);
+            stateManager.setSimulationPaused(false);
+        } catch (error) {
+            console.error('Error starting simulation:', error);
+            eventLogger.log(`Failed to start simulation: ${error.message}`);
+            return;
+        }
         
         // Update UI
         window.dispatchEvent(new CustomEvent('updateSimulationButton', { detail: { isRunning: true } }));
@@ -84,20 +90,26 @@ class SimulationController {
     }
     
     stepSimulation() {
-        stateManager.simulator.step_simulation(this.simulationStepDelta);
-        stateManager.incrementSimulationTime(this.simulationStepDelta);
-        
-        // Update display with new simulation data
-        displayUpdater.updateSimulationDisplay();
-        displayUpdater.updateSimulationTime(stateManager.simulationTime);
-        
-        // Update timer
-        window.dispatchEvent(new CustomEvent('updateTimer', { detail: { time: stateManager.simulationTime } }));
-        
-        // Update router details periodically (not every step to prevent flicker)
-        if (stateManager.simulationTime - this.lastRouterUpdateTime >= this.routerUpdateInterval) {
-            window.dispatchEvent(new CustomEvent('updateRoutersList'));
-            this.lastRouterUpdateTime = stateManager.simulationTime;
+        try {
+            stateManager.simulator.step_simulation(this.simulationStepDelta);
+            stateManager.incrementSimulationTime(this.simulationStepDelta);
+            
+            // Update display with new simulation data
+            displayUpdater.updateSimulationDisplay();
+            displayUpdater.updateSimulationTime(stateManager.simulationTime);
+            
+            // Update timer
+            window.dispatchEvent(new CustomEvent('updateTimer', { detail: { time: stateManager.simulationTime } }));
+            
+            // Update router details periodically (not every step to prevent flicker)
+            if (stateManager.simulationTime - this.lastRouterUpdateTime >= this.routerUpdateInterval) {
+                window.dispatchEvent(new CustomEvent('updateRoutersList'));
+                this.lastRouterUpdateTime = stateManager.simulationTime;
+            }
+        } catch (error) {
+            console.error('Error in stepSimulation:', error);
+            eventLogger.log(`Simulation error: ${error.message}`);
+            this.stopSimulation();
         }
     }
     

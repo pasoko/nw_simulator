@@ -5,6 +5,7 @@
 
 import stateManager from './state-manager.js';
 import eventLogger from './event-logger.js';
+import sidebarUI from './sidebar-ui.js';
 
 class UIController {
     constructor() {
@@ -13,6 +14,9 @@ class UIController {
     }
 
     init() {
+        // Initialize modern sidebar UI
+        sidebarUI.init();
+        
         this.setupEventListeners();
         this.setMode('add-router');
     }
@@ -87,41 +91,26 @@ class UIController {
     setMode(newMode) {
         this.mode = newMode;
         this.selectedRouters = [];
-        const indicator = document.getElementById('mode-indicator');
         const canvas = stateManager.canvas;
         
+        // Update cursor based on mode
         switch(this.mode) {
             case 'add-router':
-                indicator.textContent = 'Mode: Add Router - Click on canvas to place router';
-                indicator.style.backgroundColor = '#ffc107';
                 canvas.style.cursor = 'crosshair';
                 break;
             case 'move-router':
-                indicator.textContent = 'Mode: Move Router - Drag router to new position';
-                indicator.style.backgroundColor = '#17a2b8';
                 canvas.style.cursor = 'grab';
                 break;
-            case 'connect-routers':
-                indicator.textContent = 'Mode: Connect Routers - Select first router';
-                indicator.style.backgroundColor = '#17a2b8';
-                canvas.style.cursor = 'pointer';
-                break;
-            case 'delete-router':
-                indicator.textContent = 'Mode: Delete Router - Click on router to delete';
-                indicator.style.backgroundColor = '#dc3545';
-                canvas.style.cursor = 'pointer';
-                break;
-            case 'disconnect-routers':
-                indicator.textContent = 'Mode: Disconnect Routers - Select first router';
-                indicator.style.backgroundColor = '#dc3545';
-                canvas.style.cursor = 'pointer';
-                break;
-            case 'toggle-failure':
-                indicator.textContent = 'Mode: Toggle Failure - Click router or connection';
-                indicator.style.backgroundColor = '#ff9800';
+            default:
                 canvas.style.cursor = 'pointer';
                 break;
         }
+        
+        // Update sidebar UI mode display
+        sidebarUI.setMode(newMode);
+        
+        // Update state manager
+        stateManager.setMode(newMode);
         
         // Trigger re-render
         if (stateManager.canvasRenderer) {
@@ -164,16 +153,8 @@ class UIController {
     }
 
     updateSimulationButton(isRunning) {
-        const btn = document.getElementById('simulate-btn');
-        if (btn) {
-            if (isRunning) {
-                btn.textContent = 'Stop Simulation';
-                btn.classList.add('running');
-            } else {
-                btn.textContent = stateManager.simulationPaused ? 'Resume Simulation' : 'Start Simulation';
-                btn.classList.remove('running');
-            }
-        }
+        // Update sidebar UI simulation button
+        sidebarUI.updateSimulationButton(isRunning);
     }
 
     exportLog() {
@@ -201,52 +182,8 @@ class UIController {
     }
 
     updateRoutersList() {
-        if (!stateManager.simulator) return;
-        
-        const routersListContainer = document.getElementById('routers-list');
-        if (!routersListContainer) return;
-        
-        try {
-            const routersJson = stateManager.simulator.get_routers_json();
-            if (!routersJson) {
-                routersListContainer.innerHTML = '<p>No routers found</p>';
-                return;
-            }
-            
-            const routers = JSON.parse(routersJson);
-            
-            // Check if we need to update - avoid unnecessary DOM manipulation
-            const currentRouterIds = Array.from(routersListContainer.children)
-                .map(el => el.dataset.routerId)
-                .filter(id => id);
-            
-            const newRouterIds = routers.map(r => r.id.toString());
-            
-            // Only rebuild if router list changed
-            if (JSON.stringify(currentRouterIds.sort()) !== JSON.stringify(newRouterIds.sort())) {
-                routersListContainer.innerHTML = '';
-                
-                if (routers.length === 0) {
-                    routersListContainer.innerHTML = '<p>No routers available</p>';
-                    return;
-                }
-                
-                routers.forEach(router => {
-                    const routerElement = this.createRouterListElement(router);
-                    routerElement.dataset.routerId = router.id;
-                    routersListContainer.appendChild(routerElement);
-                });
-            } else {
-                // Update existing router details without rebuilding DOM
-                routers.forEach(router => {
-                    this.updateExistingRouterDetails(router);
-                });
-            }
-            
-        } catch (error) {
-            console.error('Error in updateRoutersList:', error);
-            routersListContainer.innerHTML = '<p style="color: red;">Error loading routers</p>';
-        }
+        // Delegate to sidebar UI for modern router list
+        sidebarUI.updateRoutersList();
     }
 
     createRouterListElement(router) {

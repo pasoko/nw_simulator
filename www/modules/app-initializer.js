@@ -11,6 +11,7 @@ import uiController from './ui-controller.js';
 import canvasInteraction from './canvas-interaction.js';
 import simulationController from './simulation-controller.js';
 import eventLogger from './event-logger.js';
+import resizablePanel from './resizable-panel.js';
 
 class ApplicationInitializer {
     constructor() {
@@ -155,6 +156,9 @@ class ApplicationInitializer {
             
             console.log('- Initializing simulation controller...');
             simulationController.init();
+            
+            console.log('- Initializing resizable panel...');
+            resizablePanel.init();
             
             // Setup event listeners for inter-module communication
             console.log('- Setting up event listeners...');
