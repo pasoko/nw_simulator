@@ -28,6 +28,7 @@ pub struct NetworkSimulation {
     route_calculator: RouteCalculator,
     ospf_engines: BTreeMap<u32, OSPFEngine>,  // Use BTreeMap for deterministic iteration order
     spf_needed: Vec<u32>,  // Track routers needing SPF calculation
+    pause_time: Option<f64>,  // Time when simulation was paused
 }
 
 impl NetworkSimulation {
@@ -42,6 +43,7 @@ impl NetworkSimulation {
             route_calculator: RouteCalculator::new(),
             ospf_engines: BTreeMap::new(),
             spf_needed: Vec::new(),
+            pause_time: None,
         }
     }
 
@@ -227,7 +229,17 @@ impl NetworkSimulation {
 
     pub fn start_simulation(&mut self) {
         self.running = true;
-        self.simulation_time = 0.0;
+        
+        // Check if this is a resume from pause
+        let is_resuming = self.pause_time.is_some();
+        
+        if is_resuming {
+            console_log!("Resuming simulation from {:.1}s", self.simulation_time);
+            // Clear pause time
+            self.pause_time = None;
+        } else if self.simulation_time == 0.0 {
+            console_log!("Starting fresh simulation");
+        }
         
         let router_ids: Vec<u32> = self.topology.routers
             .iter()
@@ -235,14 +247,35 @@ impl NetworkSimulation {
             .map(|(id, _)| *id)
             .collect();
         
-        console_log!("Starting simulation with {} OSPF-enabled routers", router_ids.len());
+        console_log!("Simulation with {} OSPF-enabled routers", router_ids.len());
         
-        // No need to schedule initial hello packets - OSPF engines will handle this
+        // If resuming, force immediate timer check for all OSPF engines
+        if is_resuming {
+            console_log!("Forcing timer check after resume");
+            let mut timer_events = Vec::new();
+            for (router_id, engine) in self.ospf_engines.iter_mut() {
+                // Force timer processing at current simulation time
+                let events = engine.update_time(self.simulation_time);
+                if !events.is_empty() {
+                    console_log!("Router {} generated {} events on resume", router_id, events.len());
+                    timer_events.extend(events);
+                }
+            }
+            
+            // Schedule the timer events
+            for mut event in timer_events {
+                event.timestamp = self.simulation_time + 0.1;
+                self.protocol_engine.schedule_event(event);
+            }
+        }
+        
         console_log!("OSPF engines will manage Hello timers internally");
     }
     
     pub fn stop_simulation(&mut self) {
         self.running = false;
+        self.pause_time = Some(self.simulation_time);
+        console_log!("Simulation paused at {:.1}s", self.simulation_time);
     }
 
     pub fn step_simulation(&mut self, time_delta: f64) {

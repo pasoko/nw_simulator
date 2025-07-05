@@ -55,6 +55,13 @@ impl OSPFEngine {
     
     pub fn update_time(&mut self, time: f64) -> Vec<PacketEvent> {
         let time_delta = if self.current_time > 0.0 { time - self.current_time } else { 0.0 };
+        
+        // Log significant time jumps (more than 1 second)
+        if time_delta > 1.0 {
+            console_log!("Router {} large time jump detected: {:.2}s -> {:.2}s (delta: {:.2}s)", 
+                self.router_id, self.current_time, time, time_delta);
+        }
+        
         self.current_time = time;
         
         let dead_neighbors = self.neighbor_manager.update_time(time);

@@ -229,6 +229,13 @@ impl OSPFTimerManager {
     pub fn process_expired_timers(&mut self) -> Vec<OSPFTimerEvent> {
         let mut expired_events = Vec::new();
         
+        // Debug log for timer status
+        if self.current_time > 0.0 && self.next_hello_time - self.current_time > 100.0 {
+            console_log!("Router {} timer anomaly: current_time={:.2}, next_hello={:.2} (diff={:.2})", 
+                self.router_id, self.current_time, self.next_hello_time, 
+                self.next_hello_time - self.current_time);
+        }
+        
         // Check hello timer
         if self.is_hello_due() {
             console_log!("Router {} hello timer due at {:.1}s (next at {:.1}s -> {:.1}s)", 
