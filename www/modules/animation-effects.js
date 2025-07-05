@@ -41,6 +41,11 @@ export class AnimationEffects {
     animateConnectionChange(ctx, from, to, isConnecting, duration = 500) {
         const animId = `conn-${from.id}-${to.id}`;
         
+        // Clear any existing animation for this connection
+        if (this.animations.has(animId)) {
+            this.animations.delete(animId);
+        }
+        
         this.animations.set(animId, {
             type: 'connection-change',
             startTime: Date.now(),
@@ -63,6 +68,9 @@ export class AnimationEffects {
                     ctx.moveTo(from.x, from.y);
                     ctx.lineTo(endX, endY);
                     ctx.stroke();
+                    
+                    // Reset line dash
+                    ctx.setLineDash([]);
                     
                     // Draw pulse at the end
                     ctx.fillStyle = '#4CAF50';

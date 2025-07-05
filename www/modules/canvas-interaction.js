@@ -227,13 +227,17 @@ class CanvasInteraction {
                 stateManager.simulator.connect_routers(firstRouter.id, clickedRouter.id, cost);
                 eventLogger.log(`Connected "${firstRouter.name}" to "${clickedRouter.name}" with cost ${cost}`);
                 
-                // Add connection animation
+                // Skip connection animation for now to avoid visual issues
+                // TODO: Fix animation persistence issue
+                /*
                 animationEffects.animateConnectionChange(
                     stateManager.canvasRenderer.ctx,
                     firstRouter,
                     clickedRouter,
-                    true
+                    true,
+                    300  // Shorter duration to ensure it completes quickly
                 );
+                */
                 
                 // Update connections list
                 this.updateConnectionsFromSimulator();
@@ -307,13 +311,16 @@ class CanvasInteraction {
                 if (success) {
                     eventLogger.log(`Disconnected "${firstRouter.name}" from "${clickedRouter.name}"`);
                     
-                    // Add disconnection animation
+                    // Skip disconnection animation for now to avoid visual issues
+                    // TODO: Fix animation persistence issue
+                    /*
                     animationEffects.animateConnectionChange(
                         stateManager.canvasRenderer.ctx,
                         firstRouter,
                         clickedRouter,
                         false
                     );
+                    */
                     
                     // Update connections list
                     this.updateConnectionsFromSimulator();

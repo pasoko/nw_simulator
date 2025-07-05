@@ -127,16 +127,20 @@ class DisplayUpdater {
             );
             
             // Add packet arrival effect
-            if (stateManager.canvasRenderer && stateManager.canvasRenderer.ctx) {
+            if (stateManager.canvasRenderer && stateManager.canvasRenderer.ctx && stateManager.packetVisualizer) {
                 // Safely get packet color
                 const packetType = event.event_type.PacketSent.packet_type;
                 let packetColor = '#666666'; // Default color
                 
-                if (stateManager.packetVisualizer.packetConfigs && packetType) {
-                    const config = stateManager.packetVisualizer.packetConfigs[packetType];
-                    if (config && config.color) {
-                        packetColor = config.color;
+                try {
+                    if (stateManager.packetVisualizer.packetConfigs && packetType) {
+                        const config = stateManager.packetVisualizer.packetConfigs[packetType];
+                        if (config && config.color) {
+                            packetColor = config.color;
+                        }
                     }
+                } catch (error) {
+                    console.warn('Error accessing packet config:', error);
                 }
                 
                 animationEffects.animatePacketBurst(
