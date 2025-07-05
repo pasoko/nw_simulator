@@ -4,7 +4,7 @@
  */
 
 import initWasm, { NetworkSimulator } from '../pkg/nw_simulator.js';
-import { PacketVisualizer } from '../packet-visualizer.js';
+import { PacketVisualizerEnhanced } from '../packet-visualizer-enhanced.js';
 import stateManager from './state-manager.js';
 import canvasRenderer from './canvas-renderer.js';
 import uiController from './ui-controller.js';
@@ -108,9 +108,9 @@ class ApplicationInitializer {
             console.log('Configuring canvas properties...');
             this.configureCanvas(canvas);
             
-            // Initialize packet visualizer
-            console.log('Initializing packet visualizer...');
-            stateManager.packetVisualizer = new PacketVisualizer(canvas, ctx);
+            // Initialize enhanced packet visualizer
+            console.log('Initializing enhanced packet visualizer...');
+            stateManager.packetVisualizer = new PacketVisualizerEnhanced(canvas, ctx);
             
             console.log('Canvas setup completed successfully');
         } catch (error) {

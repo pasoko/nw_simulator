@@ -1,0 +1,238 @@
+/**
+ * Animation Styles
+ * Smooth transitions and effects for the network simulator
+ */
+
+/* Canvas animations are handled in JavaScript for performance */
+
+/* UI Element Animations */
+.router-card {
+    transition: all var(--transition-normal);
+}
+
+.router-card:hover {
+    animation: cardPulse 0.3s ease-out;
+}
+
+@keyframes cardPulse {
+    0% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.02);
+    }
+    100% {
+        transform: scale(1);
+    }
+}
+
+/* Button animations */
+.button {
+    position: relative;
+    overflow: hidden;
+    transition: all var(--transition-normal);
+}
+
+.button::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.3);
+    transform: translate(-50%, -50%);
+    transition: width 0.6s, height 0.6s;
+}
+
+.button:active::after {
+    width: 300px;
+    height: 300px;
+}
+
+/* Tool selection animation */
+.tool-button {
+    transition: all var(--transition-fast);
+}
+
+.tool-button.active {
+    animation: toolActivate 0.3s ease-out;
+}
+
+@keyframes toolActivate {
+    0% {
+        transform: translateY(0);
+    }
+    50% {
+        transform: translateY(-2px);
+    }
+    100% {
+        transform: translateY(0);
+    }
+}
+
+/* Status badge animations */
+.status-badge {
+    animation: badgeFadeIn 0.3s ease-out;
+}
+
+@keyframes badgeFadeIn {
+    from {
+        opacity: 0;
+        transform: scale(0.8);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+/* Router failure animation */
+.router-card.failed {
+    animation: failureShake 0.5s ease-out;
+}
+
+@keyframes failureShake {
+    0%, 100% {
+        transform: translateX(0);
+    }
+    25% {
+        transform: translateX(-5px);
+    }
+    75% {
+        transform: translateX(5px);
+    }
+}
+
+/* Connection state animations */
+.connection-indicator {
+    transition: all var(--transition-normal);
+}
+
+.connection-indicator.connecting {
+    animation: connectionPulse 1s infinite;
+}
+
+@keyframes connectionPulse {
+    0% {
+        opacity: 0.3;
+    }
+    50% {
+        opacity: 1;
+    }
+    100% {
+        opacity: 0.3;
+    }
+}
+
+/* Simulation timer animation */
+#simulation-timer {
+    transition: all var(--transition-normal);
+}
+
+#simulation-timer.running {
+    animation: timerGlow 2s ease-in-out infinite;
+}
+
+@keyframes timerGlow {
+    0%, 100% {
+        box-shadow: var(--shadow-md);
+    }
+    50% {
+        box-shadow: 0 0 20px rgba(33, 150, 243, 0.5);
+    }
+}
+
+/* Log entry animations */
+.log-entry {
+    animation: logSlideIn 0.3s ease-out;
+}
+
+@keyframes logSlideIn {
+    from {
+        opacity: 0;
+        transform: translateX(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+/* Router details expansion */
+.router-details-card {
+    transition: all var(--transition-normal);
+}
+
+.router-details-card.expanded {
+    animation: cardExpand 0.3s ease-out;
+}
+
+@keyframes cardExpand {
+    from {
+        max-height: 60px;
+    }
+    to {
+        max-height: 500px;
+    }
+}
+
+/* Tab switching animation */
+.tab-content {
+    animation: tabFadeIn 0.2s ease-out;
+}
+
+@keyframes tabFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Loading animation */
+.loading {
+    position: relative;
+}
+
+.loading::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--primary-color);
+    border-top-color: transparent;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: translate(-50%, -50%) rotate(360deg);
+    }
+}
+
+/* Hover effects */
+.hoverable {
+    transition: transform var(--transition-fast);
+}
+
+.hoverable:hover {
+    transform: translateY(-2px);
+}
+
+/* Disable animations for reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+    * {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}

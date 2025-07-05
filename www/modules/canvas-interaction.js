@@ -8,6 +8,7 @@ import routerManager from './router-manager.js';
 import connectionManager from './connection-manager.js';
 import uiController from './ui-controller.js';
 import eventLogger from './event-logger.js';
+import animationEffects from './animation-effects.js';
 
 class CanvasInteraction {
     constructor() {
@@ -15,6 +16,7 @@ class CanvasInteraction {
         this.lastMouseY = 0;
         this.draggingRouter = null;
         this.dragOffset = { x: 0, y: 0 };
+        this.hoveredRouter = null;
     }
 
     init(canvas) {
@@ -56,6 +58,27 @@ class CanvasInteraction {
         
         this.lastMouseX = x;
         this.lastMouseY = y;
+        
+        // Handle hover effects
+        const router = this.findRouterAt(x, y);
+        if (router && router !== this.hoveredRouter) {
+            if (this.hoveredRouter) {
+                animationEffects.stopRouterHover(this.hoveredRouter.id);
+            }
+            this.hoveredRouter = router;
+            animationEffects.animateRouterHover(stateManager.canvasRenderer.ctx, router);
+        } else if (!router && this.hoveredRouter) {
+            animationEffects.stopRouterHover(this.hoveredRouter.id);
+            this.hoveredRouter = null;
+        }
+        
+        // Update cursor
+        const mode = uiController.getMode();
+        if (router) {
+            stateManager.canvas.style.cursor = mode === 'move-router' ? 'grab' : 'pointer';
+        } else {
+            stateManager.canvas.style.cursor = mode === 'add-router' ? 'crosshair' : 'default';
+        }
         
         // Handle router dragging
         if (this.draggingRouter && uiController.getMode() === 'move-router') {
@@ -168,6 +191,9 @@ class CanvasInteraction {
             uiController.selectRouter(clickedRouter);
             eventLogger.log(`Selected router "${clickedRouter.name}" as first router`);
             
+            // Add selection animation
+            animationEffects.animateRouterSelection(stateManager.canvasRenderer.ctx, clickedRouter);
+            
             // Update mode indicator - removed as it no longer exists in modern UI
         } else if (selectedRouters.length === 1) {
             // Connect to second router
@@ -200,6 +226,14 @@ class CanvasInteraction {
             if (stateManager.simulator) {
                 stateManager.simulator.connect_routers(firstRouter.id, clickedRouter.id, cost);
                 eventLogger.log(`Connected "${firstRouter.name}" to "${clickedRouter.name}" with cost ${cost}`);
+                
+                // Add connection animation
+                animationEffects.animateConnectionChange(
+                    stateManager.canvasRenderer.ctx,
+                    firstRouter,
+                    clickedRouter,
+                    true
+                );
                 
                 // Update connections list
                 this.updateConnectionsFromSimulator();
@@ -272,6 +306,14 @@ class CanvasInteraction {
                 const success = stateManager.simulator.disconnect_routers(firstRouter.id, clickedRouter.id);
                 if (success) {
                     eventLogger.log(`Disconnected "${firstRouter.name}" from "${clickedRouter.name}"`);
+                    
+                    // Add disconnection animation
+                    animationEffects.animateConnectionChange(
+                        stateManager.canvasRenderer.ctx,
+                        firstRouter,
+                        clickedRouter,
+                        false
+                    );
                     
                     // Update connections list
                     this.updateConnectionsFromSimulator();

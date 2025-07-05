@@ -6,6 +6,7 @@
 import stateManager from './state-manager.js';
 import { RouterIcon } from './router-icon.js';
 import themeManager from './theme-manager.js';
+import animationEffects from './animation-effects.js';
 
 class CanvasRenderer {
     constructor() {
@@ -95,6 +96,16 @@ class CanvasRenderer {
             
             if (from && to) {
                 this.drawConnection(from, to, conn);
+            }
+        });
+        
+        // Draw connection animations
+        animationEffects.animations.forEach(anim => {
+            if (anim.type === 'connection-change') {
+                const progress = (Date.now() - anim.startTime) / anim.duration;
+                if (progress <= 1) {
+                    anim.draw(progress);
+                }
             }
         });
     }
@@ -260,6 +271,16 @@ class CanvasRenderer {
     drawRouters() {
         stateManager.routers.forEach(router => {
             this.drawRouter(router);
+        });
+        
+        // Draw animation effects on top
+        animationEffects.animations.forEach(anim => {
+            if (anim.type.startsWith('router-')) {
+                const progress = (Date.now() - anim.startTime) / anim.duration;
+                if (progress <= 1) {
+                    anim.draw(progress);
+                }
+            }
         });
     }
     

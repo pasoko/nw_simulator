@@ -6,6 +6,7 @@
 import stateManager from './state-manager.js';
 import eventLogger from './event-logger.js';
 import canvasRenderer from './canvas-renderer.js';
+import animationEffects from './animation-effects.js';
 
 class DisplayUpdater {
     constructor() {
@@ -104,6 +105,9 @@ class DisplayUpdater {
             
             // Add packet visualization for packet events
             this.handlePacketVisualization(event);
+            
+            // Handle OSPF state change animations
+            this.handleOSPFStateAnimation(event);
         }
     }
 
@@ -120,6 +124,33 @@ class DisplayUpdater {
                 toRouter, 
                 event.event_type.PacketSent.packet_type,
                 event.timestamp
+            );
+            
+            // Add packet arrival effect
+            if (stateManager.canvasRenderer && stateManager.canvasRenderer.ctx) {
+                const packetColor = stateManager.packetVisualizer.packetConfigs[event.event_type.PacketSent.packet_type]?.color || '#666666';
+                animationEffects.animatePacketBurst(
+                    stateManager.canvasRenderer.ctx,
+                    toRouter.x,
+                    toRouter.y,
+                    packetColor
+                );
+            }
+        }
+    }
+    
+    handleOSPFStateAnimation(event) {
+        if (!event.event_type || !event.event_type.StateChange) return;
+        if (!stateManager.canvasRenderer || !stateManager.canvasRenderer.ctx) return;
+        
+        const stateChange = event.event_type.StateChange;
+        const router = stateManager.routers.find(r => r.id === stateChange.router_id);
+        
+        if (router && stateChange.new_state) {
+            animationEffects.animateOSPFStateChange(
+                stateManager.canvasRenderer.ctx,
+                router,
+                stateChange.new_state
             );
         }
     }
