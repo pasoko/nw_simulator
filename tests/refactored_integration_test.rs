@@ -5,7 +5,7 @@
 
 use nw_simulator::ospf_refactored::packets::{
     OSPFPacket, HelloPacket, DatabaseDescriptionPacket, 
-    LinkStateRequestPacket, LinkStateUpdatePacket, LinkStateAckPacket
+    LinkStateUpdatePacket
 };
 use nw_simulator::ospf_refactored::packet_processor::UnifiedPacketProcessor;
 use nw_simulator::ospf_refactored::events::{EventBus, OSPFEvent, PacketType};

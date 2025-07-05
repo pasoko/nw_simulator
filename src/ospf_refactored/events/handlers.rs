@@ -209,7 +209,7 @@ mod tests {
             handled_count: 0,
         };
         
-        let mut filter = FilteringEventHandler::new(inner, vec!["NeighborStateChanged"]);
+        let filter = FilteringEventHandler::new(inner, vec!["NeighborStateChanged"]);
         
         let event1 = OSPFEvent::NeighborStateChanged {
             router_id: 1,

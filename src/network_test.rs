@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::network::{NetworkTopology, NetworkLink};
+    use crate::network::NetworkTopology;
     use crate::network_type::OSPFNetworkType;
     
     #[test]

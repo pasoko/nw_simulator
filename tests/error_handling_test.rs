@@ -7,7 +7,11 @@ use nw_simulator::ospf_refactored::{
     packet_processor::UnifiedPacketProcessor,
     packets::{OSPFPacket, HelloPacket},
     events::EventBus,
-    error_handling::{ErrorContext, RetryConfig, RecoveryAction},
+    error_handling::{
+        ErrorContext, 
+        retry::{RetryConfig, CircuitBreaker},
+        recovery::{RecoveryAction, RecoveryStrategy, DefaultRecoveryStrategy}
+    },
 };
 use std::sync::Arc;
 use std::net::Ipv4Addr;
@@ -105,10 +109,6 @@ fn test_error_metrics_tracking() {
 
 #[test]
 fn test_recovery_strategies() {
-    use nw_simulator::ospf_refactored::error_handling::{
-        RecoveryStrategy, DefaultRecoveryStrategy
-    };
-    
     let strategy = DefaultRecoveryStrategy::new();
     let context = ErrorContext::new(1).with_neighbor(2);
     
@@ -174,8 +174,6 @@ fn test_recovery_history() {
 
 #[test]
 fn test_circuit_breaker() {
-    use nw_simulator::ospf_refactored::error_handling::CircuitBreaker;
-    
     let mut breaker = CircuitBreaker::new(3, 1000);
     
     // Test normal operation

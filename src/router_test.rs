@@ -1,7 +1,6 @@
 #[cfg(test)]
 mod tests {
     use crate::router::*;
-    use std::collections::HashMap;
 
     #[test]
     fn test_router_state_creation() {

@@ -18,7 +18,7 @@ fn test_router_lifecycle() {
     
     // Add routers
     let r1 = simulator.add_router("Router1".to_string(), 100.0, 100.0);
-    let r2 = simulator.add_router("Router2".to_string(), 200.0, 200.0);
+    let _r2 = simulator.add_router("Router2".to_string(), 200.0, 200.0);
     
     let routers_json = simulator.get_routers_json();
     let routers: Vec<serde_json::Value> = serde_json::from_str(&routers_json).unwrap();

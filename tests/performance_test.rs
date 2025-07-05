@@ -11,17 +11,15 @@
 use nw_simulator::ospf_refactored::{
     packet_processor::UnifiedPacketProcessor,
     packets::{OSPFPacket, HelloPacket},
-    events::{EventBus, OSPFEvent},
+    events::EventBus,
 };
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::net::Ipv4Addr;
 use std::time::{Duration, Instant};
-use std::thread;
 use std::collections::HashMap;
 
 const ITERATIONS: usize = 10_000;
 const NUM_NEIGHBORS: usize = 100;
-const BATCH_SIZE: usize = 1000;
 
 
 // Helper function to create refactored processor

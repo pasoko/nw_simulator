@@ -400,7 +400,6 @@ impl UnifiedPacketProcessor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ospf_refactored::packets::OSPFHeader;
     
     fn create_test_processor() -> UnifiedPacketProcessor {
         let router_id = Ipv4Addr::new(1, 1, 1, 1);
