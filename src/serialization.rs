@@ -78,14 +78,33 @@ impl SerializationHelper {
             let ospf_neighbor_count = simulation.get_ospf_neighbor_count(router_id);
             let lsa_count = simulation.get_ospf_lsa_count(router_id);
             
+            // Convert interfaces HashMap to array for frontend compatibility
+            let interfaces_array: Vec<_> = router.interfaces.values().collect();
+            
+            // Get OSPF neighbors details if OSPF is enabled
+            let neighbors = if router.ospf_state.is_some() {
+                Self::get_ospf_neighbors_details(simulation, router_id)
+            } else {
+                vec![]
+            };
+            
+            // Get LSA database details if OSPF is enabled
+            let lsa_database = if router.ospf_state.is_some() {
+                Self::get_lsa_database_details(simulation, router_id)
+            } else {
+                vec![]
+            };
+            
             let details = serde_json::json!({
                 "id": router.id,
                 "name": router.name,
-                "interfaces": router.interfaces,
+                "interfaces": interfaces_array,
                 "routing_table": router.routing_table,
                 "ospf_enabled": router.ospf_state.is_some(),
                 "ospf_neighbors": ospf_neighbor_count,
-                "lsa_database_size": lsa_count
+                "lsa_database_size": lsa_count,
+                "neighbors": neighbors,
+                "lsa_database": lsa_database
             });
             serde_json::to_string(&details).unwrap_or_default()
         } else {
@@ -129,6 +148,20 @@ impl SerializationHelper {
             SimulationEventType::RoutingTableUpdated { router_id: rid } => *rid == router_id,
             _ => false
         }
+    }
+    
+    /// Get OSPF neighbors details for a router
+    fn get_ospf_neighbors_details(simulation: &NetworkSimulation, router_id: u32) -> Vec<serde_json::Value> {
+        // For now, return empty array since we need access to OSPF engine internals
+        // This would need to be implemented with proper access to OSPF engine state
+        vec![]
+    }
+    
+    /// Get LSA database details for a router
+    fn get_lsa_database_details(simulation: &NetworkSimulation, router_id: u32) -> Vec<serde_json::Value> {
+        // For now, return empty array since we need access to OSPF engine internals
+        // This would need to be implemented with proper access to OSPF engine state
+        vec![]
     }
 }
 

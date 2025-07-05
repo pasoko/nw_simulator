@@ -712,7 +712,6 @@ impl NetworkSimulation {
         }
     }
     
-    #[cfg(test)]
     pub fn get_ospf_engine(&self, router_id: u32) -> Option<&OSPFEngine> {
         self.ospf_engines.get(&router_id)
     }

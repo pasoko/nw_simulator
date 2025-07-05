@@ -5,6 +5,7 @@
 
 import stateManager from './state-manager.js';
 import eventLogger from './event-logger.js';
+import routerDetailsUI from './router-details-ui.js';
 
 class SidebarUI {
     constructor() {
@@ -31,6 +32,7 @@ class SidebarUI {
         this.setupSidebarStructure();
         this.setupEventListeners();
         this.updateModeDisplay(stateManager.getMode());
+        routerDetailsUI.init();
     }
 
     setupSidebarStructure() {
@@ -232,16 +234,10 @@ class SidebarUI {
                 return;
             }
             
-            routerList.innerHTML = routers.map(router => this.createRouterCard(router)).join('');
+            routerList.innerHTML = routers.map(router => routerDetailsUI.createRouterCard(router)).join('');
             
-            // Add click handlers for router cards
-            const routerCards = routerList.querySelectorAll('.router-card');
-            routerCards.forEach(card => {
-                card.addEventListener('click', (e) => {
-                    const routerId = parseInt(card.dataset.routerId);
-                    this.handleRouterCardClick(routerId);
-                });
-            });
+            // Trigger router list updated event for routerDetailsUI
+            window.dispatchEvent(new CustomEvent('routerListUpdated'));
             
         } catch (error) {
             console.error('Error updating routers list:', error);
@@ -249,72 +245,7 @@ class SidebarUI {
         }
     }
 
-    createRouterCard(router) {
-        const statusBadges = [];
-        if (router.ospf_enabled) {
-            statusBadges.push('<span class="status-badge status-ospf">OSPF</span>');
-        }
-        if (router.is_failed) {
-            statusBadges.push('<span class="status-badge status-failed">FAILED</span>');
-        }
-        
-        const classes = ['router-card'];
-        if (router.ospf_enabled) classes.push('ospf-enabled');
-        if (router.is_failed) classes.push('failed');
-        
-        // Get router details if available
-        let detailsHtml = '';
-        if (router.summary) {
-            detailsHtml = `
-                <div class="router-details">
-                    <div class="detail-item">
-                        <span class="detail-label">Neighbors</span>
-                        <span class="detail-value">${router.summary.neighbor_count || 0}</span>
-                    </div>
-                    <div class="detail-item">
-                        <span class="detail-label">Routes</span>
-                        <span class="detail-value">${router.summary.route_count || 0}</span>
-                    </div>
-                </div>
-            `;
-        }
-        
-        return `
-            <div class="${classes.join(' ')}" data-router-id="${router.id}">
-                <div class="router-header">
-                    <span class="router-name">${router.name} (${router.id})</span>
-                    <div class="router-status">
-                        ${statusBadges.join('')}
-                    </div>
-                </div>
-                ${detailsHtml}
-            </div>
-        `;
-    }
 
-    handleRouterCardClick(routerId) {
-        const mode = stateManager.getMode();
-        
-        // In certain modes, clicking a router card selects it
-        if (mode === 'connect-routers' || mode === 'disconnect-routers') {
-            // Trigger router selection
-            const router = stateManager.findRouterById(routerId);
-            if (router) {
-                // Simulate click on canvas at router position
-                const event = new CustomEvent('routerCardClicked', {
-                    detail: { router }
-                });
-                window.dispatchEvent(event);
-            }
-        } else if (mode === 'toggle-failure') {
-            // Toggle router failure directly
-            if (stateManager.simulator) {
-                stateManager.simulator.toggle_router_failure(routerId);
-                this.updateRoutersList();
-                eventLogger.log(`Toggled failure state for router ${routerId}`);
-            }
-        }
-    }
 
     updateSimulationButton(isRunning) {
         const btn = document.getElementById('simulate-btn');
