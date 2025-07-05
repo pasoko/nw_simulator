@@ -136,7 +136,7 @@ class CanvasRenderer {
         if (conn.is_failed) {
             const midX = (from.x + to.x) / 2;
             const midY = (from.y + to.y) / 2;
-            this.drawFailureX(midX, midY, 15);
+            this.drawFailureMark(midX, midY, 15);
         }
     }
     
@@ -220,6 +220,28 @@ class CanvasRenderer {
         this.ctx.font = '12px Arial';
         this.ctx.fillStyle = '#000';
         this.ctx.fillText(`Cost: ${conn.cost}`, midX, midY);
+    }
+    
+    drawFailureMark(x, y, size) {
+        // Draw red X mark to indicate failure
+        this.ctx.save();
+        this.ctx.strokeStyle = '#ff0000';
+        this.ctx.lineWidth = 3;
+        
+        // Draw X
+        this.ctx.beginPath();
+        this.ctx.moveTo(x - size/2, y - size/2);
+        this.ctx.lineTo(x + size/2, y + size/2);
+        this.ctx.moveTo(x + size/2, y - size/2);
+        this.ctx.lineTo(x - size/2, y + size/2);
+        this.ctx.stroke();
+        
+        // Draw circle around X
+        this.ctx.beginPath();
+        this.ctx.arc(x, y, size, 0, 2 * Math.PI);
+        this.ctx.stroke();
+        
+        this.ctx.restore();
     }
     
     drawRouters() {
