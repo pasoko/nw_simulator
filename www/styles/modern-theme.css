@@ -255,13 +255,6 @@ code, pre {
     color: var(--text-primary);
 }
 
-.router-details {
-    margin-top: var(--spacing-md);
-    padding-top: var(--spacing-md);
-    border-top: 1px solid var(--border-color);
-    font-size: 12px;
-    color: var(--text-secondary);
-}
 
 /* Routing Table */
 .routing-table {
