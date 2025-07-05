@@ -126,22 +126,23 @@ class DisplayUpdater {
                 event.timestamp
             );
             
-            // Add packet arrival effect
+            // Add packet arrival effect - temporarily disabled to avoid errors
+            // TODO: Fix packet color configuration access
+            /*
             if (stateManager.canvasRenderer && stateManager.canvasRenderer.ctx && stateManager.packetVisualizer) {
-                // Safely get packet color
                 const packetType = event.event_type.PacketSent.packet_type;
                 let packetColor = '#666666'; // Default color
                 
-                try {
-                    if (stateManager.packetVisualizer.packetConfigs && packetType) {
-                        const config = stateManager.packetVisualizer.packetConfigs[packetType];
-                        if (config && config.color) {
-                            packetColor = config.color;
-                        }
-                    }
-                } catch (error) {
-                    console.warn('Error accessing packet config:', error);
-                }
+                // Use hardcoded colors for now
+                const colorMap = {
+                    'Hello': '#4CAF50',
+                    'Database Description': '#2196F3',
+                    'Link State Request': '#FF9800',
+                    'Link State Update': '#9C27B0',
+                    'Link State Acknowledgment': '#00BCD4'
+                };
+                
+                packetColor = colorMap[packetType] || '#666666';
                 
                 animationEffects.animatePacketBurst(
                     stateManager.canvasRenderer.ctx,
@@ -150,6 +151,7 @@ class DisplayUpdater {
                     packetColor
                 );
             }
+            */
         }
     }
     

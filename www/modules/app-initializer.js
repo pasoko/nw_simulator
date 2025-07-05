@@ -111,6 +111,9 @@ class ApplicationInitializer {
             // Initialize enhanced packet visualizer
             console.log('Initializing enhanced packet visualizer...');
             stateManager.packetVisualizer = new PacketVisualizerEnhanced(canvas, ctx);
+            console.log('PacketVisualizer initialized:', stateManager.packetVisualizer.constructor.name);
+            console.log('Has packetConfigs?', 'packetConfigs' in stateManager.packetVisualizer);
+            console.log('Has packetColors?', 'packetColors' in stateManager.packetVisualizer);
             
             console.log('Canvas setup completed successfully');
         } catch (error) {
