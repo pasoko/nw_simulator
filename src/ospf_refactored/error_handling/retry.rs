@@ -82,7 +82,14 @@ impl RetryConfig {
         if self.jitter {
             // Add up to 20% jitter
             let jitter_range = delay * 0.2;
+            #[cfg(target_arch = "wasm32")]
             let jitter = (js_sys::Math::random() as f32 - 0.5) * 2.0 * jitter_range;
+            #[cfg(not(target_arch = "wasm32"))]
+            let jitter = {
+                use std::time::{SystemTime, UNIX_EPOCH};
+                let seed = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos() as f32;
+                ((seed % 1000.0) / 1000.0 - 0.5) * 2.0 * jitter_range
+            };
             delay += jitter;
         }
         
@@ -181,7 +188,15 @@ impl CircuitBreaker {
     /// Record a failure
     pub fn record_failure(&mut self) {
         self.failure_count += 1;
-        self.last_failure = Some(js_sys::Date::now());
+        #[cfg(target_arch = "wasm32")]
+        {
+            self.last_failure = Some(js_sys::Date::now());
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            use std::time::{SystemTime, UNIX_EPOCH};
+            self.last_failure = Some(SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as f64);
+        }
         
         if self.failure_count >= self.failure_threshold {
             self.state = CircuitState::Open;
@@ -194,7 +209,14 @@ impl CircuitBreaker {
             CircuitState::Closed => true,
             CircuitState::Open => {
                 if let Some(last_failure) = self.last_failure {
+                    #[cfg(target_arch = "wasm32")]
                     let elapsed = js_sys::Date::now() - last_failure;
+                    #[cfg(not(target_arch = "wasm32"))]
+                    let elapsed = {
+                        use std::time::{SystemTime, UNIX_EPOCH};
+                        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as f64;
+                        now - last_failure
+                    };
                     if elapsed >= self.reset_timeout_ms as f64 {
                         self.state = CircuitState::HalfOpen;
                         true

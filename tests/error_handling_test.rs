@@ -35,11 +35,12 @@ fn test_error_context_creation() {
 
 #[test]
 fn test_retry_config() {
-    let config = RetryConfig::default();
+    let mut config = RetryConfig::default();
     assert_eq!(config.max_attempts, 3);
     assert_eq!(config.initial_delay_ms, 100);
     
-    // Test delay calculation
+    // Test delay calculation without jitter for deterministic results
+    config.jitter = false;
     assert_eq!(config.calculate_delay(0).as_millis(), 0);
     assert_eq!(config.calculate_delay(1).as_millis(), 100);
     
