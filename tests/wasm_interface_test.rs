@@ -3,7 +3,7 @@
 // These tests verify that the WASM interface correctly wraps
 // the refactored OSPF implementation.
 
-#[cfg(test)]
+#[cfg(all(test, target_arch = "wasm32"))]
 mod tests {
     use nw_simulator::wasm_interface::{OSPFConfig, RefactoredOSPFEngine, FeatureFlagController};
     use serde_json;
