@@ -12,7 +12,7 @@
     flex-direction: column;
     height: 100vh;
     overflow: hidden;
-    width: 360px;
+    width: 632px; /* 6列×90px + 5ギャップ×12px + パディング32px */
     min-width: 0; /* Allow resize */
     flex-shrink: 0;
     transition: none; /* Disable transition during resize */
@@ -160,8 +160,8 @@
 /* Tool Grid */
 .tool-grid {
     display: grid;
-    grid-template-columns: repeat(3, 90px); /* 横3列×固定幅 */
-    grid-template-rows: repeat(2, 90px); /* 縦2行×固定高さ */
+    grid-template-columns: repeat(6, 90px); /* 横6列×固定幅 */
+    grid-template-rows: 90px; /* 縦1行×固定高さ */
     gap: 12px;
     justify-content: start; /* 左寄せ */
 }
@@ -420,7 +420,7 @@
 /* Sidebar Resizer */
 .sidebar-resizer {
     position: fixed;
-    left: 360px; /* Default sidebar width */
+    left: 632px; /* Default sidebar width */
     top: 0;
     width: 16px; /* Wider hit area */
     height: 100vh;

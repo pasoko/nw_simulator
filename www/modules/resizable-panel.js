@@ -9,7 +9,7 @@ class ResizablePanel {
         this.resizer = null;
         this.isResizing = false;
         this.minWidth = 280;
-        this.maxWidth = 600;
+        this.maxWidth = 800;
         this.startX = 0;
         this.startWidth = 0;
         this.STORAGE_KEY = 'network-simulator-sidebar-width';
@@ -47,7 +47,7 @@ class ResizablePanel {
         document.body.appendChild(this.resizer);
         
         // Set initial position based on sidebar width
-        const sidebarWidth = this.sidebar.offsetWidth || 360;
+        const sidebarWidth = this.sidebar.offsetWidth || 632;
         this.resizer.style.left = (sidebarWidth - 8) + 'px'; // Adjust for margin
     }
 
@@ -126,7 +126,7 @@ class ResizablePanel {
     }
 
     resetWidth() {
-        const defaultWidth = 360;
+        const defaultWidth = 632;
         this.sidebar.style.width = defaultWidth + 'px';
         this.resizer.style.left = (defaultWidth - 8) + 'px'; // Adjust for margin
         this.saveWidth();
@@ -161,7 +161,7 @@ class ResizablePanel {
     }
 
     getWidth() {
-        return parseInt(this.sidebar.style.width, 10) || 360;
+        return parseInt(this.sidebar.style.width, 10) || 632;
     }
 }
 
