@@ -160,12 +160,15 @@
 /* Tool Grid */
 .tool-grid {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(3, 90px); /* 横3列×固定幅 */
+    grid-template-rows: repeat(2, 90px); /* 縦2行×固定高さ */
     gap: 12px;
+    justify-content: start; /* 左寄せ */
 }
 
 .tool-button {
-    aspect-ratio: 1;
+    width: 90px; /* 固定幅 */
+    height: 90px; /* 固定高さ */
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -176,7 +179,7 @@
     border-radius: 12px;
     cursor: pointer;
     transition: all 0.3s ease;
-    padding: 16px;
+    padding: 12px;
     position: relative;
     overflow: hidden;
 }
@@ -368,6 +371,12 @@
 
 #sidebar.collapsed .tool-grid {
     grid-template-columns: 1fr;
+    grid-template-rows: auto;
+}
+
+#sidebar.collapsed .tool-button {
+    width: 48px;
+    height: 48px;
 }
 
 #sidebar.collapsed .section-title {
