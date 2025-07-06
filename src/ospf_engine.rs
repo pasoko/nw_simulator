@@ -550,7 +550,7 @@ impl OSPFEngine {
         console_log!("Router {} regenerate_router_lsa returned {} events", self.router_id, events.len());
         
         // Request SPF calculation (RFC 2328 Section 16.1)
-        self.spf_calculation_pending = true;
+        self.request_spf_calculation();
         console_log!("Router {} requested SPF calculation after link removal", self.router_id);
         
         // If we have neighbors to flood to, return the events
@@ -628,7 +628,7 @@ impl OSPFEngine {
             self.router_id, link_count);
         
         // Request SPF calculation after LSA regeneration
-        self.spf_calculation_pending = true;
+        self.request_spf_calculation();
         console_log!("Router {} requested SPF calculation after LSA regeneration", self.router_id);
         
         let events = self.flood_lsa(&router_lsa);

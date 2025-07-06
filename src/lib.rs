@@ -60,6 +60,9 @@ mod network_test;
 #[cfg(test)]
 mod ospfv2_compliance_test;
 
+#[cfg(test)]
+mod link_failure_spf_test;
+
 use simulation::NetworkSimulation;
 use ui_state::UIState;
 use serialization::SerializationHelper;

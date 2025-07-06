@@ -323,6 +323,15 @@ impl NetworkSimulation {
         let mut ospf_events = Vec::new();
         let mut spf_ready_routers = Vec::new();
         
+        // First pass: Check which routers have pending SPF calculations
+        // and add them to spf_needed list if not already there
+        for (router_id, engine) in self.ospf_engines.iter() {
+            if engine.is_spf_pending() && !self.spf_needed.contains(router_id) {
+                self.spf_needed.push(*router_id);
+                console_log!("Router {} added to spf_needed list (pending SPF detected)", router_id);
+            }
+        }
+        
         // Collect router IDs that need SPF before mutating engines
         let spf_needed_snapshot: Vec<u32> = self.spf_needed.clone();
         

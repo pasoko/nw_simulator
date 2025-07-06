@@ -246,14 +246,20 @@ impl OSPFLSAManager {
         // Check if we really need to regenerate (topology changed)
         if self.needs_lsa_regeneration() {
             console_log!("Router {} regenerating Router LSA due to topology change", self.router_id);
-            self.generate_router_lsa()
+            let lsa = self.generate_router_lsa();
+            // Mark database as updated when we generate a new LSA
+            self.database_updated = true;
+            lsa
         } else {
             // Return existing LSA without incrementing sequence number
             console_log!("Router {} LSA regeneration requested but topology unchanged", self.router_id);
             let key = format!("1:{}:{}", self.router_id, self.router_id);
             self.lsa_database.get(&key).cloned().unwrap_or_else(|| {
                 console_log!("Router {} has no existing LSA, generating new one", self.router_id);
-                self.generate_router_lsa()
+                let lsa = self.generate_router_lsa();
+                // Mark database as updated when we generate a new LSA
+                self.database_updated = true;
+                lsa
             })
         }
     }
