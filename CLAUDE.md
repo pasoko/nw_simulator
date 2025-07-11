@@ -13,6 +13,8 @@
 - 時間経過によりどのようなパケットが流れ、ルーティングテーブルが変化していくかリアルタイムでシミュレート表示します
 - 将来的にはほかのプロトコルにも拡張できるような設計になっています
 - イベントログの記録とJSON形式でのエクスポート機能があります
+- ダークモード/ライトモードの切り替え機能があります
+- レスポンシブなサイドバーUIとモダンなテーマ対応があります
 
 # 共通コマンド
 - JavaScript Tool Managerとしてvoltaを使用します。
@@ -31,24 +33,61 @@
 ├── src/                # Rustソースコード
 │   ├── lib.rs          # WebAssemblyエントリポイント
 │   ├── network.rs      # ネットワークトポロジー管理
-│   ├── ospf.rs         # OSPFプロトコル実装
-│   ├── ospf_engine.rs  # OSPFエンジンコア
+│   ├── network_type.rs # ネットワークタイプ定義
+│   ├── ospf.rs         # OSPFパケット型定義
+│   ├── ospf_engine.rs  # OSPFプロトコルエンジン
+│   ├── ospf_engine_refactored.rs # リファクタリング版OSPFエンジン
+│   ├── ospf_engine_event_adapter.rs # OSPFイベントアダプター
+│   ├── ospf_neighbor.rs # OSPF隣接関係管理
+│   ├── ospf_lsa_manager.rs # LSAデータベース管理
+│   ├── ospf_packet_processor.rs # OSPFパケット処理
+│   ├── ospf_timer.rs   # OSPFタイマー管理
+│   ├── ospf_dr_election.rs # DR/BDR選出処理
+│   ├── ospf_checksum.rs # OSPFチェックサム計算
 │   ├── protocol.rs     # プロトコル定義
 │   ├── router.rs       # ルーター状態管理
+│   ├── route_calculator.rs # ルート計算制御
 │   ├── simulation.rs   # シミュレーション制御
 │   ├── spf.rs          # 最短経路優先アルゴリズム
-│   └── ui_state.rs     # UI状態管理
+│   ├── ui_state.rs     # UI状態管理
+│   ├── event_manager.rs # イベント管理
+│   ├── failure_manager.rs # 障害シミュレーション管理
+│   ├── wasm_interface.rs # WebAssemblyインターフェース
+│   ├── serialization.rs # シリアライゼーション
+│   └── ospf_refactored/ # リファクタリング版OSPFモジュール
+│       ├── error_handling/ # エラー処理
+│       ├── events/     # イベントシステム
+│       ├── packets/    # パケット処理
+│       └── state/      # 状態管理
 ├── www/                # フロントエンドコード
 │   ├── index.html      # メインHTMLページ
 │   ├── index.js        # メインJavaScriptエントリポイント
-│   ├── packet-visualizer.js # パケット可視化
+│   ├── packet-visualizer.js # パケット可視化（レガシー）
+│   ├── packet-visualizer-enhanced.js # 拡張版パケット可視化
 │   ├── modules/        # モジュラーJavaScriptコンポーネント
-│   │   ├── canvas-renderer.js
-│   │   ├── connection-manager.js
-│   │   ├── event-logger.js
-│   │   ├── router-manager.js
-│   │   ├── simulation-controller.js
-│   │   └── state-manager.js
+│   │   ├── canvas-renderer.js      # Canvas描画処理
+│   │   ├── connection-manager.js   # 接続管理
+│   │   ├── event-logger.js         # イベントログ管理
+│   │   ├── router-manager.js       # ルーター管理
+│   │   ├── simulation-controller.js # シミュレーション制御
+│   │   ├── state-manager.js        # 状態管理
+│   │   ├── animation-effects.js    # アニメーション効果
+│   │   ├── app-initializer.js      # アプリケーション初期化
+│   │   ├── canvas-interaction.js   # Canvas操作処理
+│   │   ├── display-updater.js      # 表示更新処理
+│   │   ├── refactored-ospf-adapter.js # OSPFアダプター
+│   │   ├── resizable-panel.js      # リサイズ可能パネル
+│   │   ├── router-details-ui.js    # ルーター詳細UI
+│   │   ├── router-icon.js          # ルーターアイコン描画
+│   │   ├── sidebar-ui.js           # サイドバーUI
+│   │   ├── theme-manager.js        # テーマ管理
+│   │   └── ui-controller.js        # UI制御
+│   ├── styles/         # CSSスタイルシート
+│   │   ├── animations.css   # アニメーション定義
+│   │   ├── dark-mode.css    # ダークモード
+│   │   ├── modern-theme.css # モダンテーマ
+│   │   ├── router-details.css # ルーター詳細スタイル
+│   │   └── sidebar-modern.css # モダンサイドバー
 │   ├── webpack.config.js # Webpack設定
 │   └── package.json    # フロントエンド依存関係
 ├── pkg/                # 生成されるWebAssemblyファイル

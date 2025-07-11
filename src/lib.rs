@@ -1,3 +1,10 @@
+// WebAssembly エントリポイント
+// 
+// このモジュールは、RustベースのOSPFネットワークシミュレーターをWebAssemblyとして
+// ブラウザで実行可能にするためのメインインターフェースを提供します。
+// NetworkSimulatorクラスがJavaScript側に公開され、ルーター管理、リンク接続、
+// OSPFプロトコル制御、シミュレーション実行などのAPIを提供します。
+
 #![allow(dead_code)]
 use wasm_bindgen::prelude::*;
 

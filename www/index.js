@@ -3,6 +3,12 @@
  * 
  * This is the simplified main entry point that coordinates the various modules.
  * The complex functionality has been extracted into focused modules.
+ * 
+ * 初期化フロー:
+ * 1. テーママネージャーの初期化（ダーク/ライトモード設定）
+ * 2. アプリケーションモジュールの初期化（WebAssembly読み込み含む）
+ * 3. リファクタリング版エンジンの条件付き初期化（URLパラメータ依存）
+ * 4. グローバルエラーハンドリングの設定
  */
 
 import appInitializer from './modules/app-initializer.js';
@@ -12,18 +18,21 @@ import themeManager from './modules/theme-manager.js';
 
 async function main() {
     try {
-        // Initialize theme manager first
+        // 1. テーママネージャーの初期化（システム設定に基づくテーマ適用）
         themeManager.init();
         
-        // Initialize the application
+        // 2. メインアプリケーションの初期化
         eventLogger.log('Starting OSPF Network Simulator...');
         await appInitializer.init();
-        eventLogger.log('Application loaded successfully');
+        eventLogger.log('Application modules initialized successfully');
         
-        // Initialize refactored engine for testing (if enabled)
+        // 3. リファクタリング版エンジンの条件付き初期化
+        // URLに ?refactored=true が含まれる場合のみ有効化
         if (window.location.search.includes('refactored=true')) {
             await initializeRefactoredEngine();
         }
+        
+        eventLogger.log('Application loaded successfully');
         
     } catch (error) {
         console.error('Failed to start application:', error);
