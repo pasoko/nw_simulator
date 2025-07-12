@@ -20,6 +20,7 @@ mod tests {
         
         let interface1 = RouterInterface {
             id: 1,
+            name: String::new(),
             ip_address: "192.168.1.1".to_string(),
             netmask: "255.255.255.0".to_string(),
             connected_router_id: Some(2),
@@ -29,6 +30,7 @@ mod tests {
         
         let interface2 = RouterInterface {
             id: 2,
+            name: String::new(),
             ip_address: "10.0.0.1".to_string(),
             netmask: "255.255.255.0".to_string(),
             connected_router_id: None,
@@ -50,6 +52,7 @@ mod tests {
         
         let interface1 = RouterInterface {
             id: 1,
+            name: String::new(),
             ip_address: "192.168.1.1".to_string(),
             netmask: "255.255.255.0".to_string(),
             connected_router_id: Some(2),
@@ -62,6 +65,7 @@ mod tests {
         // Replace with updated interface
         let interface1_updated = RouterInterface {
             id: 1,
+            name: String::new(),
             ip_address: "192.168.1.100".to_string(),
             netmask: "255.255.255.0".to_string(),
             connected_router_id: Some(2),
@@ -102,6 +106,7 @@ mod tests {
             netmask: "255.255.255.0".to_string(),
             next_hop: "192.168.1.2".to_string(),
             interface_id: 1,
+            interface_name: "IFRouter1-1".to_string(),
             metric: 10,
             protocol: RoutingProtocol::OSPF,
         };
@@ -111,6 +116,7 @@ mod tests {
             netmask: "255.0.0.0".to_string(),
             next_hop: "192.168.1.2".to_string(),
             interface_id: 1,
+            interface_name: "IFRouter1-1".to_string(),
             metric: 20,
             protocol: RoutingProtocol::Static,
         };
@@ -132,6 +138,7 @@ mod tests {
             netmask: "255.255.255.0".to_string(),
             next_hop: "192.168.1.2".to_string(),
             interface_id: 1,
+            interface_name: "IFRouter1-1".to_string(),
             metric: 10,
             protocol: RoutingProtocol::OSPF,
         };
@@ -146,6 +153,7 @@ mod tests {
             netmask: "255.255.255.0".to_string(),
             next_hop: "192.168.1.3".to_string(),
             interface_id: 2,
+            interface_name: "IFRouter1-2".to_string(),
             metric: 5,
             protocol: RoutingProtocol::OSPF,
         };

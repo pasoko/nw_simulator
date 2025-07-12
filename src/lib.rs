@@ -41,6 +41,9 @@ mod ospf_test;
 mod ospf_dd_retransmit_test;
 
 #[cfg(test)]
+mod interface_naming_test;
+
+#[cfg(test)]
 mod ospf_dd_retransmit_simple_test;
 
 #[cfg(test)]

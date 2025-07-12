@@ -167,6 +167,8 @@ class RouterDetailsUI {
     }
 
     getSummaryContent(routerId) {
+        console.log('=== getSummaryContent called for router:', routerId);
+        
         // デバッグ: simulator の状態を確認
         if (!stateManager.simulator) {
             console.error('stateManager.simulator is not initialized');
@@ -174,20 +176,24 @@ class RouterDetailsUI {
         }
         
         try {
+            console.log('Calling get_router_summary_json...');
             const summaryJson = stateManager.simulator.get_router_summary_json(routerId);
+            console.log('Calling get_router_details_json...');
             const detailsJson = stateManager.simulator.get_router_details_json(routerId);
             
             console.log('Router Summary JSON:', summaryJson);
             console.log('Router Details JSON:', detailsJson);
             
             if (!summaryJson || !detailsJson) {
+                console.error('No data returned from simulator');
                 return '<div class="empty-state">データがありません</div>';
             }
             
             const summary = JSON.parse(summaryJson);
             const details = JSON.parse(detailsJson);
+            console.log('Parsed details:', details);
         
-        return `
+        const summaryHTML = `
             <div class="summary-content">
                 <div class="summary-item">
                     <span class="label">Router ID:</span>
@@ -218,6 +224,39 @@ class RouterDetailsUI {
                 ${details.interfaces ? this.createInterfacesSummary(details.interfaces) : ''}
             </div>
         `;
+        console.log('=== Generated Summary HTML ===');
+        console.log(summaryHTML);
+        
+        // DOMに実際に挿入された後の内容を確認
+        setTimeout(() => {
+            const ifElements = document.querySelectorAll('.interface-item .if-name');
+            console.log('=== Actual DOM interface names ===');
+            ifElements.forEach((el, index) => {
+                console.log(`DOM element ${index} text: "${el.textContent}"`);
+                console.log(`DOM element ${index} HTML: "${el.innerHTML}"`);
+                console.log(`DOM element ${index} parent HTML:`, el.parentElement.outerHTML);
+            });
+            
+            // 「if1」というテキストを含む要素を探す
+            const allElements = document.querySelectorAll('*');
+            const if1Elements = Array.from(allElements).filter(el => 
+                el.textContent && el.textContent.includes('if1') && 
+                !el.textContent.includes('IF1')
+            );
+            
+            if (if1Elements.length > 0) {
+                console.log('=== Found elements containing "if1" ===');
+                if1Elements.forEach(el => {
+                    console.log('Element:', el);
+                    console.log('Tag:', el.tagName);
+                    console.log('Class:', el.className);
+                    console.log('Text:', el.textContent);
+                    console.log('HTML:', el.outerHTML);
+                });
+            }
+        }, 100);
+        
+        return summaryHTML;
         } catch (error) {
             console.error('Error in getSummaryContent:', error);
             return '<div class="error-state">データの処理中にエラーが発生しました</div>';
@@ -225,16 +264,37 @@ class RouterDetailsUI {
     }
 
     createInterfacesSummary(interfaces) {
+        // デバッグ: インターフェース情報を詳しくログ出力
+        console.log('=== Interface Details Debug ===');
+        interfaces.forEach(iface => {
+            console.log(`Interface ${iface.id}:`, {
+                name: iface.name,
+                name_type: typeof iface.name,
+                name_length: iface.name ? iface.name.length : 0,
+                ip: iface.ip_address,
+                cost: iface.cost,
+                full_object: iface
+            });
+        });
+        
         return `
             <div class="interfaces-summary">
                 <h4>インターフェース</h4>
-                ${interfaces.map(iface => `
-                    <div class="interface-item">
-                        <span class="if-name">IF${iface.id}:</span>
-                        <span class="if-ip">${iface.ip_address}</span>
-                        <span class="if-cost">Cost: ${iface.cost}</span>
-                    </div>
-                `).join('')}
+                ${interfaces.map(iface => {
+                    // インターフェース名が存在し、空でない場合はそれを使用
+                    const ifName = (iface.name && iface.name.trim() !== '') ? iface.name : `IF${iface.id}`;
+                    console.log(`Interface ${iface.id} display name: "${ifName}" (original: "${iface.name}")`);
+                    // 生成されるHTMLを確認
+                    const html = `
+                        <div class="interface-item">
+                            <span class="if-name">${ifName}:</span>
+                            <span class="if-ip">${iface.ip_address}</span>
+                            <span class="if-cost">Cost: ${iface.cost}</span>
+                        </div>
+                    `;
+                    console.log(`Generated HTML for interface ${iface.id}:`, html);
+                    return html;
+                }).join('')}
             </div>
         `;
     }
@@ -277,7 +337,7 @@ class RouterDetailsUI {
                                 <td>${route.destination}/${route.netmask || '24'}</td>
                                 <td>${route.next_hop || 'Direct'}</td>
                                 <td>${route.metric || route.cost || 0}</td>
-                                <td>IF${route.interface_id || route.interface || '-'}</td>
+                                <td>${route.interface_name || `IF${route.interface_id || route.interface || '-'}`}</td>
                             </tr>
                         `).join('')}
                     </tbody>

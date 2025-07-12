@@ -254,6 +254,7 @@ impl SPFCalculator {
                     netmask: "255.255.255.255".to_string(),
                     next_hop: format!("{}.{}.{}.{}", 1, 1, 1, next_hop),
                     interface_id: interface.id,
+                    interface_name: interface.name.clone(),
                     metric: distances[dest_router_id],
                     protocol: crate::router::RoutingProtocol::OSPF,
                 };
@@ -375,6 +376,7 @@ impl SPFCalculator {
                     netmask: "255.255.255.255".to_string(),
                     next_hop: format!("{}.{}.{}.{}", 1, 1, 1, next_hop),
                     interface_id: interface.id,
+                    interface_name: interface.name.clone(),
                     metric: distances[dest_router_id],
                     protocol: crate::router::RoutingProtocol::OSPF,
                 };

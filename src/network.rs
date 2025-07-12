@@ -95,6 +95,7 @@ impl NetworkTopology {
         
         let interface1 = RouterInterface {
             id: interface1_id,
+            name: String::new(),  // ルーターのadd_interfaceメソッドで自動設定される
             ip_address: format!("10.0.{}.1", link_id),
             netmask: netmask.to_string(),
             connected_router_id: Some(router2_id),
@@ -104,6 +105,7 @@ impl NetworkTopology {
 
         let interface2 = RouterInterface {
             id: interface2_id,
+            name: String::new(),  // ルーターのadd_interfaceメソッドで自動設定される
             ip_address: format!("10.0.{}.2", link_id),
             netmask: netmask.to_string(),
             connected_router_id: Some(router1_id),

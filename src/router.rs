@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
+use crate::console_log;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RouterInterface {
     pub id: u32,
+    pub name: String,
     pub ip_address: String,
     pub netmask: String,
     pub connected_router_id: Option<u32>,
@@ -17,6 +19,7 @@ pub struct RoutingTableEntry {
     pub netmask: String,
     pub next_hop: String,
     pub interface_id: u32,
+    pub interface_name: String,
     pub metric: u32,
     pub protocol: RoutingProtocol,
 }
@@ -36,6 +39,7 @@ pub struct RouterState {
     pub routing_table: Vec<RoutingTableEntry>,
     pub ospf_state: Option<OSPFState>,
     pub is_failed: bool,
+    pub next_interface_number: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -152,11 +156,33 @@ impl RouterState {
             routing_table: Vec::new(),
             ospf_state: None,
             is_failed: false,
+            next_interface_number: 1,
         }
     }
 
-    pub fn add_interface(&mut self, interface: RouterInterface) {
-        self.interfaces.insert(interface.id, interface);
+    pub fn add_interface(&mut self, mut interface: RouterInterface) {
+        // インターフェース名が設定されていない場合は自動生成
+        if interface.name.is_empty() {
+            interface.name = format!("IF{}-{}", self.name, self.next_interface_number);
+            console_log!("Router {} - インターフェース名を自動生成: {} (interface_id: {})", 
+                self.name, interface.name, interface.id);
+            self.next_interface_number += 1;
+        } else {
+            console_log!("Router {} - カスタムインターフェース名を使用: {} (interface_id: {})", 
+                self.name, interface.name, interface.id);
+        }
+        
+        // デバッグ: インターフェース追加前後の状態を確認
+        console_log!("Router {} - Adding interface: id={}, name={}, ip={}", 
+            self.name, interface.id, interface.name, interface.ip_address);
+        
+        self.interfaces.insert(interface.id, interface.clone());
+        
+        // デバッグ: 追加後の確認
+        if let Some(added_interface) = self.interfaces.get(&interface.id) {
+            console_log!("Router {} - Interface added successfully: id={}, name={}", 
+                self.name, added_interface.id, added_interface.name);
+        }
     }
 
     pub fn enable_ospf(&mut self, router_id: String, area_id: String) {

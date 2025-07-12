@@ -195,15 +195,41 @@ class CanvasRenderer {
         this.ctx.textAlign = 'center';
         this.ctx.textBaseline = 'middle';
         
+        // Get actual interface names from routers
+        const fromInterfaceName = this.getInterfaceName(from.id, conn.from_interface_id);
+        const toInterfaceName = this.getInterfaceName(to.id, conn.to_interface_id);
+        
         // Interface number at 'from' end (adjusted for larger router icon)
         const fromLabelX = from.x + unitX * 50;
         const fromLabelY = from.y + unitY * 50;
-        this.drawInterfaceLabel(fromLabelX, fromLabelY, `if${conn.from_interface_id || '?'}`);
+        this.drawInterfaceLabel(fromLabelX, fromLabelY, fromInterfaceName);
         
         // Interface number at 'to' end (adjusted for larger router icon)
         const toLabelX = to.x - unitX * 50;
         const toLabelY = to.y - unitY * 50;
-        this.drawInterfaceLabel(toLabelX, toLabelY, `if${conn.to_interface_id || '?'}`);
+        this.drawInterfaceLabel(toLabelX, toLabelY, toInterfaceName);
+    }
+    
+    getInterfaceName(routerId, interfaceId) {
+        // Try to get router details from the simulator
+        if (stateManager.simulator) {
+            try {
+                const detailsJson = stateManager.simulator.get_router_details_json(routerId);
+                if (detailsJson) {
+                    const details = JSON.parse(detailsJson);
+                    if (details.interfaces) {
+                        const iface = details.interfaces.find(i => i.id === interfaceId);
+                        if (iface && iface.name) {
+                            return iface.name;
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('Error getting interface name:', e);
+            }
+        }
+        // Fallback to generic name
+        return `if${interfaceId || '?'}`;
     }
     
     drawInterfaceLabel(x, y, text) {

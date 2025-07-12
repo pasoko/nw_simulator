@@ -378,6 +378,7 @@ mod tests {
                 netmask: "255.255.255.255".to_string(),
                 next_hop: "1.1.1.2".to_string(),
                 interface_id: 1,
+                interface_name: "IFRouter1-1".to_string(),
                 metric: 10,
                 protocol: RoutingProtocol::OSPF,
             }
