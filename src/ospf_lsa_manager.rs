@@ -452,7 +452,9 @@ mod tests {
         manager.update_time(61.0);
         manager.age_lsas(0.0); // Trigger cleanup
         
-        // Now it should be removed
-        assert_eq!(manager.get_lsa_count(), 0);
+        // OSPFv2 compliance: MaxAge LSAs are kept in database
+        // They are only removed when a newer version is received or
+        // the originating router is no longer reachable
+        assert_eq!(manager.get_lsa_count(), 1);
     }
 }

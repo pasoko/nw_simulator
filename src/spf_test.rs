@@ -59,7 +59,7 @@ mod tests {
         let lsa_database = HashMap::new();
         let topology = NetworkTopology::new();
         
-        let routes = SPFCalculator::calculate_routes_from_lsa(&lsa_database, 1, &topology);
+        let (routes, _) = SPFCalculator::calculate_routes_from_lsa(&lsa_database, 1, &topology);
         
         assert!(routes.is_empty());
     }
@@ -73,7 +73,7 @@ mod tests {
         let lsa1 = create_test_lsa(1, vec![]);
         lsa_database.insert("1:1.1.1.1:1.1.1.1".to_string(), lsa1);
         
-        let routes = SPFCalculator::calculate_routes_from_lsa(&lsa_database, 1, &topology);
+        let (routes, _) = SPFCalculator::calculate_routes_from_lsa(&lsa_database, 1, &topology);
         
         // Should have no routes (no neighbors)
         assert!(routes.is_empty());
@@ -97,7 +97,7 @@ mod tests {
         let lsa3 = create_test_lsa(3, vec![(1, 20), (2, 5)]);
         lsa_database.insert("1:1.1.1.3:1.1.1.3".to_string(), lsa3);
         
-        let routes = SPFCalculator::calculate_routes_from_lsa(&lsa_database, 1, &topology);
+        let (routes, _) = SPFCalculator::calculate_routes_from_lsa(&lsa_database, 1, &topology);
         
         // Check that we have routes to both routers
         assert_eq!(routes.len(), 2);
@@ -139,7 +139,7 @@ mod tests {
         let lsa4 = create_test_lsa(4, vec![(2, 15), (3, 10)]);
         lsa_database.insert("1:1.1.1.4:1.1.1.4".to_string(), lsa4);
         
-        let routes = SPFCalculator::calculate_routes_from_lsa(&lsa_database, 1, &topology);
+        let (routes, _) = SPFCalculator::calculate_routes_from_lsa(&lsa_database, 1, &topology);
         
         // Should have routes to all 3 other routers
         assert_eq!(routes.len(), 3);
@@ -169,7 +169,7 @@ mod tests {
         let lsa5 = create_test_lsa(5, vec![]);
         lsa_database.insert("1:1.1.1.5:1.1.1.5".to_string(), lsa5);
         
-        let routes = SPFCalculator::calculate_routes_from_lsa(&lsa_database, 1, &topology);
+        let (routes, _) = SPFCalculator::calculate_routes_from_lsa(&lsa_database, 1, &topology);
         
         // Should only have route to router 2, not to router 5
         assert_eq!(routes.len(), 1);
@@ -188,7 +188,7 @@ mod tests {
         let lsa2 = create_test_lsa(2, vec![(1, 10)]);
         lsa_database.insert("1:1.1.1.2:1.1.1.2".to_string(), lsa2);
         
-        let routes = SPFCalculator::calculate_routes_from_lsa(&lsa_database, 1, &topology);
+        let (routes, _) = SPFCalculator::calculate_routes_from_lsa(&lsa_database, 1, &topology);
         
         // Check that routes are marked as OSPF protocol
         for (_, route) in routes {
@@ -211,7 +211,7 @@ mod tests {
         let lsa3 = create_test_lsa(3, vec![(1, 30), (2, 5)]);
         lsa_database.insert("1:1.1.1.3:1.1.1.3".to_string(), lsa3);
         
-        let routes = SPFCalculator::calculate_routes_from_lsa(&lsa_database, 1, &topology);
+        let (routes, _) = SPFCalculator::calculate_routes_from_lsa(&lsa_database, 1, &topology);
         
         // Path to router 3 should prefer 1->2->3 (cost 15) over direct 1->3 (cost 30)
         if let Some(route_to_3) = routes.get(&3) {
@@ -238,7 +238,7 @@ mod tests {
         let lsa4 = create_test_lsa(4, vec![(2, 10), (3, 10)]);
         lsa_database.insert("1:1.1.1.4:1.1.1.4".to_string(), lsa4);
         
-        let routes = SPFCalculator::calculate_routes_from_lsa(&lsa_database, 1, &topology);
+        let (routes, _) = SPFCalculator::calculate_routes_from_lsa(&lsa_database, 1, &topology);
         
         // Should find path to router 4 with cost 20
         if let Some(route_to_4) = routes.get(&4) {
@@ -274,7 +274,7 @@ mod tests {
         lsa_database.insert("1:1.1.1.3:1.1.1.3".to_string(), lsa3);
         
         // First calculation - should prefer 1->2->3
-        let routes = SPFCalculator::calculate_routes_from_lsa(&lsa_database, 1, &topology);
+        let (routes, _) = SPFCalculator::calculate_routes_from_lsa(&lsa_database, 1, &topology);
         assert_eq!(routes.get(&3).unwrap().metric, 20);
         assert_eq!(routes.get(&3).unwrap().next_hop, "1.1.1.2");
         
@@ -296,7 +296,7 @@ mod tests {
         lsa_database.insert("1:1.1.1.2:1.1.1.2".to_string(), lsa2_updated);
         
         // Recalculate - should now use direct path 1->3
-        let routes_after_failure = SPFCalculator::calculate_routes_from_lsa(&lsa_database, 1, &topology);
+        let (routes_after_failure, _) = SPFCalculator::calculate_routes_from_lsa(&lsa_database, 1, &topology);
         
         // Check if we have a route to router 3
         assert!(routes_after_failure.contains_key(&3), "No route to router 3 after link failure");
@@ -342,7 +342,7 @@ mod tests {
         
         // Measure SPF calculation time
         let start = Instant::now();
-        let routes = SPFCalculator::calculate_routes_from_lsa(&lsa_database, 1, &topology);
+        let (routes, _) = SPFCalculator::calculate_routes_from_lsa(&lsa_database, 1, &topology);
         let duration = start.elapsed();
         
         // Should complete in reasonable time (< 100ms for 100 routers)
@@ -372,7 +372,7 @@ mod tests {
         }
         lsa_database.insert("1:1.1.1.2:1.1.1.2".to_string(), lsa2);
         
-        let routes = SPFCalculator::calculate_routes_from_lsa(&lsa_database, 1, &topology);
+        let (routes, _) = SPFCalculator::calculate_routes_from_lsa(&lsa_database, 1, &topology);
         
         // Should still calculate routes correctly
         assert_eq!(routes.len(), 1);
