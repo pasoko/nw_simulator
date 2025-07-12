@@ -423,13 +423,9 @@ impl OSPFEngine {
                 console_log!("Router {} updating LSA: {}", self.router_id, key);
                 self.lsa_manager.update_lsa_database(lsa.clone());
                 
-                // Only add to flood list if not recently flooded
-                if !self.lsa_manager.was_recently_updated(&key, self.current_time) {
-                    updated_lsa_keys.push(key);
-                } else {
-                    console_log!("Router {} will not flood LSA {} due to MinLSInterval", 
-                        self.router_id, key);
-                }
+                // Add to flood list
+                updated_lsa_keys.push(key.clone());
+                console_log!("Router {} will flood LSA {} to neighbors", self.router_id, key);
                 lsas_updated = true;
             }
             
@@ -484,12 +480,12 @@ impl OSPFEngine {
                 .collect();
             
             for (key, lsa) in lsas_to_flood {
-                console_log!("  Flooding updated LSA {} to other neighbors", key);
+                console_log!("  Router {} flooding updated LSA {} to other neighbors (except {})", 
+                    self.router_id, key, from_router_id);
                 let flood_events = self.flood_lsa_except(&lsa, from_router_id);
-                if !flood_events.is_empty() {
-                    // Mark as flooded to prevent immediate re-flooding
-                    self.lsa_manager.mark_lsa_flooded(&key);
-                }
+                console_log!("  Router {} generated {} flood events for LSA {}", 
+                    self.router_id, flood_events.len(), key);
+                // Do not mark as flooded here - let the flooding complete first
                 events.extend(flood_events);
             }
             
@@ -709,10 +705,7 @@ impl OSPFEngine {
             events.push(lsu_event);
         }
         
-        // Mark LSA as flooded after successfully creating flood events
-        if !events.is_empty() {
-            self.lsa_manager.mark_lsa_flooded(&lsa_key);
-        }
+        // Do not mark LSA as flooded here - MinLSInterval should be handled differently
         
         events
     }

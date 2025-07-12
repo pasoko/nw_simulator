@@ -534,6 +534,10 @@ impl OSPFPacketProcessor {
         
         console_log!("Router {} creating LSU packet for router {} with {} LSAs", 
             self.router_id, to_router_id, lsas.len());
+        for lsa in lsas {
+            console_log!("  LSA: Type={}, ID={}, AdvRouter={}", 
+                lsa.header.lsa_type, lsa.header.link_state_id, lsa.header.advertising_router);
+        }
         
         PacketEvent {
             timestamp: 0.0,
