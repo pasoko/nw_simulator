@@ -231,7 +231,7 @@ impl OSPFEngine {
                             // Generate initial LSA if we don't have one yet
                             if self.lsa_manager.get_lsa_count() == 0 && self.lsa_manager.get_router_links().len() > 0 {
                                 console_log!("Router {} generating initial Router LSA before DD exchange", self.router_id);
-                                let lsa = self.lsa_manager.generate_router_lsa();
+                                let _lsa = self.lsa_manager.generate_router_lsa();
                                 console_log!("Router {} generated Router LSA with {} links, database now has {} LSAs", 
                                     self.router_id, self.lsa_manager.get_router_links().len(), self.lsa_manager.get_lsa_count());
                             }
@@ -297,26 +297,12 @@ impl OSPFEngine {
                         console_log!("Router {} stopped DD retransmission timer for neighbor {} (Full state)", 
                             self.router_id, from_router_id);
                         
-                        // When first neighbor reaches Full state, flood our LSA
+                        // When neighbor reaches Full state from Exchange
                         let full_neighbor_count = self.neighbor_manager.get_neighbors_in_state(OSPFNeighborState::Full).len();
                         console_log!("Router {} now has {} Full neighbors", self.router_id, full_neighbor_count);
                         
-                        if full_neighbor_count == 1 && self.lsa_manager.get_lsa_count() > 0 {
-                            // This is our first Full neighbor - flood our existing LSA
-                            console_log!("Router {} flooding existing LSAs to first Full neighbor", self.router_id);
-                            // Clone the LSAs to avoid borrowing issues
-                            let lsas_to_flood: Vec<(String, RouterLSA)> = self.lsa_manager.get_lsa_database()
-                                .iter()
-                                .filter(|(_, lsa)| lsa.header.advertising_router == self.router_id)
-                                .map(|(k, v)| (k.clone(), v.clone()))
-                                .collect();
-                            
-                            for (key, lsa) in lsas_to_flood {
-                                console_log!("Router {} flooding own LSA: {}", self.router_id, key);
-                                let flood_events = self.flood_lsa(&lsa);
-                                events.extend(flood_events);
-                            }
-                        }
+                        // DD exchange and LSR/LSU process should have already synchronized LSAs
+                        // No need to flood all LSAs again
                     }
                     OSPFNeighborState::Loading => {
                         // Send LSA requests
@@ -443,9 +429,8 @@ impl OSPFEngine {
             console_log!("Router {} stopped DD retransmission timer for neighbor {} (Full state via LSU)", 
                 self.router_id, from_router_id);
             
-            // Don't regenerate LSA just because a neighbor reached Full state
-            // LSAs should only be regenerated when topology actually changes
-            // This prevents flooding loops
+            // DD exchange and LSR/LSU process should have already synchronized LSAs
+            // No need to flood all LSAs again when reaching Full state
         }
         
         // Always flood LSAs if we actually updated our database
@@ -693,7 +678,10 @@ impl OSPFEngine {
             events.push(lsu_event);
         }
         
-        // Do not mark LSA as flooded here - MinLSInterval should be handled differently
+        // Mark LSA as flooded to prevent flooding loops
+        if !events.is_empty() {
+            self.lsa_manager.mark_lsa_flooded(&lsa_key);
+        }
         
         events
     }
@@ -731,6 +719,7 @@ impl OSPFEngine {
         // Reset the flag after SPF calculation
         self.lsa_manager.reset_database_updated();
     }
+    
     
     pub fn flood_lsa_except(&mut self, lsa: &RouterLSA, except_neighbor: u32) -> Vec<PacketEvent> {
         let mut events = Vec::new();
@@ -776,6 +765,16 @@ impl OSPFEngine {
             
             let lsu_event = self.packet_processor.create_lsu_packet_event(neighbor_id, &[packet_lsa.clone()]);
             events.push(lsu_event);
+        }
+        
+        // Mark LSA as flooded to prevent flooding loops
+        if !events.is_empty() {
+            let lsa_key = format!("{}:{}:{}", 
+                lsa.header.ls_type.clone() as u8,
+                lsa.header.link_state_id,
+                lsa.header.advertising_router
+            );
+            self.lsa_manager.mark_lsa_flooded(&lsa_key);
         }
         
         events

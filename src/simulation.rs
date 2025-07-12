@@ -201,10 +201,19 @@ impl NetworkSimulation {
             }
         }
         
-        // Don't generate LSA here - wait until neighbors are discovered
-        // LSAs should only be generated when we have active neighbors to flood to
-        console_log!("Router {} OSPF enabled with {} configured links, LSA generation deferred until neighbors discovered", 
+        // IMPORTANT: Generate initial Router LSA immediately
+        // This ensures LSA exists in database for DD exchange
+        console_log!("Router {} generating initial Router LSA with {} configured links", 
             router_id, ospf_engine.get_router_links().len());
+        
+        // Generate the initial LSA
+        let initial_lsa = ospf_engine.generate_router_lsa();
+        console_log!("Router {} initial LSA generated: seq={}, links={}", 
+            router_id, initial_lsa.header.ls_sequence_number, 
+            match &initial_lsa.data {
+                crate::router::LSAData::Router(data) => data.links.len(),
+                _ => 0,
+            });
         
         self.ospf_engines.insert(router_id, ospf_engine);
         self.event_manager.log_ospf_enabled(router_id);
