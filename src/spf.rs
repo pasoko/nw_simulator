@@ -68,7 +68,7 @@ impl SPFCalculator {
         lsa_database: &HashMap<String, LSA>,
         source_router_id: u32,
         topology: &NetworkTopology,  // Still needed for interface info
-    ) -> HashMap<u32, RoutingTableEntry> {
+    ) -> (HashMap<u32, RoutingTableEntry>, std::collections::HashSet<u32>) {
         console_log!("SPF CALLED for router {}", source_router_id);
         let mut adjacencies: HashMap<u32, Vec<(u32, u32)>> = HashMap::new();  // router_id -> [(neighbor_id, cost)]
         
@@ -131,7 +131,9 @@ impl SPFCalculator {
             console_log!("SPF: No adjacencies found for router {}, returning empty routing table", source_router_id);
             console_log!("SPF: LSA database contained {} LSAs but no valid adjacencies built", lsa_database.len());
             console_log!("SPF EMPTY EXIT: Router {} no adjacencies", source_router_id);
-            return HashMap::new();
+            let mut reachable = std::collections::HashSet::new();
+            reachable.insert(source_router_id);
+            return (HashMap::new(), reachable);
         }
         
         console_log!("SPF: Found adjacencies for {} routers", adjacencies.len());
@@ -140,6 +142,12 @@ impl SPFCalculator {
         console_log!("SPF Router {}: Adjacencies built:", source_router_id);
         for (router_id, neighbors) in &adjacencies {
             console_log!("  Router {} -> {:?}", router_id, neighbors);
+        }
+        
+        // Check if source router has any adjacencies
+        if !adjacencies.contains_key(&source_router_id) {
+            console_log!("SPF WARNING: Source router {} has no adjacencies in LSA database!", source_router_id);
+            console_log!("SPF: This may indicate missing or outdated LSA for source router");
         }
         
         // Run Dijkstra on the LSA-derived graph
@@ -279,13 +287,24 @@ impl SPFCalculator {
             }
         }
         
-        console_log!("SPF FINISHED for router {} with {} routes", source_router_id, routing_table.len());
+        // Collect all reachable routers (including those we found paths to)
+        let mut reachable_routers = std::collections::HashSet::new();
+        reachable_routers.insert(source_router_id); // Always include self
+        
+        // Add all routers we found distances to (even if we couldn't build routes)
+        for router_id in distances.keys() {
+            reachable_routers.insert(*router_id);
+        }
+        
+        console_log!("SPF FINISHED for router {} with {} routes, {} reachable routers", 
+            source_router_id, routing_table.len(), reachable_routers.len());
+        console_log!("SPF Router {}: Reachable routers: {:?}", source_router_id, reachable_routers);
         for (dest_id, route) in &routing_table {
             console_log!("SPF Router {}:   Route to {} -> {} via interface {} (metric {})", 
                 source_router_id, dest_id, route.next_hop, route.interface_id, route.metric);
         }
         
-        routing_table
+        (routing_table, reachable_routers)
     }
     
     // Keep old method for compatibility but have it use empty LSA database

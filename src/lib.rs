@@ -44,6 +44,12 @@ mod ospf_dd_retransmit_test;
 mod interface_naming_test;
 
 #[cfg(test)]
+mod ospf_lsa_retention_test;
+
+#[cfg(test)]
+mod ospf_maxage_lsa_test;
+
+#[cfg(test)]
 mod ospf_dd_retransmit_simple_test;
 
 #[cfg(test)]

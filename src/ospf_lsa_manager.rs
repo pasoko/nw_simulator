@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use crate::router::{LSA, LSAData, LSAType, LSAHeader as RouterLSAHeader, RouterLSA, RouterLink, LinkType};
 use crate::ospf_checksum::calculate_lsa_checksum;
 use crate::console_log;
@@ -103,6 +103,8 @@ impl OSPFLSAManager {
     }
     
     pub fn update_lsa_database(&mut self, lsa: LSA) {
+        console_log!("Router {} update_lsa_database called for LSA from {}", 
+            self.router_id, lsa.header.advertising_router);
         let key = format!("{}:{}:{}", 
             lsa.header.ls_type.clone() as u8, 
             lsa.header.link_state_id.clone(), 
@@ -156,19 +158,19 @@ impl OSPFLSAManager {
             }
         }
         
-        // Remove LSAs that have been MaxAge for more than 60 seconds (grace period for reflooding)
-        let mut lsas_to_remove = Vec::new();
+        // OSPFv2 RFC 2328: MaxAge LSAs should be kept in the database
+        // They are only removed when:
+        // 1. A newer version of the LSA is received
+        // 2. The originating router is no longer reachable (determined by SPF calculation)
+        // For now, we'll keep MaxAge LSAs indefinitely to comply with OSPFv2
+        // The proper implementation would check reachability after SPF calculation
+        
+        // Log MaxAge LSAs but don't remove them
         for (key, reflood_time) in &self.maxage_lsas_pending_purge {
             if self.current_time - reflood_time > 60.0 {
-                lsas_to_remove.push(key.clone());
+                console_log!("Router {} keeping MaxAge LSA in database (OSPFv2 compliance): {}", 
+                    self.router_id, key);
             }
-        }
-        
-        for key in lsas_to_remove {
-            self.lsa_database.remove(&key);
-            self.recent_lsa_updates.remove(&key);
-            self.maxage_lsas_pending_purge.remove(&key);
-            console_log!("Router {} removed expired LSA after MaxAge grace period: {}", self.router_id, key);
         }
         
         // Clean up old entries from recent updates tracking
@@ -372,6 +374,35 @@ impl OSPFLSAManager {
     
     pub fn reset_database_updated(&mut self) {
         self.database_updated = false;
+    }
+    
+    /// Remove LSAs from unreachable routers after SPF calculation
+    /// This should be called after SPF calculation with the set of reachable router IDs
+    pub fn remove_unreachable_lsas(&mut self, reachable_routers: &HashSet<u32>) {
+        let mut lsas_to_remove = Vec::new();
+        
+        for (key, lsa) in &self.lsa_database {
+            // Extract router ID from advertising router field (format: "1.1.1.X")
+            if let Some(router_id) = lsa.header.advertising_router
+                .split('.')
+                .last()
+                .and_then(|s| s.parse::<u32>().ok()) {
+                
+                // Only remove LSAs from unreachable routers if they are MaxAge
+                if lsa.header.ls_age == MAX_AGE && !reachable_routers.contains(&router_id) {
+                    lsas_to_remove.push(key.clone());
+                    console_log!("Router {} will remove MaxAge LSA from unreachable router {}: {}", 
+                        self.router_id, router_id, key);
+                }
+            }
+        }
+        
+        for key in lsas_to_remove {
+            self.lsa_database.remove(&key);
+            self.recent_lsa_updates.remove(&key);
+            self.maxage_lsas_pending_purge.remove(&key);
+            console_log!("Router {} removed LSA from unreachable router: {}", self.router_id, key);
+        }
     }
 }
 

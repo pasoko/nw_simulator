@@ -418,16 +418,18 @@ impl OSPFEngine {
                     lsa.header.advertising_router
                 );
                 
-                // Check if we can update (MinLSInterval)
-                if self.lsa_manager.was_recently_updated(&key, self.current_time) {
-                    console_log!("Router {} skipping update of LSA {} due to MinLSInterval", 
-                        self.router_id, key);
-                    continue;
-                }
-                
+                // Always update the database if should_update is true
+                // MinLSInterval should only prevent flooding, not database updates
                 console_log!("Router {} updating LSA: {}", self.router_id, key);
                 self.lsa_manager.update_lsa_database(lsa.clone());
-                updated_lsa_keys.push(key);
+                
+                // Only add to flood list if not recently flooded
+                if !self.lsa_manager.was_recently_updated(&key, self.current_time) {
+                    updated_lsa_keys.push(key);
+                } else {
+                    console_log!("Router {} will not flood LSA {} due to MinLSInterval", 
+                        self.router_id, key);
+                }
                 lsas_updated = true;
             }
             
@@ -472,11 +474,11 @@ impl OSPFEngine {
             console_log!("Router {} checking which LSAs to flood (except to sender {})", 
                 self.router_id, from_router_id);
             
-            // Only flood the LSAs that were actually updated in our database
+            // Flood all LSAs that were updated and not recently flooded
+            // RFC 2328: Even self-originated LSAs should be flooded when received from others
             let lsas_to_flood: Vec<(String, RouterLSA)> = updated_lsa_keys.iter()
                 .filter_map(|key| {
                     self.lsa_manager.get_lsa_by_key(key)
-                        .filter(|lsa| lsa.header.advertising_router != self.router_id)
                         .map(|lsa| (key.clone(), lsa.clone()))
                 })
                 .collect();
@@ -484,6 +486,10 @@ impl OSPFEngine {
             for (key, lsa) in lsas_to_flood {
                 console_log!("  Flooding updated LSA {} to other neighbors", key);
                 let flood_events = self.flood_lsa_except(&lsa, from_router_id);
+                if !flood_events.is_empty() {
+                    // Mark as flooded to prevent immediate re-flooding
+                    self.lsa_manager.mark_lsa_flooded(&key);
+                }
                 events.extend(flood_events);
             }
             
@@ -609,6 +615,10 @@ impl OSPFEngine {
     
     pub fn get_neighbor_state_transitions(&mut self) -> HashMap<u32, (OSPFNeighborState, OSPFNeighborState)> {
         self.neighbor_manager.get_state_transitions()
+    }
+    
+    pub fn clean_unreachable_lsas(&mut self, reachable_routers: &std::collections::HashSet<u32>) {
+        self.lsa_manager.remove_unreachable_lsas(reachable_routers);
     }
     
     pub fn generate_router_lsa(&mut self) -> RouterLSA {

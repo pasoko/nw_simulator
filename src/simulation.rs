@@ -369,7 +369,7 @@ impl NetworkSimulation {
         for router_id in spf_ready_routers {
             console_log!("Router {} running delayed SPF calculation", router_id);
             self.route_calculator.calculate_routes_for_router(
-                router_id, &mut self.topology, &self.ospf_engines, &mut self.event_manager
+                router_id, &mut self.topology, &mut self.ospf_engines, &mut self.event_manager
             );
             self.clear_spf_needed(router_id);
             
@@ -525,18 +525,37 @@ impl NetworkSimulation {
                 )
             },
             OSPFPacketData::DatabaseDescription(dd) => {
-                format!("Database Description - MTU: {}, Flags: {:#04x}, Seq: {}, LSA headers: {}",
+                let mut lsa_headers = Vec::new();
+                for header in &dd.lsa_headers {
+                    if let Some(id) = header.advertising_router.split('.').last().and_then(|s| s.parse::<u32>().ok()) {
+                        lsa_headers.push(id);
+                    }
+                }
+                format!("Database Description - MTU: {}, Flags: {:#04x}, Seq: {}, LSA headers: {} from routers {:?}",
                     dd.interface_mtu,
                     dd.flags,
                     dd.dd_sequence_number,
-                    dd.lsa_headers.len()
+                    dd.lsa_headers.len(),
+                    lsa_headers
                 )
             },
             OSPFPacketData::LinkStateRequest(lsr) => {
-                format!("Link State Request - Requesting {} LSAs", lsr.requests.len())
+                let mut requested_routers = Vec::new();
+                for req in &lsr.requests {
+                    if let Some(id) = req.link_state_id.split('.').last().and_then(|s| s.parse::<u32>().ok()) {
+                        requested_routers.push(id);
+                    }
+                }
+                format!("Link State Request - Requesting {} LSAs from routers {:?}", lsr.requests.len(), requested_routers)
             },
             OSPFPacketData::LinkStateUpdate(lsu) => {
-                format!("Link State Update - Contains {} LSAs", lsu.lsas.len())
+                let mut lsa_sources = Vec::new();
+                for lsa in &lsu.lsas {
+                    if let Some(id) = lsa.header.advertising_router.split('.').last().and_then(|s| s.parse::<u32>().ok()) {
+                        lsa_sources.push(id);
+                    }
+                }
+                format!("Link State Update - Contains {} LSAs from routers {:?}", lsu.lsas.len(), lsa_sources)
             },
             OSPFPacketData::LinkStateAcknowledgment(lsack) => {
                 format!("Link State Acknowledgment - Acknowledging {} LSAs", lsack.lsa_headers.len())

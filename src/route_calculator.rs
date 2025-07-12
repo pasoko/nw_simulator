@@ -39,7 +39,7 @@ impl RouteCalculator {
         &mut self,
         router_id: u32,
         topology: &mut NetworkTopology,
-        ospf_engines: &BTreeMap<u32, OSPFEngine>,
+        ospf_engines: &mut BTreeMap<u32, OSPFEngine>,
         event_manager: &mut EventManager,
     ) {
         console_log!("=== CALCULATING ROUTES FOR ROUTER {} ===", router_id);
@@ -58,9 +58,22 @@ impl RouteCalculator {
         }
         
         // Get LSA database from OSPF engine and calculate routes
-        let (routes, lsa_count) = if let Some(engine) = ospf_engines.get(&router_id) {
+        let (routes, lsa_count, reachable_routers) = if let Some(engine) = ospf_engines.get(&router_id) {
             let lsa_count = engine.get_lsa_count();
             console_log!("Router {} has {} LSAs in database", router_id, lsa_count);
+            
+            // Debug: List all LSAs in database
+            console_log!("Router {} LSA database contents:", router_id);
+            let mut lsa_routers = Vec::new();
+            for (key, lsa) in engine.get_lsa_database() {
+                console_log!("  LSA: {} from router {} (age: {}, seq: {:#x})", 
+                    key, lsa.header.advertising_router, lsa.header.ls_age, lsa.header.ls_sequence_number);
+                if let Some(id) = lsa.header.advertising_router.split('.').last().and_then(|s| s.parse::<u32>().ok()) {
+                    lsa_routers.push(id);
+                }
+            }
+            lsa_routers.sort();
+            console_log!("Router {} has LSAs from routers: {:?}", router_id, lsa_routers);
             
             if lsa_count > 0 {
                 self.log_lsa_database_debug(router_id, engine);
@@ -68,13 +81,14 @@ impl RouteCalculator {
                 // Log SPF calculation start
                 event_manager.log_spf_calculation_started(router_id);
                 
-                let routes = SPFCalculator::calculate_routes_from_lsa(
+                let (routes, reachable_routers) = SPFCalculator::calculate_routes_from_lsa(
                     engine.get_lsa_database(),
                     router_id,
                     topology
                 );
                 
-                console_log!("Router {} SPF returned {} routes", router_id, routes.len());
+                console_log!("Router {} SPF returned {} routes, {} reachable routers", 
+                    router_id, routes.len(), reachable_routers.len());
                 self.log_calculated_routes_debug(router_id, &routes);
                 
                 // Log SPF calculation completion
@@ -85,16 +99,21 @@ impl RouteCalculator {
                     .map(|(_, route)| route)
                     .collect();
                 
-                (route_vec, Some(lsa_count))
+                (route_vec, Some(lsa_count), Some(reachable_routers))
             } else {
                 console_log!("Router {} has no LSAs, no routes available (OSPFv2 compliance: waiting for protocol convergence)", router_id);
-                (Vec::new(), Some(0))
+                (Vec::new(), Some(0), None)
             }
         } else {
             console_log!("Router {} has no OSPF engine, no routes calculated (OSPFv2 compliance)", router_id);
             // OSPFv2 compliance: No fallback routing. Routes only from OSPF protocol convergence.
-            (Vec::new(), None)
+            (Vec::new(), None, None)
         };
+        
+        // Clean up unreachable LSAs if we have reachable router information
+        if let (Some(engine), Some(reachable_set)) = (ospf_engines.get_mut(&router_id), reachable_routers) {
+            engine.clean_unreachable_lsas(&reachable_set);
+        }
         
         // Cache the calculated routes
         self.route_cache.insert(router_id, (self.current_time, routes.clone()));
@@ -231,7 +250,7 @@ impl RouteCalculator {
         &mut self,
         router_ids: Vec<u32>,
         topology: &mut NetworkTopology,
-        ospf_engines: &BTreeMap<u32, OSPFEngine>,
+        ospf_engines: &mut BTreeMap<u32, OSPFEngine>,
         event_manager: &mut EventManager,
     ) {
         console_log!("Batch route calculation for {} routers: {:?}", 
@@ -246,7 +265,7 @@ impl RouteCalculator {
     pub fn recalculate_all_routes(
         &mut self,
         topology: &mut NetworkTopology,
-        ospf_engines: &BTreeMap<u32, OSPFEngine>,
+        ospf_engines: &mut BTreeMap<u32, OSPFEngine>,
         event_manager: &mut EventManager,
     ) {
         // Clear cache to force recalculation
