@@ -33,6 +33,7 @@ class StateManager {
         this.simulationPaused = false;
         this.simulationTime = 0;
         this.simulationInterval = null;
+        this.simulationSpeed = 1.0; // 1.0 = normal speed, 0.1 = 10x slower
         
         // UI state
         this.draggingRouter = null;

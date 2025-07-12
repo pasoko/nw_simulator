@@ -99,8 +99,11 @@ class SimulationController {
                 console.log('First step_simulation call...');
             }
             
-            stateManager.simulator.step_simulation(this.simulationStepDelta);
-            stateManager.incrementSimulationTime(this.simulationStepDelta);
+            // Apply speed multiplier to the simulation step
+            const adjustedStepDelta = this.simulationStepDelta * stateManager.simulationSpeed;
+            
+            stateManager.simulator.step_simulation(adjustedStepDelta);
+            stateManager.incrementSimulationTime(adjustedStepDelta);
             
             // Update display with new simulation data
             displayUpdater.updateSimulationDisplay();

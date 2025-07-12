@@ -383,6 +383,35 @@
     justify-content: center;
 }
 
+/* Speed Toggle Button */
+.speed-toggle-btn {
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #ffffff;
+    border: 2px solid #e0e0e0;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.speed-toggle-btn:hover {
+    transform: translateY(-2px);
+    border-color: var(--primary-light);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.speed-toggle-btn.slow {
+    background: var(--primary-light);
+    color: white;
+    border-color: var(--primary-color);
+}
+
 /* Scrollbar Styling */
 .sidebar-section.scrollable::-webkit-scrollbar {
     width: 6px;

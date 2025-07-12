@@ -91,10 +91,15 @@ class SidebarUI {
             <!-- Footer Actions -->
             <div class="sidebar-footer">
                 <div class="action-group">
-                    <button class="action-button primary" id="simulate-btn">
-                        <span>🚀</span>
-                        <span>Start Simulation</span>
-                    </button>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <button class="speed-toggle-btn" id="speed-toggle-btn" title="Toggle simulation speed">
+                            <span>×1</span>
+                        </button>
+                        <button class="action-button primary" id="simulate-btn" style="flex: 1;">
+                            <span>🚀</span>
+                            <span>Start Simulation</span>
+                        </button>
+                    </div>
                     <div style="display: flex; gap: 8px;">
                         <button class="action-button secondary" id="export-log-btn" style="flex: 1;">
                             <span>💾</span>
@@ -140,6 +145,12 @@ class SidebarUI {
                 const mode = e.currentTarget.dataset.mode;
                 this.setMode(mode);
             });
+        });
+
+        // Speed toggle button
+        const speedToggleBtn = document.getElementById('speed-toggle-btn');
+        speedToggleBtn.addEventListener('click', () => {
+            this.toggleSimulationSpeed();
         });
 
         // Simulation button
@@ -256,6 +267,26 @@ class SidebarUI {
             btn.innerHTML = '<span>🚀</span><span>Start Simulation</span>';
             btn.classList.remove('running');
         }
+    }
+
+    toggleSimulationSpeed() {
+        const btn = document.getElementById('speed-toggle-btn');
+        const stateManager = window.stateManager;
+        
+        if (stateManager.simulationSpeed === 1.0) {
+            stateManager.simulationSpeed = 0.1;
+            btn.innerHTML = '<span>×0.1</span>';
+            btn.classList.add('slow');
+        } else {
+            stateManager.simulationSpeed = 1.0;
+            btn.innerHTML = '<span>×1</span>';
+            btn.classList.remove('slow');
+        }
+        
+        // Dispatch event to notify other components
+        window.dispatchEvent(new CustomEvent('simulationSpeedChanged', { 
+            detail: { speed: stateManager.simulationSpeed } 
+        }));
     }
 }
 
