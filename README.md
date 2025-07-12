@@ -4,16 +4,19 @@ WebAssemblyとRustで構築されたOSPFv2ネットワークシミュレータ�
 
 ## 機能
 
-- 仮想ルーターの設置と削除
-- ルーター間の接続と切断
+- 仮想ルーターの設置、移動、削除
+- ルーター間の接続と切断（コスト設定可能）
 - OSPFv2プロトコルのリアルタイムシミュレーション
-- パケット送受信の可視化アニメーション
+- パケット送受信の可視化アニメーション（Hello、DD、LSR、LSU、LSAck）
 - SPFアルゴリズムによるルーティングテーブル計算
 - 時間経過によるネットワーク状態の変化をシミュレート
-- ルーター障害・復旧シミュレーション
-- リンク障害・復旧シミュレーション
+- リンク障害・復旧シミュレーション（Toggle Failureモード）
 - リアルタイムシミュレーション統計表示
 - シミュレーションログの記録とJSON形式でのエクスポート
+- シミュレーション速度調整機能（×1/×0.1）
+- ダークモード/ライトモードの切り替え
+- レスポンシブなサイドバーUI
+- ルーター詳細情報の表示（OSPF状態、隣接関係、LSAデータベース、ルーティングテーブル）
 
 ## 必要環境
 
@@ -28,15 +31,15 @@ WebAssemblyとRustで構築されたOSPFv2ネットワークシミュレータ�
 
 1. **Rust** (stable版)
    - Rustコンパイラとcargoパッケージマネージャー
-   - バージョン: 1.70以上推奨
+   - バージョン: 1.79以上推奨
 
 2. **wasm-pack**
    - RustコードをWebAssemblyにコンパイルするツール
-   - バージョン: 最新版
+   - バージョン: 0.13.1以上
 
 3. **Node.js および Yarn**
    - フロントエンドビルドとwebpackの実行
-   - バージョン: Node.js v18以上、Yarn v4以上
+   - バージョン: Node.js v22.17.0（LTS）、Yarn v4.9.2
    - 推奨: Voltaを使用したバージョン管理
 
 4. **C/C++コンパイラ**
@@ -111,13 +114,16 @@ make logs     # コンテナログの表示
 
 ## 使用方法
 
-1. **ルーターの追加**: 「Add Router」ボタンをクリック後、キャンバス上をクリックして配置
-2. **ルーターの削除**: 「Delete Router」ボタンをクリック後、削除したいルーターを選択
-3. **ルーターの接続**: 「Connect Routers」をクリック後、接続したい2つのルーターを選択
-4. **接続の解除**: 「Disconnect Routers」をクリック後、切断したい2つのルーターを選択
-5. **OSPFの有効化**: 各ルーターの「Enable OSPF」ボタンをクリック
-6. **シミュレーション開始**: 「Start Simulation」ボタンをクリック
-7. **ルーティングテーブル確認**: ドロップダウンからルーターを選択
+1. **ルーターの追加**: サイドバーの「Add」ツールを選択後、キャンバス上をクリックして配置
+2. **ルーターの移動**: 「Move」ツールを選択後、ルーターをドラッグして移動
+3. **ルーターの接続**: 「Connect」ツールを選択後、接続したい2つのルーターをクリック（コスト入力可能）
+4. **接続の解除**: 「Disconnect」ツールを選択後、切断したい2つのルーターをクリック
+5. **ルーターの削除**: 「Delete」ツールを選択後、削除したいルーターをクリック
+6. **OSPFの有効化**: サイドバーの各ルーターカードにある「Enable OSPF」ボタンをクリック
+7. **リンク障害の切り替え**: 「Toggle Failure」ツールを選択後、リンクをクリック
+8. **シミュレーション速度調整**: 「×1」/「×0.1」ボタンで速度を切り替え
+9. **シミュレーション開始**: 「Start Simulation」ボタンをクリック
+10. **ルーター詳細確認**: サイドバーのルーターカードをクリックして展開
 
 ## トラブルシューティング
 
@@ -227,24 +233,50 @@ nw_simulator/
 ├── src/                # Rustソースコード
 │   ├── lib.rs          # WebAssemblyエントリポイント
 │   ├── network.rs      # ネットワークトポロジー管理
-│   ├── ospf.rs         # OSPFプロトコル実装
-│   ├── ospf_engine.rs  # OSPFエンジンコア
+│   ├── network_type.rs # ネットワークタイプ定義
+│   ├── ospf.rs         # OSPFパケット型定義
+│   ├── ospf_engine.rs  # OSPFプロトコルエンジン
+│   ├── ospf_neighbor.rs # OSPF隣接関係管理
+│   ├── ospf_lsa_manager.rs # LSAデータベース管理
+│   ├── ospf_packet_processor.rs # OSPFパケット処理
+│   ├── ospf_timer.rs   # OSPFタイマー管理
+│   ├── ospf_checksum.rs # OSPFチェックサム計算
 │   ├── protocol.rs     # プロトコル定義
 │   ├── router.rs       # ルーター状態管理
+│   ├── route_calculator.rs # ルート計算制御
 │   ├── simulation.rs   # シミュレーション制御
 │   ├── spf.rs          # 最短経路優先アルゴリズム
-│   └── ui_state.rs     # UI状態管理
+│   ├── ui_state.rs     # UI状態管理
+│   ├── event_manager.rs # イベント管理
+│   ├── failure_manager.rs # 障害シミュレーション管理
+│   ├── wasm_interface.rs # WebAssemblyインターフェース
+│   └── serialization.rs # シリアライゼーション
 ├── www/                # フロントエンド
 │   ├── index.html      # メインHTMLページ
 │   ├── index.js        # メインJavaScriptエントリポイント
-│   ├── packet-visualizer.js # パケット可視化
+│   ├── packet-visualizer-enhanced.js # 拡張版パケット可視化
 │   ├── modules/        # モジュラーJavaScriptコンポーネント
-│   │   ├── canvas-renderer.js
-│   │   ├── connection-manager.js
-│   │   ├── event-logger.js
-│   │   ├── router-manager.js
-│   │   ├── simulation-controller.js
-│   │   └── state-manager.js
+│   │   ├── canvas-renderer.js      # Canvas描画処理
+│   │   ├── connection-manager.js   # 接続管理
+│   │   ├── event-logger.js         # イベントログ管理
+│   │   ├── router-manager.js       # ルーター管理
+│   │   ├── simulation-controller.js # シミュレーション制御
+│   │   ├── state-manager.js        # 状態管理
+│   │   ├── animation-effects.js    # アニメーション効果
+│   │   ├── app-initializer.js      # アプリケーション初期化
+│   │   ├── canvas-interaction.js   # Canvas操作処理
+│   │   ├── display-updater.js      # 表示更新処理
+│   │   ├── router-details-ui.js    # ルーター詳細UI
+│   │   ├── router-icon.js          # ルーターアイコン描画
+│   │   ├── sidebar-ui.js           # サイドバーUI
+│   │   ├── theme-manager.js        # テーマ管理
+│   │   └── ui-controller.js        # UI制御
+│   ├── styles/         # CSSスタイルシート
+│   │   ├── animations.css   # アニメーション定義
+│   │   ├── dark-mode.css    # ダークモード
+│   │   ├── modern-theme.css # モダンテーマ
+│   │   ├── router-details.css # ルーター詳細スタイル
+│   │   └── sidebar-modern.css # モダンサイドバー
 │   ├── webpack.config.js # Webpack設定
 │   └── package.json    # フロントエンド依存関係
 ├── Dockerfile          # 本番用コンテナ定義
@@ -284,8 +316,8 @@ curl https://get.volta.sh | bash
 source ~/.bashrc
 
 # Node.jsとYarnのインストール
-volta install node@22
-volta install yarn@4
+volta install node@22.17.0
+volta install yarn@4.9.2
 ```
 
 **従来の方法**（未インストールの場合）:
