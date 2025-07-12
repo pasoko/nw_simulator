@@ -234,18 +234,6 @@ impl OSPFEngine {
                                 let lsa = self.lsa_manager.generate_router_lsa();
                                 console_log!("Router {} generated Router LSA with {} links, database now has {} LSAs", 
                                     self.router_id, self.lsa_manager.get_router_links().len(), self.lsa_manager.get_lsa_count());
-                                console_log!("  LSA: Type={:?}, ID={}, AdvRouter={}, SeqNum={}", 
-                                    lsa.header.ls_type, lsa.header.link_state_id, 
-                                    lsa.header.advertising_router, lsa.header.ls_sequence_number);
-                                
-                                // Immediately flood this LSA to neighbors in ExStart or higher state
-                                let exchange_neighbors = self.neighbor_manager.get_neighbors_in_state(OSPFNeighborState::ExStart);
-                                if !exchange_neighbors.is_empty() {
-                                    console_log!("Router {} flooding initial LSA to {} neighbors in ExStart", 
-                                        self.router_id, exchange_neighbors.len());
-                                    let flood_events = self.flood_lsa(&lsa);
-                                    events.extend(flood_events);
-                                }
                             }
                             
                             // Send Database Description packet
@@ -759,6 +747,7 @@ impl OSPFEngine {
         
         console_log!("Router {} flooding LSA {} to {} neighbors (except {})", 
             self.router_id, lsa.header.link_state_id, eligible_neighbors.len(), except_neighbor);
+        console_log!("  Eligible neighbors: {:?}", eligible_neighbors);
         
         if eligible_neighbors.is_empty() {
             console_log!("Router {} has no eligible neighbors for LSA flooding", self.router_id);
