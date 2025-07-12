@@ -40,7 +40,6 @@ RUN yarn install
 # Copy frontend source files
 COPY www/index.html ./
 COPY www/index.js ./
-COPY www/packet-visualizer.js ./
 COPY www/packet-visualizer-enhanced.js ./
 COPY www/modules ./modules
 COPY www/styles ./styles
