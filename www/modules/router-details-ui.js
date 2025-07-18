@@ -37,14 +37,22 @@ class RouterDetailsUI {
         
         return `
             <div class="${classes.join(' ')}" data-router-id="${router.id}">
-                <div class="router-header" onclick="window.routerDetailsUI.toggleRouterDetails(${router.id})">
-                    <div class="router-header-left">
-                        <span class="expand-icon">${isExpanded ? '▼' : '▶'}</span>
-                        <span class="router-name">${router.name} (ID: ${router.id})</span>
+                <div class="router-header">
+                    <div class="router-header-clickable" onclick="window.routerDetailsUI.toggleRouterDetails(${router.id})">
+                        <div class="router-header-left">
+                            <span class="expand-icon">${isExpanded ? '▼' : '▶'}</span>
+                            <span class="router-name">${router.name} (ID: ${router.id})</span>
+                        </div>
+                        <div class="router-status">
+                            ${statusBadges.join('')}
+                        </div>
                     </div>
-                    <div class="router-status">
-                        ${statusBadges.join('')}
-                    </div>
+                    <button class="router-config-btn" onclick="window.routerDetailsUI.openRouterConfig(${router.id})" title="Router Configuration">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="3"/>
+                            <path d="M12 1v6m0 6v6m6.364-15.364l-4.243 4.243m-4.242 4.242l-4.243 4.243m20.364-6.364h-6m-6 0h-6m15.364 6.364l-4.243-4.243m-4.242-4.242l-4.243-4.243"/>
+                        </svg>
+                    </button>
                 </div>
                 <div class="router-content ${isExpanded ? 'expanded' : 'collapsed'}" id="router-content-${router.id}">
                     ${isExpanded ? this.createRouterDetailsContent(router.id) : ''}
@@ -597,6 +605,130 @@ class RouterDetailsUI {
         } catch (error) {
             console.error('Failed to update interface config:', error);
             alert('インターフェース設定の更新に失敗しました: ' + error.message);
+        }
+    }
+
+    openRouterConfig(routerId) {
+        console.log(`Opening router config for router ${routerId}`);
+        
+        const router = stateManager.routers.find(r => r.id === routerId);
+        if (!router) return;
+        
+        this.showRouterConfigDialog(router);
+    }
+
+    showRouterConfigDialog(router) {
+        // Remove existing dialog if any
+        const existingDialog = document.getElementById('router-config-dialog');
+        if (existingDialog) {
+            existingDialog.remove();
+        }
+        
+        const dialog = document.createElement('div');
+        dialog.id = 'router-config-dialog';
+        dialog.className = 'config-dialog-overlay';
+        dialog.innerHTML = `
+            <div class="config-dialog">
+                <div class="dialog-header">
+                    <h3>Router Configuration - ${router.name}</h3>
+                    <button class="close-btn" onclick="window.routerDetailsUI.closeRouterConfig()">×</button>
+                </div>
+                <div class="dialog-body">
+                    <form id="router-config-form">
+                        <div class="form-section">
+                            <h4>Basic Settings</h4>
+                            <div class="form-group">
+                                <label>Router Name:</label>
+                                <input type="text" id="router-name" value="${router.name}" required>
+                            </div>
+                        </div>
+                        
+                        <div class="form-section">
+                            <h4>OSPF Settings</h4>
+                            <div class="form-group">
+                                <label>
+                                    <input type="checkbox" id="ospf-enabled" ${router.ospf_enabled ? 'checked' : ''}>
+                                    Enable OSPF
+                                </label>
+                            </div>
+                            <div id="ospf-params" style="display: ${router.ospf_enabled ? 'block' : 'none'}">
+                                <div class="form-group">
+                                    <label>Router ID:</label>
+                                    <input type="text" id="router-id" value="${router.id}.${router.id}.${router.id}.${router.id}" pattern="^(?:[0-9]{1,3}\\.){3}[0-9]{1,3}$">
+                                    <small>Format: x.x.x.x (e.g., 1.1.1.1)</small>
+                                </div>
+                                <div class="form-group">
+                                    <label>Area ID:</label>
+                                    <input type="text" id="area-id" value="0.0.0.0" pattern="^(?:[0-9]{1,3}\\.){3}[0-9]{1,3}$">
+                                    <small>Format: x.x.x.x (e.g., 0.0.0.0 for backbone)</small>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="form-actions">
+                            <button type="submit" class="btn-primary">Apply</button>
+                            <button type="button" class="btn-secondary" onclick="window.routerDetailsUI.closeRouterConfig()">Cancel</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(dialog);
+        
+        // Handle OSPF enable/disable toggle
+        const ospfCheckbox = document.getElementById('ospf-enabled');
+        const ospfParams = document.getElementById('ospf-params');
+        ospfCheckbox.addEventListener('change', (e) => {
+            ospfParams.style.display = e.target.checked ? 'block' : 'none';
+        });
+        
+        // Handle form submission
+        const form = document.getElementById('router-config-form');
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            this.applyRouterConfig(router.id);
+        });
+    }
+
+    closeRouterConfig() {
+        const dialog = document.getElementById('router-config-dialog');
+        if (dialog) {
+            dialog.remove();
+        }
+    }
+
+    applyRouterConfig(routerId) {
+        const name = document.getElementById('router-name').value;
+        const ospfEnabled = document.getElementById('ospf-enabled').checked;
+        
+        // Note: Actual router name change and OSPF enable/disable would need
+        // backend implementation. For now, we'll just handle OSPF enable/disable
+        
+        if (!stateManager.simulator) return;
+        
+        try {
+            // Toggle OSPF if state changed
+            const router = stateManager.routers.find(r => r.id === routerId);
+            if (router && router.ospf_enabled !== ospfEnabled) {
+                if (ospfEnabled) {
+                    stateManager.simulator.enable_ospf(routerId);
+                    eventLogger.log(`OSPF enabled on router ${name}`);
+                } else {
+                    // Note: disable_ospf method would need to be implemented
+                    eventLogger.log(`OSPF disable requested for router ${name} (not implemented)`);
+                }
+            }
+            
+            // Close dialog
+            this.closeRouterConfig();
+            
+            // Refresh router list
+            window.dispatchEvent(new Event('routersUpdated'));
+            
+        } catch (error) {
+            console.error('Failed to update router configuration:', error);
+            alert('Failed to update router configuration: ' + error);
         }
     }
 }

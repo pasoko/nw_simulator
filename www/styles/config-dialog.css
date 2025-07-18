@@ -1,0 +1,282 @@
+/* Configuration Dialog Styles */
+
+.config-dialog-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.config-dialog {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    max-width: 500px;
+    width: 90%;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateY(-20px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+.dialog-header {
+    padding: 20px;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.dialog-header h3 {
+    margin: 0;
+    color: #333;
+    font-size: 18px;
+}
+
+.close-btn {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #666;
+    padding: 0;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.close-btn:hover {
+    background: #f0f0f0;
+    color: #000;
+}
+
+.dialog-body {
+    padding: 20px;
+    overflow-y: auto;
+}
+
+.form-section {
+    margin-bottom: 25px;
+}
+
+.form-section h4 {
+    margin: 0 0 15px 0;
+    color: #555;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.form-group {
+    margin-bottom: 15px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 5px;
+    color: #666;
+    font-weight: 500;
+    font-size: 14px;
+}
+
+.form-group input[type="text"],
+.form-group input[type="number"] {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+    transition: border-color 0.2s;
+}
+
+.form-group input:focus {
+    outline: none;
+    border-color: #2196F3;
+}
+
+.form-group input[type="checkbox"] {
+    margin-right: 8px;
+}
+
+.form-group small {
+    display: block;
+    margin-top: 4px;
+    color: #999;
+    font-size: 12px;
+}
+
+.form-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    padding-top: 20px;
+    border-top: 1px solid #eee;
+    margin-top: 20px;
+}
+
+.btn-primary,
+.btn-secondary {
+    padding: 8px 20px;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-primary {
+    background: #2196F3;
+    color: white;
+}
+
+.btn-primary:hover {
+    background: #1976D2;
+}
+
+.btn-secondary {
+    background: #e0e0e0;
+    color: #666;
+}
+
+.btn-secondary:hover {
+    background: #d0d0d0;
+}
+
+/* Router Config Button in Header */
+.router-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.router-header-clickable {
+    flex: 1;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+}
+
+.router-config-btn {
+    background: none;
+    border: none;
+    padding: 4px;
+    cursor: pointer;
+    color: #666;
+    border-radius: 4px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.router-config-btn:hover {
+    background: rgba(33, 150, 243, 0.1);
+    color: #2196F3;
+}
+
+/* Interface Config Button */
+.interface-item .config-btn {
+    background: none;
+    border: none;
+    padding: 2px 6px;
+    cursor: pointer;
+    font-size: 12px;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+
+.interface-item .config-btn:hover {
+    opacity: 1;
+}
+
+/* Dark Mode Support */
+body.dark-mode .config-dialog {
+    background: #2a2a2a;
+    color: #e0e0e0;
+}
+
+body.dark-mode .dialog-header {
+    border-bottom-color: #444;
+}
+
+body.dark-mode .dialog-header h3 {
+    color: #e0e0e0;
+}
+
+body.dark-mode .close-btn {
+    color: #999;
+}
+
+body.dark-mode .close-btn:hover {
+    background: #3a3a3a;
+    color: #fff;
+}
+
+body.dark-mode .form-section h4 {
+    color: #b0b0b0;
+}
+
+body.dark-mode .form-group label {
+    color: #999;
+}
+
+body.dark-mode .form-group input[type="text"],
+body.dark-mode .form-group input[type="number"] {
+    background: #3a3a3a;
+    border-color: #555;
+    color: #e0e0e0;
+}
+
+body.dark-mode .form-group small {
+    color: #666;
+}
+
+body.dark-mode .form-actions {
+    border-top-color: #444;
+}
+
+body.dark-mode .btn-secondary {
+    background: #3a3a3a;
+    color: #999;
+}
+
+body.dark-mode .btn-secondary:hover {
+    background: #4a4a4a;
+}
+
+body.dark-mode .router-config-btn {
+    color: #999;
+}
+
+body.dark-mode .router-config-btn:hover {
+    background: rgba(33, 150, 243, 0.2);
+    color: #4dabf7;
+}
