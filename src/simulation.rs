@@ -679,11 +679,18 @@ impl NetworkSimulation {
         }
         
         // Get interface ID before mutable borrow
-        let interface_id = if matches!(&packet.data, OSPFPacketData::Hello(_)) {
-            self.get_interface_id(from_router_id, to_router_id)
-        } else {
-            0
-        };
+        let interface_id = self.get_interface_id(from_router_id, to_router_id);
+        
+        // Verify authentication before processing packet
+        if let Some(engine) = self.ospf_engines.get(&to_router_id) {
+            if !engine.verify_packet_authentication(&packet, interface_id) {
+                console_log!("Router {} discarding packet from {} - Authentication failed", 
+                    to_router_id, from_router_id);
+                self.event_manager.log_packet_discarded(to_router_id, from_router_id, 
+                    "Authentication verification failed".to_string());
+                return;
+            }
+        }
         
         let (new_events, _lsa_updated, lsa_count, lsa_database_changed, state_transitions) = 
             if let Some(engine) = self.ospf_engines.get_mut(&to_router_id) {

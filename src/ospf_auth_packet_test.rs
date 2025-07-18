@@ -2,7 +2,7 @@
 mod tests {
     use crate::simulation::NetworkSimulation;
     use crate::router::InterfaceConfig;
-    use crate::ospf_auth::{AuthType, AuthConfig};
+    use crate::ospf_auth::AuthType;
     use crate::console_log;
 
     #[test]
@@ -23,15 +23,16 @@ mod tests {
         // R1のインターフェースに簡易パスワード認証を設定
         if let Some(router) = sim.topology.routers.get(&r1) {
             let interface_id = router.interfaces.keys().next().copied().unwrap();
-            let mut config = InterfaceConfig {
-                ip_address: router.interfaces[&interface_id].ip_address.clone(),
-                netmask: router.interfaces[&interface_id].netmask.clone(),
-                enabled: true,
+            let config = InterfaceConfig {
+                ip_address: Some(router.interfaces[&interface_id].ip_address.clone()),
+                netmask: Some(router.interfaces[&interface_id].netmask.clone()),
+                enabled: Some(true),
                 hello_interval: Some(10),
                 dead_interval: Some(40),
                 priority: Some(1),
                 cost: Some(10),
-                auth_type: Some(AuthType::SimplePassword as u16),
+                mtu: Some(1500),
+                auth_type: Some(AuthType::SimplePassword),
                 auth_key: Some("testpass".to_string()),
                 auth_key_id: None,
             };
@@ -41,15 +42,16 @@ mod tests {
         // R2のインターフェースに同じ簡易パスワード認証を設定
         if let Some(router) = sim.topology.routers.get(&r2) {
             let interface_id = router.interfaces.keys().next().copied().unwrap();
-            let mut config = InterfaceConfig {
-                ip_address: router.interfaces[&interface_id].ip_address.clone(),
-                netmask: router.interfaces[&interface_id].netmask.clone(),
-                enabled: true,
+            let config = InterfaceConfig {
+                ip_address: Some(router.interfaces[&interface_id].ip_address.clone()),
+                netmask: Some(router.interfaces[&interface_id].netmask.clone()),
+                enabled: Some(true),
                 hello_interval: Some(10),
                 dead_interval: Some(40),
                 priority: Some(1),
                 cost: Some(10),
-                auth_type: Some(AuthType::SimplePassword as u16),
+                mtu: Some(1500),
+                auth_type: Some(AuthType::SimplePassword),
                 auth_key: Some("testpass".to_string()),
                 auth_key_id: None,
             };
@@ -95,15 +97,16 @@ mod tests {
         // R1のインターフェースに簡易パスワード認証を設定
         if let Some(router) = sim.topology.routers.get(&r1) {
             let interface_id = router.interfaces.keys().next().copied().unwrap();
-            let mut config = InterfaceConfig {
-                ip_address: router.interfaces[&interface_id].ip_address.clone(),
-                netmask: router.interfaces[&interface_id].netmask.clone(),
-                enabled: true,
+            let config = InterfaceConfig {
+                ip_address: Some(router.interfaces[&interface_id].ip_address.clone()),
+                netmask: Some(router.interfaces[&interface_id].netmask.clone()),
+                enabled: Some(true),
                 hello_interval: Some(10),
                 dead_interval: Some(40),
                 priority: Some(1),
                 cost: Some(10),
-                auth_type: Some(AuthType::SimplePassword as u16),
+                mtu: Some(1500),
+                auth_type: Some(AuthType::SimplePassword),
                 auth_key: Some("password1".to_string()),
                 auth_key_id: None,
             };
@@ -113,15 +116,16 @@ mod tests {
         // R2のインターフェースに異なるパスワードを設定
         if let Some(router) = sim.topology.routers.get(&r2) {
             let interface_id = router.interfaces.keys().next().copied().unwrap();
-            let mut config = InterfaceConfig {
-                ip_address: router.interfaces[&interface_id].ip_address.clone(),
-                netmask: router.interfaces[&interface_id].netmask.clone(),
-                enabled: true,
+            let config = InterfaceConfig {
+                ip_address: Some(router.interfaces[&interface_id].ip_address.clone()),
+                netmask: Some(router.interfaces[&interface_id].netmask.clone()),
+                enabled: Some(true),
                 hello_interval: Some(10),
                 dead_interval: Some(40),
                 priority: Some(1),
                 cost: Some(10),
-                auth_type: Some(AuthType::SimplePassword as u16),
+                mtu: Some(1500),
+                auth_type: Some(AuthType::SimplePassword),
                 auth_key: Some("password2".to_string()),  // 異なるパスワード
                 auth_key_id: None,
             };
@@ -141,12 +145,10 @@ mod tests {
         
         if let Some(engine) = sim.get_ospf_engine(r1) {
             if engine.get_neighbor_count() > 0 {
-                let neighbors = engine.get_neighbor_states();
-                // Init状態より先に進んでいないことを確認
-                for (_, state) in neighbors {
+                // Since we only have one neighbor (r2), we can check its state directly
+                if let Some(state) = engine.get_neighbor_state(r2) {
                     if state as u8 > crate::router::OSPFNeighborState::Init as u8 {
                         neighbors_established = true;
-                        break;
                     }
                 }
             }
@@ -173,15 +175,16 @@ mod tests {
         // R1のインターフェースにMD5認証を設定
         if let Some(router) = sim.topology.routers.get(&r1) {
             let interface_id = router.interfaces.keys().next().copied().unwrap();
-            let mut config = InterfaceConfig {
-                ip_address: router.interfaces[&interface_id].ip_address.clone(),
-                netmask: router.interfaces[&interface_id].netmask.clone(),
-                enabled: true,
+            let config = InterfaceConfig {
+                ip_address: Some(router.interfaces[&interface_id].ip_address.clone()),
+                netmask: Some(router.interfaces[&interface_id].netmask.clone()),
+                enabled: Some(true),
                 hello_interval: Some(10),
                 dead_interval: Some(40),
                 priority: Some(1),
                 cost: Some(10),
-                auth_type: Some(AuthType::CryptographicMD5 as u16),
+                mtu: Some(1500),
+                auth_type: Some(AuthType::CryptographicMD5),
                 auth_key: Some("md5secret".to_string()),
                 auth_key_id: Some(1),
             };
@@ -191,15 +194,16 @@ mod tests {
         // R2のインターフェースに同じMD5認証を設定
         if let Some(router) = sim.topology.routers.get(&r2) {
             let interface_id = router.interfaces.keys().next().copied().unwrap();
-            let mut config = InterfaceConfig {
-                ip_address: router.interfaces[&interface_id].ip_address.clone(),
-                netmask: router.interfaces[&interface_id].netmask.clone(),
-                enabled: true,
+            let config = InterfaceConfig {
+                ip_address: Some(router.interfaces[&interface_id].ip_address.clone()),
+                netmask: Some(router.interfaces[&interface_id].netmask.clone()),
+                enabled: Some(true),
                 hello_interval: Some(10),
                 dead_interval: Some(40),
                 priority: Some(1),
                 cost: Some(10),
-                auth_type: Some(AuthType::CryptographicMD5 as u16),
+                mtu: Some(1500),
+                auth_type: Some(AuthType::CryptographicMD5),
                 auth_key: Some("md5secret".to_string()),
                 auth_key_id: Some(1),
             };

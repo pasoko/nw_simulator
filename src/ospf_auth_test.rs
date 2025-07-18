@@ -37,7 +37,7 @@ mod tests {
         let mut config = AuthConfig::new(AuthType::SimplePassword)
             .with_simple_password("testpass".to_string());
         
-        let auth_data = config.generate_auth_data();
+        let (auth_type, auth_data) = config.generate_auth_data();
         
         let packet = OSPFPacket {
             version: 2,
@@ -45,7 +45,7 @@ mod tests {
             router_id: "2.2.2.2".to_string(),
             area_id: "0.0.0.0".to_string(),
             checksum: 0,
-            auth_type: AuthType::SimplePassword,
+            auth_type,
             auth_data: auth_data.clone(),
             data: OSPFPacketData::Hello(HelloPacket {
                 network_mask: "255.255.255.0".to_string(),
@@ -104,7 +104,7 @@ mod tests {
         let mut config = AuthConfig::new(AuthType::SimplePassword)
             .with_simple_password("serialize".to_string());
         
-        let auth_data = config.generate_auth_data();
+        let (auth_type, auth_data) = config.generate_auth_data();
         
         let packet = OSPFPacket {
             version: 2,
@@ -112,7 +112,7 @@ mod tests {
             router_id: "4.4.4.4".to_string(),
             area_id: "0.0.0.0".to_string(),
             checksum: 0x1234,
-            auth_type: AuthType::SimplePassword,
+            auth_type,
             auth_data,
             data: OSPFPacketData::Hello(HelloPacket {
                 network_mask: "255.255.255.0".to_string(),
@@ -143,7 +143,7 @@ mod tests {
         let mut config = AuthConfig::new(AuthType::CryptographicMD5)
             .with_md5("md5secret".to_string(), 1);
         
-        let auth_data = config.generate_auth_data();
+        let (_, auth_data) = config.generate_auth_data();
         
         match auth_data {
             AuthData::Cryptographic { key_id, auth_data_len, crypto_sequence_number, .. } => {
@@ -152,7 +152,7 @@ mod tests {
                 assert_eq!(crypto_sequence_number, 1); // First sequence number
                 
                 // 2回目の生成でシーケンス番号が増加することを確認
-                let auth_data2 = config.generate_auth_data();
+                let (_, auth_data2) = config.generate_auth_data();
                 match auth_data2 {
                     AuthData::Cryptographic { crypto_sequence_number: seq2, .. } => {
                         assert_eq!(seq2, 2);

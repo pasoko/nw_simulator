@@ -1152,6 +1152,43 @@ impl OSPFEngine {
                     .unwrap_or(1) // Default interface ID
             })
     }
+    
+    /// Verify packet authentication
+    pub fn verify_packet_authentication(&self, packet: &OSPFPacket, interface_id: u32) -> bool {
+        // Get expected authentication configuration for this interface
+        let expected_auth_config = self.packet_processor.get_interface_auth_config(interface_id);
+        
+        match expected_auth_config {
+            Some(auth_config) => {
+                // Verify authentication
+                match crate::ospf_auth::verify_authentication(
+                    packet.auth_type.clone(),
+                    &packet.auth_data,
+                    &auth_config,
+                ) {
+                    Ok(()) => {
+                        // Authentication successful
+                        true
+                    }
+                    Err(err) => {
+                        console_log!("Router {} authentication failed on interface {}: {}", 
+                            self.router_id, interface_id, err);
+                        false
+                    }
+                }
+            }
+            None => {
+                // No authentication configured, accept only Null authentication
+                if packet.auth_type == crate::ospf_auth::AuthType::Null {
+                    true
+                } else {
+                    console_log!("Router {} received authenticated packet on interface {} without auth config", 
+                        self.router_id, interface_id);
+                    false
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]

@@ -44,8 +44,8 @@ mod dd_retransmit_simple_tests {
         // Test that DD packets are cached for retransmission
         let mut processor = OSPFPacketProcessor::new("1.1.1.1".to_string(), "0.0.0.0".to_string());
         
-        // Create initial DD packet event
-        let _event = processor.create_dd_packet_event(2, &std::collections::HashMap::new());
+        // Create initial DD packet event (using interface_id 1)
+        let _event = processor.create_dd_packet_event(2, 1, &std::collections::HashMap::new());
         
         // Verify DD packet was cached
         let cached_dd = processor.get_last_dd_packet(2);
@@ -74,8 +74,8 @@ mod dd_retransmit_simple_tests {
         // Test that DD retransmission count increments
         let mut processor = OSPFPacketProcessor::new("1.1.1.1".to_string(), "0.0.0.0".to_string());
         
-        // Create initial DD packet
-        processor.create_dd_packet_event(2, &std::collections::HashMap::new());
+        // Create initial DD packet (using interface_id 1)
+        processor.create_dd_packet_event(2, 1, &std::collections::HashMap::new());
         
         // Get cached packet and create retransmit event
         let cached_dd = processor.get_last_dd_packet(2).unwrap();

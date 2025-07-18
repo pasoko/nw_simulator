@@ -74,6 +74,11 @@ impl OSPFPacketProcessor {
         }
     }
     
+    /// Get authentication configuration for an interface
+    pub fn get_interface_auth_config(&self, interface_id: u32) -> Option<&AuthConfig> {
+        self.interface_auth_configs.get(&interface_id)
+    }
+    
     pub fn generate_hello_packet(&self, active_neighbors: &[String], dr: String, bdr: String, network_mask: String) -> HelloPacket {
         // Only log if we have neighbors or every 10th time to reduce log spam
         static mut HELLO_LOG_COUNT: u32 = 0;
