@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use crate::router::{LSA, LSAHeader, LSAData};
+use crate::router::{LSA, LSAHeader};
 use crate::console_log;
 
 /// LSA Age Management for OSPFv2 (RFC 2328 Section 14)
@@ -327,6 +327,7 @@ impl LSAAgeManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::router::LSAData;
     
     #[test]
     fn test_age_calculation() {

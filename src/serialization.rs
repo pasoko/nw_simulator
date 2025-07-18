@@ -235,6 +235,9 @@ impl SerializationHelper {
                     LSAType::SummaryLSA => "SummaryLSA",
                     LSAType::SummaryASBR => "SummaryASBR",
                     LSAType::ASExternalLSA => "ASExternalLSA",
+                    LSAType::OpaqueLinkLocal => "OpaqueLinkLocal",
+                    LSAType::OpaqueAreaLocal => "OpaqueAreaLocal",
+                    LSAType::OpaqueASWide => "OpaqueASWide",
                 };
                 
                 // Extract additional details based on LSA type
@@ -252,6 +255,11 @@ impl SerializationHelper {
                     },
                     LSAData::Network(network_lsa) => {
                         network_lsa.attached_routers.clone()
+                    },
+                    LSAData::Opaque(_opaque_data) => {
+                        // For Opaque LSAs, we could extract application-specific data
+                        // For now, just return empty vector
+                        vec![]
                     },
                     _ => vec![]
                 };

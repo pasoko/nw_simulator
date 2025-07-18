@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use crate::ospf::{HelloPacket, DatabaseDescriptionPacket, 
     LinkStateRequestPacket, LinkStateUpdatePacket, LinkStateAcknowledgmentPacket,
     OSPFPacket, OSPFPacketType, OSPFPacketData};
-use crate::router::{OSPFNeighborState, LSA as RouterLSA, OSPFNeighbor, LSA};
+use crate::router::{OSPFNeighborState, LSA as RouterLSA, OSPFNeighbor, LSA, LSAType};
 use crate::protocol::{PacketEvent, ProtocolPacket};
 use crate::ospf_neighbor::OSPFNeighborManager;
 use crate::ospf_lsa_manager::OSPFLSAManager;
@@ -18,6 +18,7 @@ use crate::ospf_auth::AuthConfig;
 use crate::ospf_options::OSPFOptions;
 use crate::ospf_interface_state::{ExtendedInterfaceState, InterfaceStateManager, OSPFInterfaceState};
 use crate::ospf_tos::{TOSCapabilities, TOSValue, TOSMetric, TOSRoutingTable};
+use crate::opaque_lsa::{OpaqueLSAGenerator, OpaqueLSAProcessor, TELink};
 use crate::console_log;
 
 /// Refactored OSPF Engine
@@ -49,6 +50,7 @@ pub struct OSPFEngine {
     network_lsa_generator: NetworkLSAGenerator,
     summary_lsa_generator: SummaryLSAGenerator,
     as_external_lsa_generator: ASExternalLSAGenerator,
+    opaque_lsa_generator: OpaqueLSAGenerator,
     
     // Track interface states for Network LSA generation
     interface_states: HashMap<u32, InterfaceState>,
@@ -94,6 +96,7 @@ impl OSPFEngine {
             network_lsa_generator: NetworkLSAGenerator::new(router_id.clone()),
             summary_lsa_generator: SummaryLSAGenerator::new(router_id.clone()),
             as_external_lsa_generator: ASExternalLSAGenerator::new(router_id.clone()),
+            opaque_lsa_generator: OpaqueLSAGenerator::new(router_id.clone()),
             router_id,
             area_id,
             current_time: 0.0,
@@ -481,6 +484,16 @@ impl OSPFEngine {
                 // MinLSInterval should only prevent flooding, not database updates
                 console_log!("Router {} updating LSA: {} via interface {:?}", self.router_id, key, interface_id);
                 self.lsa_manager.update_lsa_database_with_interface(lsa.clone(), interface_id);
+                
+                // Process Opaque LSAs specially if supported
+                match lsa.header.ls_type {
+                    LSAType::OpaqueLinkLocal | LSAType::OpaqueAreaLocal | LSAType::OpaqueASWide => {
+                        if let Err(e) = self.process_opaque_lsa(lsa) {
+                            console_log!("Router {} failed to process Opaque LSA: {}", self.router_id, e);
+                        }
+                    }
+                    _ => {}
+                }
                 
                 // Add to flood list
                 updated_lsa_keys.push(key.clone());
@@ -1535,6 +1548,23 @@ impl OSPFEngine {
             })
     }
     
+    /// Convert router::LSA to ospf::LSA for packet transmission
+    fn convert_to_ospf_lsa(&self, router_lsa: &LSA) -> crate::ospf::LSA {
+        crate::ospf::LSA {
+            header: crate::ospf::LSAHeader {
+                age: router_lsa.header.ls_age,
+                options: self.area_options.clone(),
+                lsa_type: router_lsa.header.ls_type as u8,
+                link_state_id: router_lsa.header.link_state_id.clone(),
+                advertising_router: router_lsa.header.advertising_router.clone(),
+                sequence_number: router_lsa.header.ls_sequence_number,
+                checksum: router_lsa.header.ls_checksum,
+                length: router_lsa.header.length,
+            },
+            data: router_lsa.data.clone(),
+        }
+    }
+    
     /// Verify packet authentication
     pub fn verify_packet_authentication(&self, packet: &OSPFPacket, interface_id: u32) -> bool {
         // Get expected authentication configuration for this interface
@@ -1605,6 +1635,112 @@ impl OSPFEngine {
     pub fn get_maxage_lsas(&self) -> Vec<String> {
         self.lsa_manager.get_age_manager().get_maxage_lsas()
     }
+    
+    /// Generate Traffic Engineering Opaque LSA (Type 10)
+    pub fn generate_te_lsa(&mut self, links: Vec<TELink>) -> Vec<PacketEvent> {
+        // Check if Opaque capability is enabled
+        if !self.area_options.get_o_bit() {
+            console_log!("Router {} cannot generate TE LSA - Opaque capability not enabled", 
+                self.router_id);
+            return vec![];
+        }
+        
+        let lsa = self.opaque_lsa_generator.generate_te_lsa(
+            self.router_id.clone(),
+            links,
+        );
+        
+        // Add to LSA database
+        self.lsa_manager.add_lsa(lsa.clone());
+        
+        console_log!("Router {} generated Traffic Engineering Opaque LSA", self.router_id);
+        
+        // Create flood event
+        // Create flood events for all neighbors
+        let mut events = Vec::new();
+        let ospf_lsa = self.convert_to_ospf_lsa(&lsa);
+        for neighbor_id in self.neighbor_manager.get_all_neighbor_ids() {
+            if self.neighbor_manager.get_neighbor_state(neighbor_id) == Some(OSPFNeighborState::Full) {
+                let interface_id = self.get_neighbor_interface(neighbor_id);
+                events.push(self.packet_processor.create_lsu_packet_event(neighbor_id, interface_id, &[ospf_lsa.clone()]));
+            }
+        }
+        events
+    }
+    
+    /// Generate generic Opaque LSA
+    pub fn generate_opaque_lsa(
+        &mut self,
+        lsa_type: u8, // 9, 10, or 11
+        opaque_type: u8,
+        opaque_id: u32,
+        data: Vec<u8>,
+    ) -> Result<Vec<PacketEvent>, String> {
+        // Check if Opaque capability is enabled
+        if !self.area_options.get_o_bit() {
+            return Err("Opaque capability not enabled".to_string());
+        }
+        
+        let lsa = match lsa_type {
+            9 => self.opaque_lsa_generator.generate_type9_opaque_lsa(
+                1, // interface_id - TODO: make this configurable
+                opaque_type,
+                opaque_id,
+                data,
+            ),
+            10 => self.opaque_lsa_generator.generate_type10_opaque_lsa(
+                opaque_type,
+                opaque_id,
+                data,
+            ),
+            11 => self.opaque_lsa_generator.generate_type11_opaque_lsa(
+                opaque_type,
+                opaque_id,
+                data,
+            ),
+            _ => return Err(format!("Invalid Opaque LSA type: {}", lsa_type)),
+        };
+        
+        // Add to LSA database
+        self.lsa_manager.add_lsa(lsa.clone());
+        
+        console_log!(
+            "Router {} generated Type {} Opaque LSA (opaque_type={}, opaque_id={})",
+            self.router_id, lsa_type, opaque_type, opaque_id
+        );
+        
+        // Create flood event
+        // Create flood events for all neighbors
+        let mut events = Vec::new();
+        let ospf_lsa = self.convert_to_ospf_lsa(&lsa);
+        for neighbor_id in self.neighbor_manager.get_all_neighbor_ids() {
+            if self.neighbor_manager.get_neighbor_state(neighbor_id) == Some(OSPFNeighborState::Full) {
+                let interface_id = self.get_neighbor_interface(neighbor_id);
+                events.push(self.packet_processor.create_lsu_packet_event(neighbor_id, interface_id, &[ospf_lsa.clone()]));
+            }
+        }
+        Ok(events)
+    }
+    
+    /// Process received Opaque LSA
+    fn process_opaque_lsa(&self, lsa: &LSA) -> Result<(), String> {
+        // Check if we support Opaque LSAs
+        if !self.area_options.get_o_bit() {
+            return Err("Opaque capability not enabled".to_string());
+        }
+        
+        OpaqueLSAProcessor::process_opaque_lsa(lsa)
+    }
+    
+    /// Enable/disable Opaque capability
+    pub fn set_opaque_capability(&mut self, enabled: bool) {
+        self.area_options.set_o_bit(enabled);
+        console_log!(
+            "Router {} Opaque capability {}",
+            self.router_id,
+            if enabled { "enabled" } else { "disabled" }
+        );
+    }
 }
 
 #[cfg(test)]
@@ -1616,5 +1752,49 @@ mod tests {
         let engine = OSPFEngine::new("1.1.1.1".to_string(), "0.0.0.0".to_string());
         assert_eq!(engine.get_neighbor_count(), 0);
         assert_eq!(engine.get_lsa_count(), 0);
+    }
+    
+    #[test]
+    fn test_opaque_lsa_generation() {
+        let mut engine = OSPFEngine::new("1.1.1.1".to_string(), "0.0.0.0".to_string());
+        
+        // Enable Opaque capability
+        engine.set_opaque_capability(true);
+        
+        // Generate Type 10 Opaque LSA
+        let data = vec![1, 2, 3, 4, 5];
+        let result = engine.generate_opaque_lsa(10, 1, 100, data.clone());
+        assert!(result.is_ok());
+        
+        // Check LSA was added to database
+        assert_eq!(engine.get_lsa_count(), 1);
+        
+        // Generate Traffic Engineering LSA
+        let te_link = TELink {
+            link_type: 1,
+            link_id: "1.1.1.2".to_string(),
+            local_interface_ip: "10.0.0.1".to_string(),
+            remote_interface_ip: "10.0.0.2".to_string(),
+            metric: 10,
+            max_bandwidth: 1000.0,
+            max_reservable_bandwidth: 800.0,
+            unreserved_bandwidth: [800.0; 8],
+            admin_group: 0,
+        };
+        
+        let events = engine.generate_te_lsa(vec![te_link]);
+        assert_eq!(events.len(), 0); // No neighbors, so no flood events
+        assert_eq!(engine.get_lsa_count(), 2);
+    }
+    
+    #[test]
+    fn test_opaque_capability_disabled() {
+        let mut engine = OSPFEngine::new("1.1.1.1".to_string(), "0.0.0.0".to_string());
+        
+        // Opaque capability is disabled by default
+        let data = vec![1, 2, 3, 4, 5];
+        let result = engine.generate_opaque_lsa(10, 1, 100, data);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Opaque capability not enabled");
     }
 }

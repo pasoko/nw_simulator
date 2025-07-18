@@ -111,6 +111,10 @@ fn serialize_lsa_for_checksum(lsa: &LSA, buffer: &mut Vec<u8>) {
                 buffer.extend_from_slice(&link.metric.to_be_bytes());
             }
         },
+        LSAData::Opaque(opaque_data) => {
+            // Opaque LSA data is treated as raw bytes
+            buffer.extend_from_slice(&opaque_data.data);
+        },
         _ => {
             // Other LSA types not implemented yet
         }

@@ -160,7 +160,7 @@ impl OSPFOptions {
     pub fn standard_area_options() -> Self {
         let mut options = OSPFOptions::new();
         options.set_e_bit(true);  // Support AS-External-LSAs
-        options.set_o_bit(true);  // Support Opaque-LSAs
+        options.set_o_bit(false); // Opaque-LSAs disabled by default
         options
     }
 
@@ -168,7 +168,7 @@ impl OSPFOptions {
     pub fn stub_area_options() -> Self {
         let mut options = OSPFOptions::new();
         options.set_e_bit(false); // Do not support AS-External-LSAs in stub areas
-        options.set_o_bit(true);  // Support Opaque-LSAs
+        options.set_o_bit(false); // Opaque-LSAs disabled by default
         options
     }
 
@@ -177,7 +177,7 @@ impl OSPFOptions {
         let mut options = OSPFOptions::new();
         options.set_e_bit(false); // Do not support AS-External-LSAs in NSSA
         options.set_np_bit(true); // Support NSSA capability
-        options.set_o_bit(true);  // Support Opaque-LSAs
+        options.set_o_bit(false); // Opaque-LSAs disabled by default
         options
     }
 
@@ -263,7 +263,7 @@ mod tests {
     fn test_standard_area_options() {
         let options = OSPFOptions::standard_area_options();
         assert!(options.get_e_bit());
-        assert!(options.get_o_bit());
+        assert!(!options.get_o_bit()); // O-bit is disabled by default
         assert!(!options.get_np_bit());
     }
 
@@ -271,7 +271,7 @@ mod tests {
     fn test_stub_area_options() {
         let options = OSPFOptions::stub_area_options();
         assert!(!options.get_e_bit());
-        assert!(options.get_o_bit());
+        assert!(!options.get_o_bit()); // O-bit is disabled by default
         assert!(!options.get_np_bit());
     }
 
@@ -280,7 +280,7 @@ mod tests {
         let options = OSPFOptions::nssa_area_options();
         assert!(!options.get_e_bit());
         assert!(options.get_np_bit());
-        assert!(options.get_o_bit());
+        assert!(!options.get_o_bit()); // O-bit is disabled by default
     }
 
     #[test]

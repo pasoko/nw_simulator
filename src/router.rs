@@ -104,6 +104,7 @@ pub enum LSAData {
     Network(NetworkLSA),
     Summary(SummaryLSA),
     ASExternal(ASExternalLSA),
+    Opaque(crate::opaque_lsa::OpaqueLSAData),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -155,13 +156,17 @@ pub struct ASExternalLSA {
     pub tos_metric: u32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub enum LSAType {
     RouterLSA = 1,
     NetworkLSA = 2,
     SummaryLSA = 3,
     SummaryASBR = 4,
     ASExternalLSA = 5,
+    // Opaque LSA types (RFC 5250)
+    OpaqueLinkLocal = 9,   // Link-local scope
+    OpaqueAreaLocal = 10,  // Area-local scope
+    OpaqueASWide = 11,     // AS-wide scope
 }
 
 impl RouterState {
