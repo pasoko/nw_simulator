@@ -17,6 +17,7 @@ mod as_external_lsa;
 mod device;
 mod ospf;
 mod ospf_auth;
+mod ospf_options;
 mod protocol;
 mod simulation;
 mod ospf_engine;
@@ -114,6 +115,9 @@ mod as_external_lsa_test;
 
 #[cfg(test)]
 mod ospf_auth_packet_test;
+
+#[cfg(test)]
+mod ospf_options_test;
 
 use simulation::NetworkSimulation;
 use ui_state::UIState;

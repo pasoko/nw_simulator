@@ -9,6 +9,7 @@ use crate::route_calculator::RouteCalculator;
 use crate::router::{OSPFNeighborState, RoutingTableEntry};
 use crate::ping_manager::{PingManager, PingResult};
 use crate::device::{ICMPPacket, ICMPType};
+use crate::ospf_options::OSPFOptions;
 use crate::console_log;
 
 /// Refactored Network Simulation
@@ -689,7 +690,7 @@ impl NetworkSimulation {
             HelloPacket {
                 network_mask: "255.255.255.252".to_string(),
                 hello_interval: 10,
-                options: 0,
+                options: OSPFOptions::new(),
                 router_priority: 1,
                 router_dead_interval: 40,
                 designated_router: "0.0.0.0".to_string(),

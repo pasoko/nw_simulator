@@ -2,6 +2,7 @@
 mod tests {
     use crate::ospf::{OSPFPacket, OSPFPacketType, OSPFPacketData, HelloPacket};
     use crate::ospf_auth::{AuthType, AuthData, AuthConfig, verify_authentication};
+    use crate::ospf_options::OSPFOptions;
     use crate::console_log;
 
     #[test]
@@ -17,7 +18,7 @@ mod tests {
             data: OSPFPacketData::Hello(HelloPacket {
                 network_mask: "255.255.255.0".to_string(),
                 hello_interval: 10,
-                options: 0x02,
+                options: OSPFOptions::standard_area_options(),
                 router_priority: 1,
                 router_dead_interval: 40,
                 designated_router: "0.0.0.0".to_string(),
@@ -50,7 +51,7 @@ mod tests {
             data: OSPFPacketData::Hello(HelloPacket {
                 network_mask: "255.255.255.0".to_string(),
                 hello_interval: 10,
-                options: 0x02,
+                options: OSPFOptions::standard_area_options(),
                 router_priority: 1,
                 router_dead_interval: 40,
                 designated_router: "0.0.0.0".to_string(),
@@ -82,7 +83,7 @@ mod tests {
             data: OSPFPacketData::Hello(HelloPacket {
                 network_mask: "255.255.255.0".to_string(),
                 hello_interval: 10,
-                options: 0x02,
+                options: OSPFOptions::standard_area_options(),
                 router_priority: 1,
                 router_dead_interval: 40,
                 designated_router: "0.0.0.0".to_string(),
@@ -117,7 +118,7 @@ mod tests {
             data: OSPFPacketData::Hello(HelloPacket {
                 network_mask: "255.255.255.0".to_string(),
                 hello_interval: 10,
-                options: 0x02,
+                options: OSPFOptions::standard_area_options(),
                 router_priority: 1,
                 router_dead_interval: 40,
                 designated_router: "1.1.1.1".to_string(),

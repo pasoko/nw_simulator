@@ -15,6 +15,7 @@ use crate::network_lsa::NetworkLSAGenerator;
 use crate::summary_lsa::SummaryLSAGenerator;
 use crate::as_external_lsa::{ASExternalLSAGenerator, ExternalMetricType};
 use crate::ospf_auth::AuthConfig;
+use crate::ospf_options::OSPFOptions;
 use crate::console_log;
 
 /// Refactored OSPF Engine
@@ -55,6 +56,9 @@ pub struct OSPFEngine {
     
     // Track external routes for ASBR functionality
     external_routes: Vec<(String, String, u32, ExternalMetricType, String, u32)>,
+    
+    // OSPF Options configuration
+    area_options: OSPFOptions,  // Options for this area
 }
 
 #[derive(Debug, Clone)]
@@ -94,6 +98,7 @@ impl OSPFEngine {
             interface_states: HashMap::new(),
             connected_areas,
             external_routes: Vec::new(),
+            area_options: OSPFOptions::standard_area_options(),
         }
     }
     
@@ -736,7 +741,7 @@ impl OSPFEngine {
         let packet_lsa = crate::ospf::LSA {
             header: crate::ospf::LSAHeader {
                 age: lsa.header.ls_age,
-                options: 0x02,
+                options: OSPFOptions::standard_area_options(),
                 lsa_type: lsa.header.ls_type.clone() as u8,
                 link_state_id: lsa.header.link_state_id.clone(),
                 advertising_router: lsa.header.advertising_router.clone(),
@@ -832,6 +837,62 @@ impl OSPFEngine {
         (self.spf_delay, self.spf_holdtime, self.spf_max_age)
     }
     
+    /// Update area options configuration
+    pub fn update_area_options(&mut self, options: OSPFOptions) {
+        self.area_options = options;
+        console_log!("Router {} updated area options: {}", self.router_id, options.to_string());
+    }
+    
+    /// Get current area options
+    pub fn get_area_options(&self) -> OSPFOptions {
+        self.area_options
+    }
+    
+    /// Configure area as stub area
+    pub fn configure_stub_area(&mut self) {
+        self.area_options = OSPFOptions::stub_area_options();
+        console_log!("Router {} configured as stub area", self.router_id);
+    }
+    
+    /// Configure area as NSSA area
+    pub fn configure_nssa_area(&mut self) {
+        self.area_options = OSPFOptions::nssa_area_options();
+        console_log!("Router {} configured as NSSA area", self.router_id);
+    }
+    
+    /// Check if router supports multicast capabilities
+    pub fn supports_multicast(&self) -> bool {
+        self.area_options.get_mc_bit()
+    }
+    
+    /// Enable or disable multicast support
+    pub fn set_multicast_support(&mut self, enabled: bool) {
+        self.area_options.set_mc_bit(enabled);
+        console_log!("Router {} multicast support: {}", self.router_id, enabled);
+    }
+    
+    /// Check if router supports demand circuits
+    pub fn supports_demand_circuits(&self) -> bool {
+        self.area_options.get_dc_bit()
+    }
+    
+    /// Enable or disable demand circuit support
+    pub fn set_demand_circuit_support(&mut self, enabled: bool) {
+        self.area_options.set_dc_bit(enabled);
+        console_log!("Router {} demand circuit support: {}", self.router_id, enabled);
+    }
+    
+    /// Check if router supports Opaque LSAs
+    pub fn supports_opaque_lsa(&self) -> bool {
+        self.area_options.get_o_bit()
+    }
+    
+    /// Enable or disable Opaque LSA support
+    pub fn set_opaque_lsa_support(&mut self, enabled: bool) {
+        self.area_options.set_o_bit(enabled);
+        console_log!("Router {} Opaque LSA support: {}", self.router_id, enabled);
+    }
+    
     pub fn reset_database_updated_flag(&mut self) {
         // Reset the flag after SPF calculation
         self.lsa_manager.reset_database_updated();
@@ -864,7 +925,7 @@ impl OSPFEngine {
         let packet_lsa = crate::ospf::LSA {
             header: crate::ospf::LSAHeader {
                 age: lsa.header.ls_age,
-                options: 0x02,
+                options: OSPFOptions::standard_area_options(),
                 lsa_type: lsa.header.ls_type.clone() as u8,
                 link_state_id: lsa.header.link_state_id.clone(),
                 advertising_router: lsa.header.advertising_router.clone(),

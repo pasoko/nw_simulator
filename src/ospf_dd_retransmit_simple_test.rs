@@ -4,6 +4,7 @@ mod dd_retransmit_simple_tests {
     use crate::ospf_packet_processor::OSPFPacketProcessor;
     use crate::ospf::{DatabaseDescriptionPacket};
     use crate::router::OSPFNeighborState;
+    use crate::ospf_options::OSPFOptions;
     
     #[test]
     fn test_dd_retransmission_timer_basic() {
@@ -57,7 +58,7 @@ mod dd_retransmit_simple_tests {
         // Process DD response to clear retransmission flag
         let dd_response = DatabaseDescriptionPacket {
             interface_mtu: 1500,
-            options: 0x02,
+            options: OSPFOptions::standard_area_options(),
             flags: 0x01,
             dd_sequence_number: 0x80000001,
             lsa_headers: vec![],

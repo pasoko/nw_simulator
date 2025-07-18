@@ -7,6 +7,7 @@
 pub mod test_helpers {
     use crate::ospf_engine::OSPFEngine;
     use crate::ospf_engine_refactored::OSPFEngineRefactored;
+    use crate::ospf_options::OSPFOptions;
     
     /// Trait to abstract common operations between old and new engines
     pub trait OSPFEngineOperations {
@@ -81,7 +82,7 @@ pub mod test_helpers {
             let packet = crate::ospf::HelloPacket {
                 network_mask: "255.255.255.0".to_string(),
                 hello_interval: 10,
-                options: 0x02,
+                options: OSPFOptions::standard_area_options(),
                 router_priority: 1,
                 router_dead_interval: 40,
                 designated_router: "0.0.0.0".to_string(),

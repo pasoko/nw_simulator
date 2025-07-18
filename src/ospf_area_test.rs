@@ -2,6 +2,7 @@
 mod area_tests {
     use crate::simulation::NetworkSimulation;
     use crate::event_manager::SimulationEventType;
+    use crate::ospf_options::OSPFOptions;
     
     #[test]
     fn test_area_id_validation() {
@@ -86,7 +87,7 @@ mod area_tests {
             data: OSPFPacketData::Hello(HelloPacket {
                 network_mask: "255.255.255.252".to_string(),
                 hello_interval: 10,
-                options: 0x02,
+                options: OSPFOptions::standard_area_options(),
                 router_priority: 1,
                 router_dead_interval: 40,
                 designated_router: "0.0.0.0".to_string(),

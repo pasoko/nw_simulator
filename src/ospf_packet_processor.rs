@@ -5,6 +5,7 @@ use crate::router::{OSPFNeighborState, LSAType, LSAHeader as RouterLSAHeader};
 use crate::protocol::{ProtocolPacket, PacketEvent};
 use crate::ospf_checksum::verify_lsa_checksum;
 use crate::ospf_auth::{AuthType, AuthData, AuthConfig};
+use crate::ospf_options::OSPFOptions;
 use crate::console_log;
 
 /// Database Description Exchange State
@@ -93,7 +94,7 @@ impl OSPFPacketProcessor {
         HelloPacket {
             network_mask,
             hello_interval: self.hello_interval,
-            options: 0x02, // E-bit set
+            options: OSPFOptions::standard_area_options(),
             router_priority: 1,
             router_dead_interval: self.dead_interval,
             designated_router: dr,
@@ -282,7 +283,7 @@ impl OSPFPacketProcessor {
                 let lsa_for_packet = LSA {
                     header: LSAHeader {
                         age: lsa.header.ls_age,
-                        options: 0x02,
+                        options: OSPFOptions::standard_area_options(),
                         lsa_type: lsa.header.ls_type.clone() as u8,
                         link_state_id: lsa.header.link_state_id.clone(),
                         advertising_router: lsa.header.advertising_router.clone(),
@@ -431,7 +432,7 @@ impl OSPFPacketProcessor {
             lsa_headers_to_send = headers_to_send.iter().map(|h| {
                 LSAHeader {
                     age: h.ls_age,
-                    options: 0x02,
+                    options: OSPFOptions::standard_area_options(),
                     lsa_type: h.ls_type.clone() as u8,
                     link_state_id: h.link_state_id.clone(),
                     advertising_router: h.advertising_router.clone(),
@@ -471,7 +472,7 @@ impl OSPFPacketProcessor {
         
         let dd_packet = DatabaseDescriptionPacket {
             interface_mtu: 1500,
-            options: 0x02,
+            options: OSPFOptions::standard_area_options(),
             flags,
             dd_sequence_number: dd_seq_num,
             lsa_headers: lsa_headers_to_send,

@@ -2,6 +2,7 @@
 mod dd_full_state_tests {
     use crate::ospf_engine::OSPFEngine;
     use crate::ospf::{HelloPacket, DatabaseDescriptionPacket, LinkStateUpdatePacket};
+    use crate::ospf_options::OSPFOptions;
     use crate::console_log;
     
     #[test]
@@ -15,7 +16,7 @@ mod dd_full_state_tests {
         let hello1 = HelloPacket {
             network_mask: "255.255.255.0".to_string(),
             hello_interval: 10,
-            options: 0,
+            options: OSPFOptions::new(),
             router_priority: 1,
             router_dead_interval: 40,
             designated_router: "0.0.0.0".to_string(),
@@ -31,7 +32,7 @@ mod dd_full_state_tests {
         let hello2 = HelloPacket {
             network_mask: "255.255.255.0".to_string(),
             hello_interval: 10,
-            options: 0,
+            options: OSPFOptions::new(),
             router_priority: 1,
             router_dead_interval: 40,
             designated_router: "0.0.0.0".to_string(),
@@ -44,7 +45,7 @@ mod dd_full_state_tests {
         // Process DD packet to move to Exchange state
         let dd_packet = DatabaseDescriptionPacket {
             interface_mtu: 1500,
-            options: 0,
+            options: OSPFOptions::new(),
             flags: 0x07, // I, M, MS bits set
             dd_sequence_number: 2147483649,
             lsa_headers: vec![],
@@ -55,7 +56,7 @@ mod dd_full_state_tests {
         // Move to Loading state by sending DD with LSA headers
         let dd_packet2 = DatabaseDescriptionPacket {
             interface_mtu: 1500,
-            options: 0,
+            options: OSPFOptions::new(),
             flags: 0x00, // No more data
             dd_sequence_number: 2147483649,
             lsa_headers: vec![],

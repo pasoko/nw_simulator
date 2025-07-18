@@ -1,6 +1,7 @@
 use serde::{Serialize, Deserialize};
 use crate::router::LSAData;
 use crate::ospf_auth::{AuthType, AuthData};
+use crate::ospf_options::OSPFOptions;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OSPFPacket {
@@ -36,7 +37,7 @@ pub enum OSPFPacketData {
 pub struct HelloPacket {
     pub network_mask: String,
     pub hello_interval: u16,
-    pub options: u8,
+    pub options: OSPFOptions,
     pub router_priority: u8,
     pub router_dead_interval: u32,
     pub designated_router: String,
@@ -47,7 +48,7 @@ pub struct HelloPacket {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DatabaseDescriptionPacket {
     pub interface_mtu: u16,
-    pub options: u8,
+    pub options: OSPFOptions,
     pub flags: u8,
     pub dd_sequence_number: u32,
     pub lsa_headers: Vec<LSAHeader>,
@@ -71,7 +72,7 @@ pub struct LinkStateAcknowledgmentPacket {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LSAHeader {
     pub age: u16,
-    pub options: u8,
+    pub options: OSPFOptions,
     pub lsa_type: u8,
     pub link_state_id: String,
     pub advertising_router: String,
