@@ -7,6 +7,8 @@ use crate::event_manager::{EventManager, SimulationEvent};
 use crate::failure_manager::FailureManager;
 use crate::route_calculator::RouteCalculator;
 use crate::router::OSPFNeighborState;
+use crate::ping_manager::{PingManager, PingResult};
+use crate::device::{ICMPPacket, ICMPType};
 use crate::console_log;
 
 /// Refactored Network Simulation
@@ -26,6 +28,7 @@ pub struct NetworkSimulation {
     event_manager: EventManager,
     failure_manager: FailureManager,
     route_calculator: RouteCalculator,
+    ping_manager: PingManager,
     ospf_engines: BTreeMap<u32, OSPFEngine>,  // Use BTreeMap for deterministic iteration order
     spf_needed: Vec<u32>,  // Track routers needing SPF calculation
     pause_time: Option<f64>,  // Time when simulation was paused
@@ -41,6 +44,7 @@ impl NetworkSimulation {
             event_manager: EventManager::new(),
             failure_manager: FailureManager::new(),
             route_calculator: RouteCalculator::new(),
+            ping_manager: PingManager::new(),
             ospf_engines: BTreeMap::new(),
             spf_needed: Vec::new(),
             pause_time: None,
@@ -484,9 +488,17 @@ impl NetworkSimulation {
                         packet_details
                     );
                 }
-                
-                self.process_ospf_packet(ospf_packet.clone(), event.from_router_id, event.to_router_id);
+            },
+            ProtocolPacket::ICMP(icmp_packet) => {
+                // ICMPパケットの処理
+                self.process_icmp_packet(icmp_packet.clone(), event.from_router_id, event.to_router_id);
+                return; // ICMPはOSPFエンジンで処理しない
             }
+        }
+        
+        // OSPFパケットの処理
+        if let ProtocolPacket::OSPF(ospf_packet) = event.packet {
+            self.process_ospf_packet(ospf_packet, event.from_router_id, event.to_router_id);
         }
     }
     
@@ -866,6 +878,84 @@ impl NetworkSimulation {
         } else {
             Err(format!("Router {} not found", router_id))
         }
+    }
+
+    /// ホストからping要求を送信
+    pub fn send_ping_from_host(&mut self, host_id: u32, destination_ip: String) -> Result<u16, String> {
+        // ホストが存在するか確認
+        let host = self.topology.hosts.get(&host_id)
+            .ok_or_else(|| format!("Host {} not found", host_id))?;
+        
+        if host.is_failed {
+            return Err("Host is failed".to_string());
+        }
+
+        // ping要求を作成
+        let (identifier, icmp_packet) = self.ping_manager.create_ping_request(
+            host_id,
+            destination_ip.clone(),
+            self.simulation_time
+        );
+
+        // 次ホップを決定（同一サブネットならdestination_ip、そうでなければdefault_gateway）
+        let _next_hop = host.get_next_hop(&destination_ip);
+        
+        // 接続されたルーターにパケットを送信
+        if let Some(router_id) = host.connected_router_id {
+            let packet_event = PacketEvent {
+                timestamp: self.simulation_time,
+                from_router_id: host_id,
+                to_router_id: router_id,
+                packet: ProtocolPacket::ICMP(icmp_packet),
+            };
+            
+            self.protocol_engine.schedule_event(packet_event);
+            console_log!("Ping sent from host {} to {} via router {}", 
+                host_id, destination_ip, router_id);
+            
+            Ok(identifier)
+        } else {
+            Err("Host is not connected to any router".to_string())
+        }
+    }
+
+    /// ICMPパケットの処理
+    fn process_icmp_packet(&mut self, packet: ICMPPacket, from_id: u32, to_id: u32) {
+        match packet.packet_type {
+            ICMPType::EchoRequest => {
+                // Echo Requestを受信したら、Echo Replyを返す
+                if let Some(host) = self.topology.hosts.get(&to_id) {
+                    if !host.is_failed {
+                        let reply = ICMPPacket::new_echo_reply(
+                            packet.identifier,
+                            packet.sequence_number
+                        );
+                        
+                        let reply_event = PacketEvent {
+                            timestamp: self.simulation_time + 0.001, // 1ms遅延
+                            from_router_id: to_id,
+                            to_router_id: from_id,
+                            packet: ProtocolPacket::ICMP(reply),
+                        };
+                        
+                        self.protocol_engine.schedule_event(reply_event);
+                        console_log!("Host {} sending echo reply to {}", to_id, from_id);
+                    }
+                }
+            },
+            ICMPType::EchoReply => {
+                // Echo Replyを受信
+                self.ping_manager.process_echo_reply(packet.identifier, self.simulation_time);
+            },
+            _ => {
+                console_log!("Unhandled ICMP packet type: {:?}", packet.packet_type);
+            }
+        }
+    }
+
+    /// 最近のping結果を取得
+    pub fn get_recent_ping_results(&self, count: usize) -> Vec<PingResult> {
+        self.ping_manager.get_recent_results(count)
     }
 }
 

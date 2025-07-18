@@ -118,6 +118,11 @@ class CanvasInteraction {
         const x = event.clientX - rect.left;
         const y = event.clientY - rect.top;
         
+        // Dispatch canvas click event for other modules (like host-manager)
+        window.dispatchEvent(new CustomEvent('canvasClick', {
+            detail: { x, y }
+        }));
+        
         // Check for double-click to show router details
         if (event.detail === 2) {
             const router = this.findRouterAt(x, y);

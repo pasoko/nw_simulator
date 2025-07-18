@@ -1,0 +1,180 @@
+/* Host Configuration Dialog Styles */
+
+.host-config-dialog {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 10000;
+}
+
+.host-config-dialog .dialog-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+}
+
+.host-config-dialog .dialog-content {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: var(--bg-primary, white);
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+    padding: 24px;
+    min-width: 400px;
+    max-width: 90%;
+}
+
+.host-config-dialog h3 {
+    margin: 0 0 20px 0;
+    color: var(--text-primary, #212121);
+    font-size: 18px;
+}
+
+.host-config-dialog .form-group {
+    margin-bottom: 16px;
+}
+
+.host-config-dialog .form-group label {
+    display: block;
+    margin-bottom: 6px;
+    color: var(--text-secondary, #666);
+    font-size: 14px;
+}
+
+.host-config-dialog .form-group input[type="text"] {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--border-color, #e0e0e0);
+    border-radius: 6px;
+    font-size: 14px;
+    background: var(--bg-secondary, #f5f5f5);
+    color: var(--text-primary, #212121);
+    transition: border-color 0.2s;
+}
+
+.host-config-dialog .form-group input:focus {
+    outline: none;
+    border-color: var(--color-primary, #1976D2);
+}
+
+.host-config-dialog .form-group input:invalid {
+    border-color: #f44336;
+}
+
+.host-config-dialog .form-buttons {
+    display: flex;
+    gap: 12px;
+    margin-top: 24px;
+    justify-content: flex-end;
+}
+
+.host-config-dialog .form-buttons button {
+    padding: 8px 20px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.host-config-dialog .form-buttons button[type="submit"] {
+    background: var(--color-primary, #1976D2);
+    color: white;
+}
+
+.host-config-dialog .form-buttons button[type="submit"]:hover {
+    background: var(--color-primary-dark, #1565C0);
+}
+
+.host-config-dialog .form-buttons button[type="button"] {
+    background: var(--bg-secondary, #f5f5f5);
+    color: var(--text-primary, #212121);
+}
+
+.host-config-dialog .form-buttons button[type="button"]:hover {
+    background: var(--border-color, #e0e0e0);
+}
+
+/* Ping Dialog Styles */
+.ping-dialog {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: var(--bg-primary, white);
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+    padding: 24px;
+    min-width: 350px;
+    z-index: 10001;
+}
+
+.ping-dialog h3 {
+    margin: 0 0 20px 0;
+    color: var(--text-primary, #212121);
+    font-size: 18px;
+}
+
+.ping-dialog .form-group {
+    margin-bottom: 16px;
+}
+
+.ping-dialog .form-group label {
+    display: block;
+    margin-bottom: 6px;
+    color: var(--text-secondary, #666);
+    font-size: 14px;
+}
+
+.ping-dialog .form-group input {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--border-color, #e0e0e0);
+    border-radius: 6px;
+    font-size: 14px;
+}
+
+.ping-results {
+    margin-top: 20px;
+    padding: 12px;
+    background: var(--bg-secondary, #f5f5f5);
+    border-radius: 6px;
+    max-height: 200px;
+    overflow-y: auto;
+    font-family: monospace;
+    font-size: 12px;
+}
+
+.ping-result {
+    margin-bottom: 4px;
+    padding: 4px;
+}
+
+.ping-result.success {
+    color: var(--color-success, #4CAF50);
+}
+
+.ping-result.failure {
+    color: var(--color-error, #f44336);
+}
+
+/* Host Icon in Toolbar */
+.tool-button.host-tool {
+    position: relative;
+}
+
+.tool-button.host-tool::after {
+    content: '💻';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 20px;
+}

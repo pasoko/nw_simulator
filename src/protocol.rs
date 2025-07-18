@@ -1,9 +1,11 @@
 use serde::{Serialize, Deserialize};
 use crate::ospf::OSPFPacket;
+use crate::device::ICMPPacket;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ProtocolPacket {
     OSPF(OSPFPacket),
+    ICMP(ICMPPacket),
     // Future protocols can be added here:
     // BGP(BGPPacket),
     // RIP(RIPPacket),

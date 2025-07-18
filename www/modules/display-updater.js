@@ -20,6 +20,9 @@ class DisplayUpdater {
         this.updateRoutersFromSimulator();
         this.updateConnectionsFromSimulator();
         
+        // Update hosts from simulator
+        this.updateHostsFromSimulator();
+        
         // Update router summaries for display
         this.updateRouterSummaries();
         
@@ -281,6 +284,11 @@ class DisplayUpdater {
                 <span class="detail-value">${summary.latest_event}</span>
             </div>
         `;
+    }
+
+    updateHostsFromSimulator() {
+        // ホストの更新をhostManagerに委譲
+        window.dispatchEvent(new Event('hostsUpdated'));
     }
 }
 

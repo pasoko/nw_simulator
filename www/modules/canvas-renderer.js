@@ -7,6 +7,7 @@ import stateManager from './state-manager.js';
 import { RouterIcon } from './router-icon.js';
 import themeManager from './theme-manager.js';
 import animationEffects from './animation-effects.js';
+import hostManager from './host-manager.js';
 
 class CanvasRenderer {
     constructor() {
@@ -84,6 +85,9 @@ class CanvasRenderer {
         
         // Draw routers
         this.drawRouters();
+        
+        // Draw hosts
+        hostManager.drawHosts(this.ctx);
         
         // Draw packet statistics
         this.drawPacketStats();

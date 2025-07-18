@@ -3,7 +3,6 @@ use serde::{Serialize, Deserialize};
 use crate::simulation::NetworkSimulation;
 use crate::ui_state::{UIState, RouterUI, ConnectionUI};
 use crate::event_manager::SimulationEventType;
-use crate::device::HostDevice;
 
 /// ホストUI表現
 #[derive(Debug, Clone, Serialize, Deserialize)]

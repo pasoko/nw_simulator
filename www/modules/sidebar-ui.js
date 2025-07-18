@@ -122,11 +122,14 @@ class SidebarUI {
             { id: 'connect-routers', label: 'Connect', icon: '🔗', mode: 'connect-routers' },
             { id: 'disconnect-routers', label: 'Disconnect', icon: '✂️', mode: 'disconnect-routers' },
             { id: 'delete-router', label: 'Delete', icon: '🗑️', mode: 'delete-router' },
-            { id: 'toggle-failure', label: 'Failure', icon: '⚠️', mode: 'toggle-failure' }
+            { id: 'toggle-failure', label: 'Failure', icon: '⚠️', mode: 'toggle-failure' },
+            { id: 'add-host', label: 'Host', icon: '💻', action: 'addHost' }
         ];
 
         return tools.map(tool => `
-            <button class="tool-button" id="${tool.id}-btn" data-mode="${tool.mode}">
+            <button class="tool-button" id="${tool.id}-btn" 
+                    ${tool.mode ? `data-mode="${tool.mode}"` : ''}
+                    ${tool.action ? `data-action="${tool.action}"` : ''}>
                 <span class="tool-icon">${tool.icon}</span>
                 <span class="tool-label">${tool.label}</span>
             </button>
@@ -143,7 +146,13 @@ class SidebarUI {
         toolButtons.forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const mode = e.currentTarget.dataset.mode;
-                this.setMode(mode);
+                const action = e.currentTarget.dataset.action;
+                
+                if (mode) {
+                    this.setMode(mode);
+                } else if (action === 'addHost') {
+                    window.hostManager.showAddHostDialog();
+                }
             });
         });
 

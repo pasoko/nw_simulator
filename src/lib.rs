@@ -25,6 +25,7 @@ mod ospf_dr_election;
 mod event_manager;
 mod failure_manager;
 mod route_calculator;
+mod ping_manager;
 mod spf;
 mod ui_state;
 mod serialization;
@@ -79,6 +80,12 @@ mod ospfv2_compliance_test;
 
 #[cfg(test)]
 mod link_failure_spf_test;
+
+#[cfg(test)]
+mod device_test;
+
+#[cfg(test)]
+mod ping_test;
 
 use simulation::NetworkSimulation;
 use ui_state::UIState;
@@ -336,5 +343,25 @@ impl NetworkSimulator {
         
         self.simulation.update_interface_config(router_id, interface_id, config)
             .map_err(|e| JsValue::from_str(&e))
+    }
+
+    /// Send ping from host
+    pub fn send_ping(&mut self, host_id: u32, destination_ip: String) -> Result<u32, JsValue> {
+        match self.simulation.send_ping_from_host(host_id, destination_ip) {
+            Ok(identifier) => {
+                console_log!("Ping sent with identifier {}", identifier);
+                Ok(identifier as u32)
+            }
+            Err(e) => {
+                console_log!("Failed to send ping: {}", e);
+                Err(JsValue::from_str(&e))
+            }
+        }
+    }
+
+    /// Get recent ping results
+    pub fn get_ping_results_json(&self, count: usize) -> String {
+        let results = self.simulation.get_recent_ping_results(count);
+        serde_json::to_string(&results).unwrap_or_default()
     }
 }

@@ -117,6 +117,11 @@ mod interface_naming_tests {
             connected_router_id: Some(2),
             cost: 10,
             enabled: true,
+            hello_interval: 10,
+            dead_interval: 40,
+            priority: 1,
+            mtu: 1500,
+            manual_config: false,
         });
         
         // カウンターが増加していることを確認
@@ -135,6 +140,11 @@ mod interface_naming_tests {
             connected_router_id: Some(3),
             cost: 20,
             enabled: true,
+            hello_interval: 10,
+            dead_interval: 40,
+            priority: 1,
+            mtu: 1500,
+            manual_config: false,
         });
         
         assert_eq!(router.next_interface_number, 3);
@@ -155,6 +165,11 @@ mod interface_naming_tests {
             connected_router_id: Some(2),
             cost: 10,
             enabled: true,
+            hello_interval: 10,
+            dead_interval: 40,
+            priority: 1,
+            mtu: 1500,
+            manual_config: false,
         });
         
         // カスタム名が保持されていることを確認

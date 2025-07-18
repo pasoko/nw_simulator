@@ -82,8 +82,12 @@ mod dd_full_state_tests {
         // Verify no DD retransmission events
         let dd_retrans_count = events_at_15s.iter()
             .filter(|e| {
-                let crate::protocol::ProtocolPacket::OSPF(ospf_packet) = &e.packet;
-                matches!(ospf_packet.packet_type, crate::ospf::OSPFPacketType::DatabaseDescription)
+                match &e.packet {
+                    crate::protocol::ProtocolPacket::OSPF(ospf_packet) => {
+                        matches!(ospf_packet.packet_type, crate::ospf::OSPFPacketType::DatabaseDescription)
+                    },
+                    _ => false,
+                }
             })
             .count();
         

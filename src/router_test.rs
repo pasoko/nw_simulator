@@ -26,6 +26,11 @@ mod tests {
             connected_router_id: Some(2),
             cost: 10,
             enabled: true,
+            hello_interval: 10,
+            dead_interval: 40,
+            priority: 1,
+            mtu: 1500,
+            manual_config: false,
         };
         
         let interface2 = RouterInterface {
@@ -36,6 +41,11 @@ mod tests {
             connected_router_id: None,
             cost: 1,
             enabled: false,
+            hello_interval: 10,
+            dead_interval: 40,
+            priority: 1,
+            mtu: 1500,
+            manual_config: false,
         };
         
         router.add_interface(interface1.clone());
@@ -58,6 +68,11 @@ mod tests {
             connected_router_id: Some(2),
             cost: 10,
             enabled: true,
+            hello_interval: 10,
+            dead_interval: 40,
+            priority: 1,
+            mtu: 1500,
+            manual_config: false,
         };
         
         router.add_interface(interface1);
@@ -71,6 +86,11 @@ mod tests {
             connected_router_id: Some(2),
             cost: 20,
             enabled: false,
+            hello_interval: 10,
+            dead_interval: 40,
+            priority: 1,
+            mtu: 1500,
+            manual_config: false,
         };
         
         router.add_interface(interface1_updated);
@@ -171,6 +191,7 @@ mod tests {
             state: OSPFNeighborState::Down,
             interface_id: 1,
             priority: 1,
+            dead_interval: 40,
         };
         
         assert_eq!(neighbor.state, OSPFNeighborState::Down);

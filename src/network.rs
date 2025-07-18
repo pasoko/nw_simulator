@@ -200,7 +200,7 @@ impl NetworkTopology {
         self.next_interface_id += 1;
 
         let host = self.hosts.get(&host_id).unwrap();
-        let host_network = self.get_network_address(&host.ip_address, &host.netmask);
+        let _host_network = self.get_network_address(&host.ip_address, &host.netmask);
         
         // ルーター側のインターフェース（通常はホストのデフォルトゲートウェイと同じIP）
         let router_interface = RouterInterface {
