@@ -922,6 +922,15 @@ impl OSPFEngine {
     pub fn get_dr_election_interfaces(&self) -> Vec<u32> {
         self.dr_election_managers.keys().cloned().collect()
     }
+
+    /// Update interface timers
+    pub fn update_interface_timers(&mut self, interface_id: u32, hello_interval: u16, dead_interval: u16) {
+        // OSPFタイマーマネージャーにインターフェース固有のタイマー設定を保存
+        self.timer_manager.update_interface_timers(interface_id, hello_interval, dead_interval);
+        
+        // 既存のネイバーのDead intervalも更新
+        self.neighbor_manager.update_interface_dead_interval(interface_id, dead_interval);
+    }
 }
 
 #[cfg(test)]

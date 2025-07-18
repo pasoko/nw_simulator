@@ -27,6 +27,7 @@ pub enum SimulationEventType {
     SPFCalculationStarted { router_id: u32 },
     SPFCalculationCompleted { router_id: u32, route_count: usize },
     NeighborDeadTimerExpired { router_id: u32, neighbor_id: u32 },
+    InterfaceConfigChanged { router_id: u32, interface_id: u32 },
 }
 
 /// Event Management System
@@ -224,6 +225,15 @@ impl EventManager {
         });
     }
     
+    pub fn log_interface_config_changed(&mut self, router_id: u32, interface_id: u32) {
+        self.log_event(SimulationEvent {
+            timestamp: self.current_time,
+            event_type: SimulationEventType::InterfaceConfigChanged { router_id, interface_id },
+            description: format!("Interface Config Changed: Router {} interface {} configuration updated", 
+                router_id, interface_id),
+        });
+    }
+    
     pub fn get_recent_events(&self, count: usize) -> Vec<SimulationEvent> {
         let start = self.simulation_log.len().saturating_sub(count);
         self.simulation_log[start..].to_vec()
@@ -275,6 +285,7 @@ impl EventManager {
                 SimulationEventType::SPFCalculationStarted { .. } => stats.spf_calculations += 1,
                 SimulationEventType::SPFCalculationCompleted { .. } => stats.spf_completions += 1,
                 SimulationEventType::NeighborDeadTimerExpired { .. } => stats.dead_timer_expirations += 1,
+                SimulationEventType::InterfaceConfigChanged { .. } => {}, // No specific stat for interface config changes
             }
         }
         
@@ -302,6 +313,7 @@ impl EventManager {
             SimulationEventType::SPFCalculationStarted { router_id: id } => *id == router_id,
             SimulationEventType::SPFCalculationCompleted { router_id: id, .. } => *id == router_id,
             SimulationEventType::NeighborDeadTimerExpired { router_id: id, .. } => *id == router_id,
+            SimulationEventType::InterfaceConfigChanged { router_id: id, .. } => *id == router_id,
         }
     }
 }

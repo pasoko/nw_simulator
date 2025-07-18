@@ -11,6 +11,7 @@ use wasm_bindgen::prelude::*;
 mod router;
 mod network;
 mod network_type;
+mod device;
 mod ospf;
 mod protocol;
 mod simulation;
@@ -147,6 +148,26 @@ impl NetworkSimulator {
         id
     }
 
+    pub fn add_host(&mut self, name: String, ip: String, netmask: String, gateway: String, x: f64, y: f64) -> u32 {
+        let id = self.simulation.add_host(name.clone(), ip, netmask, gateway);
+        self.ui_state.set_router_position(id, x, y);  // UIではルーターと同じ位置管理を使用
+        console_log!("Host {} added with id {}", name, id);
+        id
+    }
+
+    pub fn connect_host_to_router(&mut self, host_id: u32, router_id: u32) -> Result<u32, JsValue> {
+        match self.simulation.connect_host_to_router(host_id, router_id) {
+            Ok(link_id) => {
+                console_log!("Connected host {} to router {}", host_id, router_id);
+                Ok(link_id)
+            }
+            Err(e) => {
+                console_log!("Error connecting host to router: {}", e);
+                Err(JsValue::from_str(&e))
+            }
+        }
+    }
+
     pub fn connect_routers(&mut self, from_id: u32, to_id: u32, cost: u32) {
         match self.simulation.connect_routers(from_id, to_id, cost) {
             Ok(()) => console_log!("Connected router {} to router {} with cost {}", from_id, to_id, cost),
@@ -209,6 +230,14 @@ impl NetworkSimulator {
 
     pub fn get_routers_json(&self) -> String {
         SerializationHelper::routers_to_json(&self.simulation, &self.ui_state)
+    }
+
+    pub fn get_hosts_json(&self) -> String {
+        SerializationHelper::hosts_to_json(&self.simulation, &self.ui_state)
+    }
+
+    pub fn get_host_details_json(&self, host_id: u32) -> String {
+        SerializationHelper::host_details_to_json(&self.simulation, host_id)
     }
 
     pub fn get_connections_json(&self) -> String {
@@ -293,5 +322,19 @@ impl NetworkSimulator {
                 Err(JsValue::from_str("Refactored engine not enabled"))
             }
         }
+    }
+
+    /// Update interface configuration
+    pub fn update_interface_config(
+        &mut self,
+        router_id: u32,
+        interface_id: u32,
+        config_json: String,
+    ) -> Result<(), JsValue> {
+        let config: router::InterfaceConfig = serde_json::from_str(&config_json)
+            .map_err(|e| JsValue::from_str(&format!("Invalid config JSON: {}", e)))?;
+        
+        self.simulation.update_interface_config(router_id, interface_id, config)
+            .map_err(|e| JsValue::from_str(&e))
     }
 }

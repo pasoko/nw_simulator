@@ -11,6 +11,12 @@ pub struct RouterInterface {
     pub connected_router_id: Option<u32>,
     pub cost: u32,
     pub enabled: bool,
+    // OSPFv2 インターフェース設定パラメータ
+    pub hello_interval: u16,      // Hello送信間隔（秒）
+    pub dead_interval: u16,       // Dead判定時間（秒）
+    pub priority: u8,             // DR/BDR選出優先度
+    pub mtu: u16,                 // 最大転送単位
+    pub manual_config: bool,      // 手動設定フラグ
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -56,6 +62,7 @@ pub struct OSPFNeighbor {
     pub state: OSPFNeighborState,
     pub interface_id: u32,
     pub priority: u8,
+    pub dead_interval: u16,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -200,4 +207,49 @@ impl RouterState {
         });
         self.routing_table.push(entry);
     }
+
+    pub fn update_interface_config(&mut self, interface_id: u32, config: InterfaceConfig) -> Result<(), String> {
+        if let Some(interface) = self.interfaces.get_mut(&interface_id) {
+            if let Some(ip) = config.ip_address {
+                interface.ip_address = ip;
+                interface.manual_config = true;
+            }
+            if let Some(mask) = config.netmask {
+                interface.netmask = mask;
+            }
+            if let Some(cost) = config.cost {
+                interface.cost = cost;
+            }
+            if let Some(hello) = config.hello_interval {
+                interface.hello_interval = hello;
+            }
+            if let Some(dead) = config.dead_interval {
+                interface.dead_interval = dead;
+            }
+            if let Some(priority) = config.priority {
+                interface.priority = priority;
+            }
+            if let Some(mtu) = config.mtu {
+                interface.mtu = mtu;
+            }
+            if let Some(enabled) = config.enabled {
+                interface.enabled = enabled;
+            }
+            Ok(())
+        } else {
+            Err(format!("Interface {} not found", interface_id))
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InterfaceConfig {
+    pub ip_address: Option<String>,
+    pub netmask: Option<String>,
+    pub cost: Option<u32>,
+    pub hello_interval: Option<u16>,
+    pub dead_interval: Option<u16>,
+    pub priority: Option<u8>,
+    pub mtu: Option<u16>,
+    pub enabled: Option<bool>,
 }

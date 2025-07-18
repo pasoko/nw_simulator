@@ -1,7 +1,43 @@
 use serde_json;
+use serde::{Serialize, Deserialize};
 use crate::simulation::NetworkSimulation;
 use crate::ui_state::{UIState, RouterUI, ConnectionUI};
 use crate::event_manager::SimulationEventType;
+use crate::device::HostDevice;
+
+/// ホストUI表現
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HostUI {
+    pub id: u32,
+    pub name: String,
+    pub ip_address: String,
+    pub netmask: String,
+    pub default_gateway: String,
+    pub x: f64,
+    pub y: f64,
+    pub is_failed: bool,
+    pub connected_router_id: Option<u32>,
+}
+
+/// ホスト詳細情報
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HostDetails {
+    pub id: u32,
+    pub name: String,
+    pub ip_address: String,
+    pub netmask: String,
+    pub default_gateway: String,
+    pub connected_router_id: Option<u32>,
+    pub connected_interface_id: Option<u32>,
+    pub arp_table: Vec<ArpEntry>,
+    pub is_failed: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArpEntry {
+    pub ip_address: String,
+    pub mac_address: String,
+}
 
 /// Serialization utilities for WebAssembly interface
 /// 
@@ -233,6 +269,54 @@ impl SerializationHelper {
             }).collect()
         } else {
             vec![]
+        }
+    }
+
+    /// Convert hosts to JSON with UI positioning
+    pub fn hosts_to_json(simulation: &NetworkSimulation, ui_state: &UIState) -> String {
+        let hosts: Vec<HostUI> = simulation.topology.hosts.iter().map(|(id, host)| {
+            let (x, y) = ui_state.get_router_position(id)
+                .copied()
+                .unwrap_or((0.0, 0.0));
+            HostUI {
+                id: *id,
+                name: host.name.clone(),
+                ip_address: host.ip_address.clone(),
+                netmask: host.netmask.clone(),
+                default_gateway: host.default_gateway.clone(),
+                x,
+                y,
+                is_failed: host.is_failed,
+                connected_router_id: host.connected_router_id,
+            }
+        }).collect();
+        serde_json::to_string(&hosts).unwrap_or_default()
+    }
+
+    /// Get host details
+    pub fn host_details_to_json(simulation: &NetworkSimulation, host_id: u32) -> String {
+        if let Some(host) = simulation.topology.hosts.get(&host_id) {
+            let arp_table: Vec<ArpEntry> = host.arp_table.iter().map(|(ip, mac)| {
+                ArpEntry {
+                    ip_address: ip.clone(),
+                    mac_address: mac.clone(),
+                }
+            }).collect();
+
+            let details = HostDetails {
+                id: host.id,
+                name: host.name.clone(),
+                ip_address: host.ip_address.clone(),
+                netmask: host.netmask.clone(),
+                default_gateway: host.default_gateway.clone(),
+                connected_router_id: host.connected_router_id,
+                connected_interface_id: host.connected_interface_id,
+                arp_table,
+                is_failed: host.is_failed,
+            };
+            serde_json::to_string(&details).unwrap_or_default()
+        } else {
+            "{}".to_string()
         }
     }
 }

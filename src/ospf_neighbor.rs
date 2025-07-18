@@ -41,6 +41,7 @@ impl OSPFNeighborManager {
                 state: OSPFNeighborState::Down,
                 interface_id,
                 priority,
+                dead_interval: self.dead_interval as u16,
             };
             self.neighbors.insert(neighbor_id, new_neighbor);
             self.neighbor_previous_state.insert(neighbor_id, OSPFNeighborState::Down);
@@ -235,6 +236,14 @@ impl OSPFNeighborManager {
     /// Start adjacency formation
     pub fn start_adjacency(&mut self, neighbor_id: u32) -> bool {
         self.update_neighbor_state(neighbor_id, OSPFNeighborState::ExStart)
+    }
+
+    pub fn update_interface_dead_interval(&mut self, interface_id: u32, dead_interval: u16) {
+        for neighbor in self.neighbors.values_mut() {
+            if neighbor.interface_id == interface_id {
+                neighbor.dead_interval = dead_interval;
+            }
+        }
     }
 }
 

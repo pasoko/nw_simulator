@@ -53,6 +53,18 @@ impl NetworkSimulation {
         router_id
     }
 
+    pub fn add_host(&mut self, name: String, ip_address: String, netmask: String, default_gateway: String) -> u32 {
+        let host_id = self.topology.add_host(name.clone(), ip_address, netmask, default_gateway);
+        // TODO: イベントログ追加
+        host_id
+    }
+
+    pub fn connect_host_to_router(&mut self, host_id: u32, router_id: u32) -> Result<u32, String> {
+        let link_id = self.topology.connect_host_to_router(host_id, router_id)?;
+        // TODO: イベントログ追加
+        Ok(link_id)
+    }
+
     pub fn connect_routers(&mut self, router1_id: u32, router2_id: u32, cost: u32) -> Result<(), String> {
         let link_id = self.topology.connect_routers(router1_id, router2_id, cost)?;
         
@@ -830,6 +842,30 @@ impl NetworkSimulation {
     
     pub fn get_ospf_engine(&self, router_id: u32) -> Option<&OSPFEngine> {
         self.ospf_engines.get(&router_id)
+    }
+
+    pub fn update_interface_config(&mut self, router_id: u32, interface_id: u32, config: crate::router::InterfaceConfig) -> Result<(), String> {
+        if let Some(router) = self.topology.routers.get_mut(&router_id) {
+            router.update_interface_config(interface_id, config)?;
+            
+            // OSPFエンジンのタイマー設定も更新
+            if let Some(ospf_engine) = self.ospf_engines.get_mut(&router_id) {
+                if let Some(interface) = router.interfaces.get(&interface_id) {
+                    // OSPFタイマーの更新（hello_interval, dead_intervalなど）
+                    ospf_engine.update_interface_timers(interface_id, interface.hello_interval, interface.dead_interval);
+                }
+            }
+            
+            // インターフェース設定変更イベントを記録
+            self.event_manager.log_interface_config_changed(
+                router_id, 
+                interface_id
+            );
+            
+            Ok(())
+        } else {
+            Err(format!("Router {} not found", router_id))
+        }
     }
 }
 

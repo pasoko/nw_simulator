@@ -36,6 +36,10 @@ pub struct OSPFTimerManager {
     neighbor_retransmission_times: HashMap<u32, f64>,
     neighbor_dd_retransmission_times: HashMap<u32, f64>,  // DD retransmission timers
     
+    // インターフェース単位のタイマー設定
+    interface_hello_intervals: HashMap<u32, f64>,
+    interface_dead_intervals: HashMap<u32, f64>,
+    
     current_time: f64,
 }
 
@@ -56,6 +60,9 @@ impl OSPFTimerManager {
             neighbor_dead_times: HashMap::new(),
             neighbor_retransmission_times: HashMap::new(),
             neighbor_dd_retransmission_times: HashMap::new(),
+            
+            interface_hello_intervals: HashMap::new(),
+            interface_dead_intervals: HashMap::new(),
             
             current_time: 0.0,
         }
@@ -296,6 +303,25 @@ impl OSPFTimerManager {
             self.neighbor_dead_times.len(),
             self.neighbor_retransmission_times.len()
         )
+    }
+
+    /// Update interface-specific timers
+    pub fn update_interface_timers(&mut self, interface_id: u32, hello_interval: u16, dead_interval: u16) {
+        self.interface_hello_intervals.insert(interface_id, hello_interval as f64);
+        self.interface_dead_intervals.insert(interface_id, dead_interval as f64);
+        
+        console_log!("Updated interface {} timers - Hello: {}s, Dead: {}s", 
+            interface_id, hello_interval, dead_interval);
+    }
+    
+    /// Get hello interval for specific interface
+    pub fn get_interface_hello_interval(&self, interface_id: u32) -> f64 {
+        *self.interface_hello_intervals.get(&interface_id).unwrap_or(&self.hello_interval)
+    }
+    
+    /// Get dead interval for specific interface  
+    pub fn get_interface_dead_interval(&self, interface_id: u32) -> f64 {
+        *self.interface_dead_intervals.get(&interface_id).unwrap_or(&self.dead_interval)
     }
 }
 

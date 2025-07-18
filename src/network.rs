@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
 use crate::router::{RouterState, RouterInterface};
 use crate::network_type::OSPFNetworkType;
+use crate::device::{HostDevice, DeviceType};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NetworkLink {
@@ -20,8 +21,10 @@ pub struct NetworkLink {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NetworkTopology {
     pub routers: HashMap<u32, RouterState>,
+    pub hosts: HashMap<u32, HostDevice>,
     pub links: HashMap<u32, NetworkLink>,
     next_router_id: u32,
+    next_host_id: u32,
     next_link_id: u32,
     next_interface_id: u32,
 }
@@ -30,8 +33,10 @@ impl NetworkTopology {
     pub fn new() -> Self {
         NetworkTopology {
             routers: HashMap::new(),
+            hosts: HashMap::new(),
             links: HashMap::new(),
             next_router_id: 1,
+            next_host_id: 1000,  // ホストIDは1000から開始
             next_link_id: 1,
             next_interface_id: 1,
         }
@@ -101,6 +106,11 @@ impl NetworkTopology {
             connected_router_id: Some(router2_id),
             cost,
             enabled: true,
+            hello_interval: 10,    // OSPFv2デフォルト値
+            dead_interval: 40,     // OSPFv2デフォルト値 (hello * 4)
+            priority: 1,           // DR選出優先度デフォルト
+            mtu: 1500,            // Ethernetデフォルト
+            manual_config: false,  // 自動設定
         };
 
         let interface2 = RouterInterface {
@@ -111,6 +121,11 @@ impl NetworkTopology {
             connected_router_id: Some(router1_id),
             cost,
             enabled: true,
+            hello_interval: 10,    // OSPFv2デフォルト値
+            dead_interval: 40,     // OSPFv2デフォルト値 (hello * 4)
+            priority: 1,           // DR選出優先度デフォルト
+            mtu: 1500,            // Ethernetデフォルト
+            manual_config: false,  // 自動設定
         };
 
         if let Some(router1) = self.routers.get_mut(&router1_id) {
@@ -159,5 +174,94 @@ impl NetworkTopology {
             }
         }
         neighbors
+    }
+
+    pub fn add_host(&mut self, name: String, ip_address: String, netmask: String, default_gateway: String) -> u32 {
+        let id = self.next_host_id;
+        self.next_host_id += 1;
+        let host = HostDevice::new(id, name, ip_address, netmask, default_gateway);
+        self.hosts.insert(id, host);
+        id
+    }
+
+    pub fn connect_host_to_router(&mut self, host_id: u32, router_id: u32) -> Result<u32, String> {
+        // ルーターが存在するか確認
+        if !self.routers.contains_key(&router_id) {
+            return Err(format!("Router {} not found", router_id));
+        }
+
+        // ホストが存在するか確認
+        if !self.hosts.contains_key(&host_id) {
+            return Err(format!("Host {} not found", host_id));
+        }
+
+        // ルーターに新しいインターフェースを作成
+        let interface_id = self.next_interface_id;
+        self.next_interface_id += 1;
+
+        let host = self.hosts.get(&host_id).unwrap();
+        let host_network = self.get_network_address(&host.ip_address, &host.netmask);
+        
+        // ルーター側のインターフェース（通常はホストのデフォルトゲートウェイと同じIP）
+        let router_interface = RouterInterface {
+            id: interface_id,
+            name: format!("IF-Host{}", host_id),
+            ip_address: host.default_gateway.clone(),
+            netmask: host.netmask.clone(),
+            connected_router_id: None,  // ホスト接続なのでNone
+            cost: 1,
+            enabled: true,
+            hello_interval: 10,
+            dead_interval: 40,
+            priority: 1,
+            mtu: 1500,
+            manual_config: true,
+        };
+
+        // ルーターにインターフェースを追加
+        if let Some(router) = self.routers.get_mut(&router_id) {
+            router.add_interface(router_interface);
+        }
+
+        // ホストを接続
+        if let Some(host) = self.hosts.get_mut(&host_id) {
+            host.connect_to_router(router_id, interface_id);
+        }
+
+        // 仮想リンクIDを返す（ホスト接続用）
+        let link_id = self.next_link_id;
+        self.next_link_id += 1;
+        
+        Ok(link_id)
+    }
+
+    fn get_network_address(&self, ip: &str, netmask: &str) -> String {
+        let ip_parts: Vec<u8> = ip.split('.')
+            .filter_map(|s| s.parse().ok())
+            .collect();
+        let mask_parts: Vec<u8> = netmask.split('.')
+            .filter_map(|s| s.parse().ok())
+            .collect();
+
+        if ip_parts.len() != 4 || mask_parts.len() != 4 {
+            return String::new();
+        }
+
+        format!("{}.{}.{}.{}",
+            ip_parts[0] & mask_parts[0],
+            ip_parts[1] & mask_parts[1],
+            ip_parts[2] & mask_parts[2],
+            ip_parts[3] & mask_parts[3]
+        )
+    }
+
+    pub fn get_device_type(&self, device_id: u32) -> Option<DeviceType> {
+        if self.routers.contains_key(&device_id) {
+            Some(DeviceType::Router)
+        } else if self.hosts.contains_key(&device_id) {
+            Some(DeviceType::Host)
+        } else {
+            None
+        }
     }
 }

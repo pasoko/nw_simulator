@@ -221,7 +221,7 @@ class RouterDetailsUI {
                     <span class="label">最新イベント:</span>
                     <span class="value event">${summary.latest_event || 'なし'}</span>
                 </div>
-                ${details.interfaces ? this.createInterfacesSummary(details.interfaces) : ''}
+                ${details.interfaces ? this.createInterfacesSummary(details.interfaces, routerId) : ''}
             </div>
         `;
         console.log('=== Generated Summary HTML ===');
@@ -263,7 +263,7 @@ class RouterDetailsUI {
         }
     }
 
-    createInterfacesSummary(interfaces) {
+    createInterfacesSummary(interfaces, routerId) {
         // デバッグ: インターフェース情報を詳しくログ出力
         console.log('=== Interface Details Debug ===');
         interfaces.forEach(iface => {
@@ -290,6 +290,7 @@ class RouterDetailsUI {
                             <span class="if-name">${ifName}:</span>
                             <span class="if-ip">${iface.ip_address}</span>
                             <span class="if-cost">Cost: ${iface.cost}</span>
+                            <button class="config-btn" onclick="window.routerDetailsUI.openInterfaceConfig(${routerId}, ${iface.id})" title="設定">⚙️</button>
                         </div>
                     `;
                     console.log(`Generated HTML for interface ${iface.id}:`, html);
@@ -503,6 +504,99 @@ class RouterDetailsUI {
         if (this.updateInterval) {
             clearInterval(this.updateInterval);
             this.updateInterval = null;
+        }
+    }
+
+    openInterfaceConfig(routerId, interfaceId) {
+        const router = stateManager.routers.get(routerId);
+        if (!router) return;
+        
+        const iface = router.interfaces?.find(i => i.id === interfaceId);
+        if (!iface) return;
+
+        // ダイアログ作成
+        const dialog = document.createElement('div');
+        dialog.className = 'interface-config-dialog';
+        dialog.innerHTML = `
+            <div class="dialog-overlay" onclick="window.routerDetailsUI.closeInterfaceConfig()"></div>
+            <div class="dialog-content">
+                <h3>インターフェース設定 - ${iface.name || `IF${iface.id}`}</h3>
+                <form id="interface-config-form">
+                    <div class="form-group">
+                        <label>IPアドレス:</label>
+                        <input type="text" id="if-ip" value="${iface.ip_address}" pattern="^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$" required>
+                    </div>
+                    <div class="form-group">
+                        <label>サブネットマスク:</label>
+                        <input type="text" id="if-netmask" value="${iface.netmask}" pattern="^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$" required>
+                    </div>
+                    <div class="form-group">
+                        <label>コスト:</label>
+                        <input type="number" id="if-cost" value="${iface.cost}" min="1" max="65535" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Hello間隔 (秒):</label>
+                        <input type="number" id="if-hello" value="${iface.hello_interval || 10}" min="1" max="65535" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Dead間隔 (秒):</label>
+                        <input type="number" id="if-dead" value="${iface.dead_interval || 40}" min="1" max="65535" required>
+                    </div>
+                    <div class="form-group">
+                        <label>優先度:</label>
+                        <input type="number" id="if-priority" value="${iface.priority || 1}" min="0" max="255" required>
+                    </div>
+                    <div class="form-group">
+                        <label>MTU:</label>
+                        <input type="number" id="if-mtu" value="${iface.mtu || 1500}" min="576" max="9000" required>
+                    </div>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="if-enabled" ${iface.enabled ? 'checked' : ''}>
+                            有効
+                        </label>
+                    </div>
+                    <div class="form-buttons">
+                        <button type="button" onclick="window.routerDetailsUI.saveInterfaceConfig(${routerId}, ${interfaceId})">保存</button>
+                        <button type="button" onclick="window.routerDetailsUI.closeInterfaceConfig()">キャンセル</button>
+                    </div>
+                </form>
+            </div>
+        `;
+        
+        document.body.appendChild(dialog);
+    }
+
+    closeInterfaceConfig() {
+        const dialog = document.querySelector('.interface-config-dialog');
+        if (dialog) {
+            dialog.remove();
+        }
+    }
+
+    async saveInterfaceConfig(routerId, interfaceId) {
+        const config = {
+            ip_address: document.getElementById('if-ip').value,
+            netmask: document.getElementById('if-netmask').value,
+            cost: parseInt(document.getElementById('if-cost').value),
+            hello_interval: parseInt(document.getElementById('if-hello').value),
+            dead_interval: parseInt(document.getElementById('if-dead').value),
+            priority: parseInt(document.getElementById('if-priority').value),
+            mtu: parseInt(document.getElementById('if-mtu').value),
+            enabled: document.getElementById('if-enabled').checked
+        };
+
+        try {
+            stateManager.simulator.update_interface_config(routerId, interfaceId, JSON.stringify(config));
+            
+            // 成功したらダイアログを閉じて更新
+            this.closeInterfaceConfig();
+            this.updateAllExpandedRouters();
+            
+            eventLogger.addLogEntry('info', `Router ${routerId} Interface ${interfaceId} 設定を更新しました`);
+        } catch (error) {
+            console.error('Failed to update interface config:', error);
+            alert('インターフェース設定の更新に失敗しました: ' + error.message);
         }
     }
 }
