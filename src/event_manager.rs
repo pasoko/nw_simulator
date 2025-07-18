@@ -28,6 +28,18 @@ pub enum SimulationEventType {
     SPFCalculationCompleted { router_id: u32, route_count: usize },
     NeighborDeadTimerExpired { router_id: u32, neighbor_id: u32 },
     InterfaceConfigChanged { router_id: u32, interface_id: u32 },
+    StubAreaConfigured { router_id: u32, area_type: String },
+}
+
+impl SimulationEvent {
+    /// Create a new stub area configured event
+    pub fn stub_area_configured(timestamp: f64, router_id: u32, area_type: String) -> Self {
+        SimulationEvent {
+            timestamp,
+            event_type: SimulationEventType::StubAreaConfigured { router_id, area_type: area_type.clone() },
+            description: format!("Router {} configured as stub area type: {}", router_id, area_type),
+        }
+    }
 }
 
 /// Event Management System
@@ -286,6 +298,7 @@ impl EventManager {
                 SimulationEventType::SPFCalculationCompleted { .. } => stats.spf_completions += 1,
                 SimulationEventType::NeighborDeadTimerExpired { .. } => stats.dead_timer_expirations += 1,
                 SimulationEventType::InterfaceConfigChanged { .. } => {}, // No specific stat for interface config changes
+                SimulationEventType::StubAreaConfigured { .. } => {}, // No specific counter for this yet
             }
         }
         
@@ -314,6 +327,7 @@ impl EventManager {
             SimulationEventType::SPFCalculationCompleted { router_id: id, .. } => *id == router_id,
             SimulationEventType::NeighborDeadTimerExpired { router_id: id, .. } => *id == router_id,
             SimulationEventType::InterfaceConfigChanged { router_id: id, .. } => *id == router_id,
+            SimulationEventType::StubAreaConfigured { router_id: id, .. } => *id == router_id,
         }
     }
 }

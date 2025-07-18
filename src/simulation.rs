@@ -5,6 +5,7 @@ use crate::ospf::{OSPFPacket, OSPFPacketType, OSPFPacketData, HelloPacket};
 use crate::ospf_engine::OSPFEngine;
 use crate::event_manager::{EventManager, SimulationEvent};
 use crate::failure_manager::FailureManager;
+use crate::stub_area::AreaType;
 use crate::route_calculator::RouteCalculator;
 use crate::router::{OSPFNeighborState, RoutingTableEntry};
 use crate::ping_manager::{PingManager, PingResult};
@@ -923,6 +924,25 @@ impl NetworkSimulation {
     
     pub fn get_ospf_engine_mut(&mut self, router_id: u32) -> Option<&mut OSPFEngine> {
         self.ospf_engines.get_mut(&router_id)
+    }
+    
+    /// Configure area as stub area
+    pub fn configure_stub_area(&mut self, router_id: u32, area_type: AreaType) -> Result<(), String> {
+        if let Some(engine) = self.get_ospf_engine_mut(router_id) {
+            let area_type_str = format!("{:?}", area_type);
+            engine.configure_stub_area(area_type)?;
+            
+            let event = SimulationEvent::stub_area_configured(
+                self.simulation_time, 
+                router_id,
+                area_type_str
+            );
+            self.event_manager.log_event(event);
+            
+            Ok(())
+        } else {
+            Err(format!("OSPF not enabled on router {}", router_id))
+        }
     }
 
     pub fn update_interface_config(&mut self, router_id: u32, interface_id: u32, config: crate::router::InterfaceConfig) -> Result<(), String> {

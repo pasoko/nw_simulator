@@ -105,21 +105,21 @@ mod tests {
         // Test default options
         let default_options = engine.get_area_options();
         assert!(default_options.get_e_bit());
-        assert!(default_options.get_o_bit());
+        assert!(!default_options.get_o_bit()); // O-bit is now disabled by default
         
         // Test stub area configuration
-        engine.configure_stub_area();
+        engine.configure_stub_area(crate::stub_area::AreaType::stub(10)).unwrap();
         let stub_options = engine.get_area_options();
         assert!(!stub_options.get_e_bit());
-        assert!(stub_options.get_o_bit());
+        assert!(!stub_options.get_o_bit());
         assert!(!stub_options.get_np_bit());
         
         // Test NSSA area configuration
-        engine.configure_nssa_area();
+        engine.configure_stub_area(crate::stub_area::AreaType::nssa(false, 10)).unwrap();
         let nssa_options = engine.get_area_options();
         assert!(!nssa_options.get_e_bit());
         assert!(nssa_options.get_np_bit());
-        assert!(nssa_options.get_o_bit());
+        assert!(!nssa_options.get_o_bit());
         
         // Test multicast support
         assert!(!engine.supports_multicast());
@@ -242,7 +242,7 @@ mod tests {
         }
         
         if let Some(engine2) = sim.get_ospf_engine_mut(r2) {
-            engine2.configure_stub_area();
+            engine2.configure_stub_area(crate::stub_area::AreaType::stub(10)).unwrap();
             let options2 = engine2.get_area_options();
             assert!(!options2.get_e_bit());
         }

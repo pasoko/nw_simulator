@@ -22,6 +22,7 @@ mod ospf_interface_state;
 mod ospf_tos;
 mod ospf_lsa_age_manager;
 mod opaque_lsa;
+mod stub_area;
 mod protocol;
 mod simulation;
 mod ospf_engine;
@@ -47,6 +48,8 @@ pub mod wasm_interface;
 
 #[cfg(test)]
 mod ospf_test;
+#[cfg(test)]
+mod stub_area_test;
 
 #[cfg(test)]
 mod ospf_dd_retransmit_test;

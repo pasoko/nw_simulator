@@ -19,6 +19,7 @@ use crate::ospf_options::OSPFOptions;
 use crate::ospf_interface_state::{ExtendedInterfaceState, InterfaceStateManager, OSPFInterfaceState};
 use crate::ospf_tos::{TOSCapabilities, TOSValue, TOSMetric, TOSRoutingTable};
 use crate::opaque_lsa::{OpaqueLSAGenerator, OpaqueLSAProcessor, TELink};
+use crate::stub_area::{StubAreaManager, AreaType};
 use crate::console_log;
 
 /// Refactored OSPF Engine
@@ -31,7 +32,7 @@ use crate::console_log;
 /// - DRElectionManager: DR/BDR election management
 pub struct OSPFEngine {
     router_id: String,
-    area_id: String,
+    pub area_id: String,
     current_time: f64,
     spf_calculation_pending: bool,  // RFC 2328 Section 16.1 - Track if SPF is scheduled
     
@@ -70,6 +71,9 @@ pub struct OSPFEngine {
     // TOS support
     tos_capabilities: TOSCapabilities,
     tos_routing_table: TOSRoutingTable,
+    
+    // Stub area support
+    stub_area_manager: Option<StubAreaManager>,
 }
 
 #[derive(Debug, Clone)]
@@ -114,6 +118,7 @@ impl OSPFEngine {
             area_options: OSPFOptions::standard_area_options(),
             tos_capabilities: TOSCapabilities::new(),
             tos_routing_table: TOSRoutingTable::new(),
+            stub_area_manager: None,
         }
     }
     
@@ -466,6 +471,13 @@ impl OSPFEngine {
             if !verify_lsa_checksum(lsa) {
                 console_log!("Router {} rejected LSA from {} due to checksum mismatch", 
                     self.router_id, from_router_id);
+                continue;
+            }
+            
+            // Check if LSA should be accepted based on area type
+            if !self.should_accept_lsa_for_area(lsa) {
+                console_log!("Router {} rejected LSA type {} from {} due to area restrictions", 
+                    self.router_id, lsa.header.ls_type as u8, from_router_id);
                 continue;
             }
             
@@ -874,17 +886,6 @@ impl OSPFEngine {
         self.area_options
     }
     
-    /// Configure area as stub area
-    pub fn configure_stub_area(&mut self) {
-        self.area_options = OSPFOptions::stub_area_options();
-        console_log!("Router {} configured as stub area", self.router_id);
-    }
-    
-    /// Configure area as NSSA area
-    pub fn configure_nssa_area(&mut self) {
-        self.area_options = OSPFOptions::nssa_area_options();
-        console_log!("Router {} configured as NSSA area", self.router_id);
-    }
     
     /// Check if router supports multicast capabilities
     pub fn supports_multicast(&self) -> bool {
@@ -1446,10 +1447,6 @@ impl OSPFEngine {
             self.router_id, self.connected_areas.len());
     }
     
-    /// Check if this router is an ABR
-    pub fn is_abr(&self) -> bool {
-        self.connected_areas.len() > 1
-    }
     
     /// Check if this router is an ASBR
     pub fn is_asbr(&self) -> bool {
@@ -1740,6 +1737,82 @@ impl OSPFEngine {
             self.router_id,
             if enabled { "enabled" } else { "disabled" }
         );
+    }
+    
+    /// Configure area as stub area
+    pub fn configure_stub_area(&mut self, area_type: AreaType) -> Result<(), String> {
+        // Validate area configuration
+        if self.area_id == "0.0.0.0" && !matches!(area_type, AreaType::Normal) {
+            return Err("Backbone area (0.0.0.0) cannot be configured as stub".to_string());
+        }
+        
+        // Create or update stub area manager
+        let mut manager = StubAreaManager::new(self.area_id.clone(), area_type.clone());
+        manager.update_abr_status(self.connected_areas.clone());
+        manager.validate_configuration()?;
+        
+        // Update area options based on area type
+        self.area_options = area_type.get_ospf_options();
+        
+        // Store the manager
+        self.stub_area_manager = Some(manager);
+        
+        console_log!(
+            "Router {} configured area {} as {:?}",
+            self.router_id, self.area_id, area_type
+        );
+        
+        // If ABR and stub area, generate default route
+        if let Some(ref manager) = self.stub_area_manager {
+            if manager.is_abr() {
+                if let Some(default_lsa) = manager.generate_default_route_lsa(self.router_id.clone()) {
+                    self.lsa_manager.add_lsa(default_lsa);
+                }
+            }
+        }
+        
+        Ok(())
+    }
+    
+    /// Update ABR status when area membership changes
+    pub fn update_abr_status(&mut self, connected_areas: HashSet<String>) {
+        self.connected_areas = connected_areas.clone();
+        
+        // Update stub area manager if present
+        if let Some(ref mut manager) = self.stub_area_manager {
+            manager.update_abr_status(connected_areas);
+            
+            // Generate default route if became ABR
+            if manager.is_abr() {
+                if let Some(default_lsa) = manager.generate_default_route_lsa(self.router_id.clone()) {
+                    self.lsa_manager.add_lsa(default_lsa);
+                }
+            }
+        }
+    }
+    
+    /// Check if LSA should be accepted based on area type
+    pub fn should_accept_lsa_for_area(&self, lsa: &LSA) -> bool {
+        if let Some(ref manager) = self.stub_area_manager {
+            manager.should_accept_lsa(lsa)
+        } else {
+            // Normal area accepts all LSAs
+            true
+        }
+    }
+    
+    /// Get current area type
+    pub fn get_area_type(&self) -> AreaType {
+        if let Some(ref manager) = self.stub_area_manager {
+            manager.get_area_type().clone()
+        } else {
+            AreaType::Normal
+        }
+    }
+    
+    /// Check if router is ABR
+    pub fn is_abr(&self) -> bool {
+        self.connected_areas.len() > 1 && self.connected_areas.contains("0.0.0.0")
     }
 }
 
