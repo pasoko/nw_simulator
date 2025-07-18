@@ -140,6 +140,21 @@ impl OSPFOptions {
             self.value &= !0x80;
         }
     }
+    
+    /// T-bit (bit 7 in RFC 2328): TOS capability
+    /// Note: T-bit and DN-bit share the same bit position but have different meanings
+    /// T-bit is used in RFC 2328 for TOS routing capability
+    pub fn get_t_bit(&self) -> bool {
+        (self.value & 0x80) != 0
+    }
+    
+    pub fn set_t_bit(&mut self, value: bool) {
+        if value {
+            self.value |= 0x80;
+        } else {
+            self.value &= !0x80;
+        }
+    }
 
     /// Create standard options for a normal area router
     pub fn standard_area_options() -> Self {

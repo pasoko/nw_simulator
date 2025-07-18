@@ -17,6 +17,7 @@ use crate::as_external_lsa::{ASExternalLSAGenerator, ExternalMetricType};
 use crate::ospf_auth::AuthConfig;
 use crate::ospf_options::OSPFOptions;
 use crate::ospf_interface_state::{ExtendedInterfaceState, InterfaceStateManager, OSPFInterfaceState};
+use crate::ospf_tos::{TOSCapabilities, TOSValue, TOSMetric, TOSRoutingTable};
 use crate::console_log;
 
 /// Refactored OSPF Engine
@@ -63,6 +64,10 @@ pub struct OSPFEngine {
     
     // OSPF Options configuration
     area_options: OSPFOptions,  // Options for this area
+    
+    // TOS support
+    tos_capabilities: TOSCapabilities,
+    tos_routing_table: TOSRoutingTable,
 }
 
 #[derive(Debug, Clone)]
@@ -104,6 +109,8 @@ impl OSPFEngine {
             connected_areas,
             external_routes: Vec::new(),
             area_options: OSPFOptions::standard_area_options(),
+            tos_capabilities: TOSCapabilities::new(),
+            tos_routing_table: TOSRoutingTable::new(),
         }
     }
     
@@ -1027,6 +1034,83 @@ impl OSPFEngine {
             interface_state.set_stub(is_stub);
             console_log!("Router {} set interface {} stub: {}", self.router_id, interface_id, is_stub);
         }
+    }
+    
+    // TOS Support Methods
+    
+    /// Enable TOS support for this router
+    pub fn enable_tos_support(&mut self) {
+        self.tos_capabilities.enable_tos_support();
+        // Set T-bit in options
+        self.area_options.set_t_bit(true);
+        console_log!("Router {} enabled TOS support", self.router_id);
+    }
+    
+    /// Disable TOS support
+    pub fn disable_tos_support(&mut self) {
+        self.tos_capabilities.disable_tos_support();
+        self.area_options.set_t_bit(false);
+        self.tos_routing_table.clear();
+        console_log!("Router {} disabled TOS support", self.router_id);
+    }
+    
+    /// Check if TOS support is enabled
+    pub fn is_tos_enabled(&self) -> bool {
+        self.tos_capabilities.tos_support_enabled
+    }
+    
+    /// Add a supported TOS value
+    pub fn add_supported_tos(&mut self, tos: TOSValue) {
+        self.tos_capabilities.add_supported_tos(tos);
+        console_log!("Router {} added support for TOS {}", self.router_id, tos.value());
+    }
+    
+    /// Remove a supported TOS value
+    pub fn remove_supported_tos(&mut self, tos: TOSValue) {
+        self.tos_capabilities.remove_supported_tos(tos);
+        console_log!("Router {} removed support for TOS {}", self.router_id, tos.value());
+    }
+    
+    /// Set TOS metrics for an interface
+    pub fn set_interface_tos_metrics(&mut self, interface_id: u32, metrics: Vec<TOSMetric>) {
+        self.tos_capabilities.set_interface_tos_metrics(interface_id, metrics.clone());
+        console_log!("Router {} set {} TOS metrics for interface {}", 
+            self.router_id, metrics.len(), interface_id);
+    }
+    
+    /// Get TOS metric for a specific interface and TOS
+    pub fn get_interface_tos_metric(&self, interface_id: u32, tos: &TOSValue) -> Option<u32> {
+        self.tos_capabilities.get_interface_tos_metric(interface_id, tos)
+    }
+    
+    /// Get all TOS metrics for an interface
+    pub fn get_interface_all_tos_metrics(&self, interface_id: u32) -> Vec<TOSMetric> {
+        self.tos_capabilities.get_interface_all_tos_metrics(interface_id)
+    }
+    
+    /// Get TOS routing table
+    pub fn get_tos_routing_table(&self) -> &TOSRoutingTable {
+        &self.tos_routing_table
+    }
+    
+    /// Get mutable TOS routing table
+    pub fn get_tos_routing_table_mut(&mut self) -> &mut TOSRoutingTable {
+        &mut self.tos_routing_table
+    }
+    
+    /// Get TOS capabilities
+    pub fn get_tos_capabilities(&self) -> &TOSCapabilities {
+        &self.tos_capabilities
+    }
+    
+    /// Check if a specific TOS is supported
+    pub fn is_tos_supported(&self, tos: &TOSValue) -> bool {
+        self.tos_capabilities.is_tos_supported(tos)
+    }
+    
+    /// Get supported TOS values
+    pub fn get_supported_tos_values(&self) -> Vec<TOSValue> {
+        self.tos_capabilities.supported_tos_values.clone()
     }
     
     pub fn reset_database_updated_flag(&mut self) {
