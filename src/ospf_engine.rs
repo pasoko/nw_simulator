@@ -278,7 +278,7 @@ impl OSPFEngine {
                                             self.router_id, interface_id);
                                         
                                         // Generate or update Network LSA if we are DR
-                                        if let Some(network_lsa) = self.update_dr_status(interface_id) {
+                                        if let Some(_network_lsa) = self.update_dr_status(interface_id) {
                                             console_log!("Router {} generated/updated Network LSA after DR election", 
                                                 self.router_id);
                                             // The LSA is already added to database, will be flooded in next update
@@ -445,7 +445,7 @@ impl OSPFEngine {
         events
     }
     
-    pub fn process_lsu_packet(&mut self, packet: &LinkStateUpdatePacket, from_router_id: u32) -> Vec<PacketEvent> {
+    pub fn process_lsu_packet(&mut self, packet: &LinkStateUpdatePacket, from_router_id: u32, interface_id: Option<u32>) -> Vec<PacketEvent> {
         let mut events = Vec::new();
         
         console_log!("Router {} processing LSU from {} with {} LSAs", 
@@ -479,8 +479,8 @@ impl OSPFEngine {
                 
                 // Always update the database if should_update is true
                 // MinLSInterval should only prevent flooding, not database updates
-                console_log!("Router {} updating LSA: {}", self.router_id, key);
-                self.lsa_manager.update_lsa_database(lsa.clone());
+                console_log!("Router {} updating LSA: {} via interface {:?}", self.router_id, key, interface_id);
+                self.lsa_manager.update_lsa_database_with_interface(lsa.clone(), interface_id);
                 
                 // Add to flood list
                 updated_lsa_keys.push(key.clone());
@@ -1570,6 +1570,40 @@ impl OSPFEngine {
                 }
             }
         }
+    }
+    
+    /// Update interface configuration including InfTransDelay
+    pub fn update_interface_config(&mut self, interface_id: u32, config: &crate::router::InterfaceConfig) {
+        // Update InfTransDelay in LSA manager if specified
+        if let Some(delay) = config.inf_trans_delay {
+            self.lsa_manager.set_interface_delay(interface_id, delay);
+            console_log!("Router {} updated InfTransDelay for interface {} to {}",
+                self.router_id, interface_id, delay);
+        }
+        
+        // Update other interface parameters as needed
+        // Note: Additional interface configuration updates can be added here
+    }
+    
+    /// Get all LSAs with their current ages
+    pub fn get_all_lsa_ages(&mut self) -> HashMap<String, u16> {
+        self.lsa_manager.get_all_lsa_ages()
+    }
+    
+    /// Get LSAs that need refresh
+    pub fn get_lsas_needing_refresh(&self) -> Vec<String> {
+        self.lsa_manager.get_lsas_needing_refresh()
+    }
+    
+    /// Force an LSA to MaxAge for testing
+    #[cfg(test)]
+    pub fn flush_lsa_to_maxage(&mut self, lsa_key: &str) {
+        self.lsa_manager.get_age_manager_mut().flush_lsa(lsa_key);
+    }
+    
+    /// Get MaxAge LSAs
+    pub fn get_maxage_lsas(&self) -> Vec<String> {
+        self.lsa_manager.get_age_manager().get_maxage_lsas()
     }
 }
 

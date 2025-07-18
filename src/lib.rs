@@ -20,6 +20,7 @@ mod ospf_auth;
 mod ospf_options;
 mod ospf_interface_state;
 mod ospf_tos;
+mod ospf_lsa_age_manager;
 mod protocol;
 mod simulation;
 mod ospf_engine;
@@ -126,6 +127,9 @@ mod ospf_interface_state_test;
 
 #[cfg(test)]
 mod ospf_tos_test;
+
+#[cfg(test)]
+mod ospf_lsa_age_test;
 
 use simulation::NetworkSimulation;
 use ui_state::UIState;

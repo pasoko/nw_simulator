@@ -70,7 +70,7 @@ mod dd_full_state_tests {
         };
         
         // Process LSU to reach Full state
-        let _events5 = engine1.process_lsu_packet(&lsu, 2);
+        let _events5 = engine1.process_lsu_packet(&lsu, 2, Some(1));
         
         // Now simulate time passing to check DD retransmission
         // Move time forward by 10 seconds

@@ -1,12 +1,10 @@
 use std::collections::{HashMap, HashSet};
 use crate::router::{LSA, LSAData, LSAType, LSAHeader as RouterLSAHeader, RouterLSA, RouterLink, LinkType};
 use crate::ospf_checksum::calculate_lsa_checksum;
+use crate::ospf_lsa_age_manager::{LSAAgeManager, MAX_AGE, MIN_LS_INTERVAL, INITIAL_SEQUENCE_NUMBER, MAX_SEQUENCE_NUMBER};
 use crate::console_log;
 
-const MAX_SEQUENCE_NUMBER: u32 = 0x7FFFFFFF;
-const INITIAL_SEQUENCE_NUMBER: u32 = 0x80000001;
-const MAX_AGE: u16 = 3600;
-const MIN_LS_INTERVAL: f64 = 5.0;
+// Constants are now imported from ospf_lsa_age_manager
 
 /// OSPF LSA Database Management
 /// 
@@ -24,6 +22,7 @@ pub struct OSPFLSAManager {
     current_time: f64, // Track current simulation time
     maxage_lsas_pending_purge: HashMap<String, f64>, // Track MaxAge LSAs pending deletion
     database_updated: bool, // Track if database was updated since last check
+    age_manager: LSAAgeManager, // Enhanced age management
 }
 
 impl OSPFLSAManager {
@@ -37,6 +36,7 @@ impl OSPFLSAManager {
             current_time: 0.0,
             maxage_lsas_pending_purge: HashMap::new(),
             database_updated: false,
+            age_manager: LSAAgeManager::new(),
         }
     }
     
@@ -118,6 +118,10 @@ impl OSPFLSAManager {
     }
     
     pub fn update_lsa_database(&mut self, lsa: LSA) {
+        self.update_lsa_database_with_interface(lsa, None);
+    }
+    
+    pub fn update_lsa_database_with_interface(&mut self, lsa: LSA, interface_id: Option<u32>) {
         console_log!("Router {} update_lsa_database called for LSA from {}", 
             self.router_id, lsa.header.advertising_router);
         let key = format!("{}:{}:{}", 
@@ -132,6 +136,13 @@ impl OSPFLSAManager {
         console_log!("Router {} updating LSA database with key: {}", self.router_id, key);
         if let LSAData::Router(ref rlsa) = lsa.data {
             console_log!("  Router LSA with {} links", rlsa.links.len());
+        }
+        
+        // Record LSA in age manager
+        if lsa.header.advertising_router == self.router_id {
+            self.age_manager.record_self_originated_lsa(key.clone(), &lsa);
+        } else {
+            self.age_manager.record_received_lsa(key.clone(), &lsa, interface_id);
         }
         
         self.lsa_database.insert(key.clone(), lsa);
@@ -152,8 +163,11 @@ impl OSPFLSAManager {
         self.lsa_database.get(key)
     }
     
-    pub fn age_lsas(&mut self, time_delta: f64) -> Vec<LSA> {
+    pub fn age_lsas(&mut self, _time_delta: f64) -> Vec<LSA> {
         let mut maxage_lsas = Vec::new();
+        
+        // Update age manager time
+        self.age_manager.update_time(self.current_time);
         
         for (key, lsa) in self.lsa_database.iter_mut() {
             // Skip if already at MaxAge
@@ -161,16 +175,25 @@ impl OSPFLSAManager {
                 continue;
             }
             
-            let new_age = lsa.header.ls_age as f64 + time_delta;
-            if new_age >= MAX_AGE as f64 {
+            // Use age manager to calculate age
+            let new_age = self.age_manager.calculate_age(key);
+            
+            if new_age >= MAX_AGE {
                 // Set to MaxAge but don't remove yet - need to reflood first
                 lsa.header.ls_age = MAX_AGE;
                 maxage_lsas.push(lsa.clone());
                 self.maxage_lsas_pending_purge.insert(key.clone(), self.current_time);
                 console_log!("Router {} LSA {} reached MaxAge, marking for reflooding", self.router_id, key);
             } else {
-                lsa.header.ls_age = new_age as u16;
+                lsa.header.ls_age = new_age;
             }
+        }
+        
+        // Check for LSAs needing refresh
+        let refresh_needed = self.age_manager.get_lsas_needing_refresh();
+        for lsa_key in refresh_needed {
+            console_log!("Router {} LSA {} needs refresh", self.router_id, lsa_key);
+            // Actual refresh will be handled by the OSPF engine
         }
         
         // OSPFv2 RFC 2328: MaxAge LSAs should be kept in the database
@@ -190,7 +213,7 @@ impl OSPFLSAManager {
         
         // Clean up old entries from recent updates tracking
         self.recent_lsa_updates.retain(|_, &mut update_time| {
-            self.current_time - update_time < MIN_LS_INTERVAL
+            self.age_manager.check_min_ls_interval("", update_time)
         });
         
         maxage_lsas
@@ -264,6 +287,11 @@ impl OSPFLSAManager {
         if self.needs_lsa_regeneration() {
             console_log!("Router {} regenerating Router LSA due to topology change", self.router_id);
             let lsa = self.generate_router_lsa();
+            
+            // Mark as refreshed in age manager
+            let key = format!("1:{}:{}", self.router_id, self.router_id);
+            self.age_manager.mark_refreshed(&key, lsa.header.ls_sequence_number);
+            
             // Mark database as updated when we generate a new LSA
             self.database_updated = true;
             lsa
@@ -274,6 +302,10 @@ impl OSPFLSAManager {
             self.lsa_database.get(&key).cloned().unwrap_or_else(|| {
                 console_log!("Router {} has no existing LSA, generating new one", self.router_id);
                 let lsa = self.generate_router_lsa();
+                
+                // Mark as refreshed in age manager
+                self.age_manager.mark_refreshed(&key, lsa.header.ls_sequence_number);
+                
                 // Mark database as updated when we generate a new LSA
                 self.database_updated = true;
                 lsa
@@ -349,7 +381,7 @@ impl OSPFLSAManager {
     
     pub fn was_recently_updated(&self, lsa_key: &str, current_time: f64) -> bool {
         if let Some(&update_time) = self.recent_lsa_updates.get(lsa_key) {
-            current_time - update_time < MIN_LS_INTERVAL
+            current_time - update_time < MIN_LS_INTERVAL as f64
         } else {
             false
         }
@@ -364,15 +396,17 @@ impl OSPFLSAManager {
     
     pub fn update_time(&mut self, time: f64) {
         self.current_time = time;
+        self.age_manager.update_time(time);
     }
     
     fn increment_sequence_number(&mut self) -> u32 {
-        if self.lsa_sequence_number == MAX_SEQUENCE_NUMBER {
+        if let Some(new_seq) = LSAAgeManager::increment_sequence_number(self.lsa_sequence_number) {
+            new_seq
+        } else {
+            // Sequence number wrap - need to flush LSA
             console_log!("Router {} sequence number wrapped from {} to {}", 
                 self.router_id, MAX_SEQUENCE_NUMBER, INITIAL_SEQUENCE_NUMBER);
             INITIAL_SEQUENCE_NUMBER
-        } else {
-            self.lsa_sequence_number + 1
         }
     }
     
@@ -416,8 +450,47 @@ impl OSPFLSAManager {
             self.lsa_database.remove(&key);
             self.recent_lsa_updates.remove(&key);
             self.maxage_lsas_pending_purge.remove(&key);
+            self.age_manager.remove_lsa(&key);
             console_log!("Router {} removed LSA from unreachable router: {}", self.router_id, key);
         }
+    }
+    
+    /// Get all LSAs with their current ages
+    pub fn get_all_lsa_ages(&mut self) -> HashMap<String, u16> {
+        self.age_manager.get_all_lsa_ages()
+    }
+    
+    /// Set InfTransDelay for an interface
+    pub fn set_interface_delay(&mut self, interface_id: u32, delay: u16) {
+        self.age_manager.set_interface_delay(interface_id, delay);
+        console_log!("Router {} set InfTransDelay {} for interface {}", 
+            self.router_id, delay, interface_id);
+    }
+    
+    /// Get InfTransDelay for an interface
+    pub fn get_interface_delay(&self, interface_id: u32) -> u16 {
+        self.age_manager.get_interface_delay(interface_id)
+    }
+    
+    /// Check if an LSA needs refresh
+    pub fn needs_lsa_refresh(&self, lsa_key: &str) -> bool {
+        self.age_manager.needs_refresh(lsa_key)
+    }
+    
+    /// Get LSAs that need refresh
+    pub fn get_lsas_needing_refresh(&self) -> Vec<String> {
+        self.age_manager.get_lsas_needing_refresh()
+    }
+    
+    /// Get age manager for testing
+    #[cfg(test)]
+    pub fn get_age_manager_mut(&mut self) -> &mut LSAAgeManager {
+        &mut self.age_manager
+    }
+    
+    /// Get age manager
+    pub fn get_age_manager(&self) -> &LSAAgeManager {
+        &self.age_manager
     }
 }
 

@@ -269,7 +269,7 @@ impl RouterState {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct InterfaceConfig {
     pub ip_address: Option<String>,
     pub netmask: Option<String>,

@@ -356,6 +356,10 @@ impl NetworkSimulation {
         self.pause_time = Some(self.simulation_time);
         console_log!("Simulation paused at {:.1}s", self.simulation_time);
     }
+    
+    pub fn is_running(&self) -> bool {
+        self.running
+    }
 
     pub fn step_simulation(&mut self, time_delta: f64) {
         if !self.running {
@@ -754,7 +758,7 @@ impl NetworkSimulation {
                         engine.process_lsr_packet(lsr, from_router_id)
                     }
                     OSPFPacketData::LinkStateUpdate(lsu) => {
-                        engine.process_lsu_packet(lsu, from_router_id)
+                        engine.process_lsu_packet(lsu, from_router_id, Some(interface_id))
                     }
                     OSPFPacketData::LinkStateAcknowledgment(lsack) => {
                         engine.process_lsack_packet(lsack, from_router_id)
@@ -929,13 +933,22 @@ impl NetworkSimulation {
             if let Some(ospf_engine) = self.ospf_engines.get_mut(&router_id) {
                 if let Some(interface) = router.interfaces.get(&interface_id) {
                     // OSPFパラメータの更新（RFC 2328準拠）
-                    ospf_engine.update_interface_ospf_params(
-                        interface_id, 
-                        interface.hello_interval, 
-                        interface.dead_interval,
-                        interface.inf_trans_delay,
-                        interface.rxmt_interval
-                    );
+                    let interface_config = crate::router::InterfaceConfig {
+                        ip_address: Some(interface.ip_address.clone()),
+                        netmask: Some(interface.netmask.clone()),
+                        cost: Some(interface.cost),
+                        hello_interval: Some(interface.hello_interval),
+                        dead_interval: Some(interface.dead_interval),
+                        priority: Some(interface.priority),
+                        mtu: Some(interface.mtu),
+                        enabled: Some(interface.enabled),
+                        auth_type: Some(interface.auth_config.auth_type.clone()),
+                        auth_key: interface.auth_config.auth_key.clone(),
+                        auth_key_id: interface.auth_config.key_id,
+                        inf_trans_delay: Some(interface.inf_trans_delay),
+                        rxmt_interval: Some(interface.rxmt_interval),
+                    };
+                    ospf_engine.update_interface_config(interface_id, &interface_config);
                     
                     // 認証設定の更新
                     ospf_engine.update_interface_auth(interface_id, interface.auth_config.clone());
