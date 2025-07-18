@@ -45,6 +45,8 @@ mod tests {
             auth_type: Some(AuthType::SimplePassword),
             auth_key: Some("test123".to_string()),
             auth_key_id: None,
+            inf_trans_delay: Some(1),
+            rxmt_interval: Some(5),
         };
         
         sim.update_interface_config(r1, interface1_id, auth_config1).unwrap();
@@ -62,6 +64,8 @@ mod tests {
             auth_type: Some(AuthType::SimplePassword),
             auth_key: Some("test123".to_string()),
             auth_key_id: None,
+            inf_trans_delay: Some(1),
+            rxmt_interval: Some(5),
         };
         
         sim.update_interface_config(r2, interface2_id, auth_config2).unwrap();
@@ -114,6 +118,8 @@ mod tests {
                     auth_type: Some(AuthType::CryptographicMD5),
                     auth_key: Some("md5secret".to_string()),
                     auth_key_id: Some(1),
+                    inf_trans_delay: Some(1),
+                    rxmt_interval: Some(5),
                 };
                 
                 sim.update_interface_config(router_id, interface_id, md5_config).unwrap();
@@ -182,6 +188,8 @@ mod tests {
             auth_type: Some(AuthType::Null),
             auth_key: None,
             auth_key_id: None,
+            inf_trans_delay: Some(1),
+            rxmt_interval: Some(5),
         };
         sim.update_interface_config(hub, spoke1_interface_id, null_config).unwrap();
         
@@ -198,6 +206,8 @@ mod tests {
             auth_type: Some(AuthType::SimplePassword),
             auth_key: Some("spoke2pass".to_string()),
             auth_key_id: None,
+            inf_trans_delay: Some(1),
+            rxmt_interval: Some(5),
         };
         sim.update_interface_config(hub, spoke2_interface_id, simple_config).unwrap();
         
@@ -214,6 +224,8 @@ mod tests {
             auth_type: Some(AuthType::CryptographicMD5),
             auth_key: Some("spoke3md5".to_string()),
             auth_key_id: Some(3),
+            inf_trans_delay: Some(1),
+            rxmt_interval: Some(5),
         };
         sim.update_interface_config(hub, spoke3_interface_id, md5_config).unwrap();
         

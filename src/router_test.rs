@@ -32,6 +32,8 @@ mod tests {
             mtu: 1500,
             manual_config: false,
             auth_config: crate::ospf_auth::AuthConfig::default(),
+            inf_trans_delay: 1,
+            rxmt_interval: 5,
         };
         
         let interface2 = RouterInterface {
@@ -48,6 +50,8 @@ mod tests {
             mtu: 1500,
             manual_config: false,
             auth_config: crate::ospf_auth::AuthConfig::default(),
+            inf_trans_delay: 1,
+            rxmt_interval: 5,
         };
         
         router.add_interface(interface1.clone());
@@ -76,6 +80,8 @@ mod tests {
             mtu: 1500,
             manual_config: false,
             auth_config: crate::ospf_auth::AuthConfig::default(),
+            inf_trans_delay: 1,
+            rxmt_interval: 5,
         };
         
         router.add_interface(interface1);
@@ -95,6 +101,8 @@ mod tests {
             mtu: 1500,
             manual_config: false,
             auth_config: crate::ospf_auth::AuthConfig::default(),
+            inf_trans_delay: 1,
+            rxmt_interval: 5,
         };
         
         router.add_interface(interface1_updated);

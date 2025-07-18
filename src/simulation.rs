@@ -927,8 +927,14 @@ impl NetworkSimulation {
             // OSPFエンジンのタイマー設定と認証設定も更新
             if let Some(ospf_engine) = self.ospf_engines.get_mut(&router_id) {
                 if let Some(interface) = router.interfaces.get(&interface_id) {
-                    // OSPFタイマーの更新（hello_interval, dead_intervalなど）
-                    ospf_engine.update_interface_timers(interface_id, interface.hello_interval, interface.dead_interval);
+                    // OSPFパラメータの更新（RFC 2328準拠）
+                    ospf_engine.update_interface_ospf_params(
+                        interface_id, 
+                        interface.hello_interval, 
+                        interface.dead_interval,
+                        interface.inf_trans_delay,
+                        interface.rxmt_interval
+                    );
                     
                     // 認証設定の更新
                     ospf_engine.update_interface_auth(interface_id, interface.auth_config.clone());

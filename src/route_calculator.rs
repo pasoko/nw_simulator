@@ -94,6 +94,11 @@ impl RouteCalculator {
                 // Log SPF calculation completion
                 event_manager.log_spf_calculation_completed(router_id, routes.len());
                 
+                // Mark SPF calculation as completed in the OSPF engine
+                if let Some(engine) = ospf_engines.get_mut(&router_id) {
+                    engine.mark_spf_calculation_completed();
+                }
+                
                 // Convert HashMap to Vec for easier handling
                 let route_vec: Vec<RoutingTableEntry> = routes.into_iter()
                     .map(|(_, route)| route)

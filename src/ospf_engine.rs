@@ -31,6 +31,12 @@ pub struct OSPFEngine {
     current_time: f64,
     spf_calculation_pending: bool,  // RFC 2328 Section 16.1 - Track if SPF is scheduled
     
+    // SPF calculation parameters (RFC 2328 Section 16.1)
+    spf_delay: u16,           // Minimum delay between SPF calculations (seconds)
+    spf_holdtime: u16,        // Hold time between consecutive SPF calculations (seconds)
+    spf_max_age: u16,         // Maximum age before full SPF recalculation (seconds)
+    last_spf_calculation: f64, // Timestamp of last SPF calculation
+    
     // Specialized components
     neighbor_manager: OSPFNeighborManager,
     lsa_manager: OSPFLSAManager,
@@ -79,6 +85,11 @@ impl OSPFEngine {
             area_id,
             current_time: 0.0,
             spf_calculation_pending: false,
+            // SPF calculation parameters (RFC 2328 defaults)
+            spf_delay: 5,              // 5 seconds initial delay
+            spf_holdtime: 10,          // 10 seconds hold time
+            spf_max_age: 300,          // 5 minutes max age
+            last_spf_calculation: 0.0,
             dr_election_managers: HashMap::new(),
             interface_states: HashMap::new(),
             connected_areas,
@@ -765,8 +776,24 @@ impl OSPFEngine {
     pub fn request_spf_calculation(&mut self) {
         // RFC 2328 Section 16.1 - Delay SPF calculation to avoid CPU overload
         if !self.spf_calculation_pending {
-            console_log!("Router {} requesting SPF calculation with delay, current_time={:.2}", 
-                self.router_id, self.current_time);
+            // Calculate delay based on time since last SPF calculation
+            let time_since_last_spf = if self.last_spf_calculation > 0.0 {
+                self.current_time - self.last_spf_calculation
+            } else {
+                f64::INFINITY
+            };
+            
+            let delay = if time_since_last_spf < (self.spf_holdtime as f64) {
+                // Recent SPF calculation - use hold time
+                self.spf_holdtime
+            } else {
+                // Normal case - use initial delay
+                self.spf_delay
+            };
+            
+            console_log!("Router {} requesting SPF calculation with {}s delay (last SPF: {:.2}s ago)", 
+                self.router_id, delay, time_since_last_spf);
+            
             self.spf_calculation_pending = true;
             self.timer_manager.start_spf_delay_timer();
         } else {
@@ -781,6 +808,28 @@ impl OSPFEngine {
     pub fn was_lsa_database_updated(&self) -> bool {
         // This is tracked by the lsa_manager
         self.lsa_manager.was_database_updated()
+    }
+    
+    /// Mark SPF calculation as completed
+    pub fn mark_spf_calculation_completed(&mut self) {
+        self.spf_calculation_pending = false;
+        self.last_spf_calculation = self.current_time;
+        console_log!("Router {} marked SPF calculation completed at {:.2}s", 
+            self.router_id, self.current_time);
+    }
+    
+    /// Update SPF calculation parameters
+    pub fn update_spf_parameters(&mut self, spf_delay: u16, spf_holdtime: u16, spf_max_age: u16) {
+        self.spf_delay = spf_delay;
+        self.spf_holdtime = spf_holdtime;
+        self.spf_max_age = spf_max_age;
+        console_log!("Router {} SPF parameters updated: delay={}s, holdtime={}s, max_age={}s", 
+            self.router_id, spf_delay, spf_holdtime, spf_max_age);
+    }
+    
+    /// Get SPF calculation parameters
+    pub fn get_spf_parameters(&self) -> (u16, u16, u16) {
+        (self.spf_delay, self.spf_holdtime, self.spf_max_age)
     }
     
     pub fn reset_database_updated_flag(&mut self) {
@@ -1002,6 +1051,18 @@ impl OSPFEngine {
         
         // 既存のネイバーのDead intervalも更新
         self.neighbor_manager.update_interface_dead_interval(interface_id, dead_interval);
+    }
+    
+    /// Update interface OSPF parameters including RFC 2328 parameters
+    pub fn update_interface_ospf_params(&mut self, interface_id: u32, hello_interval: u16, dead_interval: u16, 
+                                       inf_trans_delay: u16, rxmt_interval: u16) {
+        // Update timers
+        self.update_interface_timers(interface_id, hello_interval, dead_interval);
+        
+        // Store interface-specific OSPF parameters
+        // These will be used for LSA age calculation and retransmission
+        console_log!("Router {} updated interface {} OSPF parameters: hello={}s, dead={}s, inf_trans_delay={}s, rxmt_interval={}s",
+            self.router_id, interface_id, hello_interval, dead_interval, inf_trans_delay, rxmt_interval);
     }
     
     /// Initialize interface state for Network LSA generation

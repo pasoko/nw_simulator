@@ -43,6 +43,8 @@ mod tests {
             auth_type: None,
             auth_key: None,
             auth_key_id: None,
+            inf_trans_delay: Some(1),
+            rxmt_interval: Some(5),
         };
         
         sim.update_interface_config(r1, interface_id, new_config).unwrap();
@@ -98,6 +100,8 @@ mod tests {
             auth_type: None,
             auth_key: None,
             auth_key_id: None,
+            inf_trans_delay: Some(1),
+            rxmt_interval: Some(5),
         };
         
         sim.update_interface_config(r1, interface_id, new_config).unwrap();

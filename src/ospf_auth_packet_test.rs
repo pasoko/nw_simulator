@@ -35,6 +35,8 @@ mod tests {
                 auth_type: Some(AuthType::SimplePassword),
                 auth_key: Some("testpass".to_string()),
                 auth_key_id: None,
+                inf_trans_delay: Some(1),
+                rxmt_interval: Some(5),
             };
             sim.update_interface_config(r1, interface_id, config).unwrap();
         }
@@ -54,6 +56,8 @@ mod tests {
                 auth_type: Some(AuthType::SimplePassword),
                 auth_key: Some("testpass".to_string()),
                 auth_key_id: None,
+                inf_trans_delay: Some(1),
+                rxmt_interval: Some(5),
             };
             sim.update_interface_config(r2, interface_id, config).unwrap();
         }
@@ -109,6 +113,8 @@ mod tests {
                 auth_type: Some(AuthType::SimplePassword),
                 auth_key: Some("password1".to_string()),
                 auth_key_id: None,
+                inf_trans_delay: Some(1),
+                rxmt_interval: Some(5),
             };
             sim.update_interface_config(r1, interface_id, config).unwrap();
         }
@@ -128,6 +134,8 @@ mod tests {
                 auth_type: Some(AuthType::SimplePassword),
                 auth_key: Some("password2".to_string()),  // 異なるパスワード
                 auth_key_id: None,
+                inf_trans_delay: Some(1),
+                rxmt_interval: Some(5),
             };
             sim.update_interface_config(r2, interface_id, config).unwrap();
         }
@@ -187,6 +195,8 @@ mod tests {
                 auth_type: Some(AuthType::CryptographicMD5),
                 auth_key: Some("md5secret".to_string()),
                 auth_key_id: Some(1),
+                inf_trans_delay: Some(1),
+                rxmt_interval: Some(5),
             };
             sim.update_interface_config(r1, interface_id, config).unwrap();
         }
@@ -206,6 +216,8 @@ mod tests {
                 auth_type: Some(AuthType::CryptographicMD5),
                 auth_key: Some("md5secret".to_string()),
                 auth_key_id: Some(1),
+                inf_trans_delay: Some(1),
+                rxmt_interval: Some(5),
             };
             sim.update_interface_config(r2, interface_id, config).unwrap();
         }

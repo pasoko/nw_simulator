@@ -17,6 +17,8 @@ pub struct RouterInterface {
     pub dead_interval: u16,       // Dead判定時間（秒）
     pub priority: u8,             // DR/BDR選出優先度
     pub mtu: u16,                 // 最大転送単位
+    pub inf_trans_delay: u16,     // インターフェース送信遅延（秒）
+    pub rxmt_interval: u16,       // 再送信間隔（秒）
     pub manual_config: bool,      // 手動設定フラグ
     // OSPFv2 認証設定
     pub auth_config: AuthConfig,  // 認証設定
@@ -253,6 +255,13 @@ impl RouterState {
             if let Some(key_id) = config.auth_key_id {
                 interface.auth_config.key_id = Some(key_id);
             }
+            // RFC 2328準拠のインターフェースパラメータ
+            if let Some(inf_trans_delay) = config.inf_trans_delay {
+                interface.inf_trans_delay = inf_trans_delay;
+            }
+            if let Some(rxmt_interval) = config.rxmt_interval {
+                interface.rxmt_interval = rxmt_interval;
+            }
             Ok(())
         } else {
             Err(format!("Interface {} not found", interface_id))
@@ -273,4 +282,8 @@ pub struct InterfaceConfig {
     pub auth_type: Option<AuthType>,
     pub auth_key: Option<String>,
     pub auth_key_id: Option<u8>,
+    /// Interface transmission delay for LSA age calculation (RFC 2328)
+    pub inf_trans_delay: Option<u16>,
+    /// Retransmission interval for LSA retransmission (RFC 2328)
+    pub rxmt_interval: Option<u16>,
 }

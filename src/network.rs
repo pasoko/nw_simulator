@@ -110,6 +110,8 @@ impl NetworkTopology {
             dead_interval: 40,     // OSPFv2デフォルト値 (hello * 4)
             priority: 1,           // DR選出優先度デフォルト
             mtu: 1500,            // Ethernetデフォルト
+            inf_trans_delay: 1,    // RFC 2328デフォルト値（1秒）
+            rxmt_interval: 5,      // RFC 2328デフォルト値（5秒）
             manual_config: false,  // 自動設定
             auth_config: crate::ospf_auth::AuthConfig::default(),  // 認証なし（デフォルト）
         };
@@ -126,6 +128,8 @@ impl NetworkTopology {
             dead_interval: 40,     // OSPFv2デフォルト値 (hello * 4)
             priority: 1,           // DR選出優先度デフォルト
             mtu: 1500,            // Ethernetデフォルト
+            inf_trans_delay: 1,    // RFC 2328デフォルト値（1秒）
+            rxmt_interval: 5,      // RFC 2328デフォルト値（5秒）
             manual_config: false,  // 自動設定
             auth_config: crate::ospf_auth::AuthConfig::default(),  // 認証なし（デフォルト）
         };
@@ -217,6 +221,8 @@ impl NetworkTopology {
             dead_interval: 40,
             priority: 1,
             mtu: 1500,
+            inf_trans_delay: 1,    // RFC 2328デフォルト値（1秒）
+            rxmt_interval: 5,      // RFC 2328デフォルト値（5秒）
             manual_config: true,
             auth_config: crate::ospf_auth::AuthConfig::default(),  // 認証なし（デフォルト）
         };
