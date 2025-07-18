@@ -16,6 +16,7 @@ use crate::summary_lsa::SummaryLSAGenerator;
 use crate::as_external_lsa::{ASExternalLSAGenerator, ExternalMetricType};
 use crate::ospf_auth::AuthConfig;
 use crate::ospf_options::OSPFOptions;
+use crate::ospf_interface_state::{ExtendedInterfaceState, InterfaceStateManager, OSPFInterfaceState};
 use crate::console_log;
 
 /// Refactored OSPF Engine
@@ -50,6 +51,9 @@ pub struct OSPFEngine {
     
     // Track interface states for Network LSA generation
     interface_states: HashMap<u32, InterfaceState>,
+    
+    // Extended interface state management
+    interface_state_manager: InterfaceStateManager,
     
     // Track area membership for ABR functionality
     connected_areas: HashSet<String>,
@@ -96,6 +100,7 @@ impl OSPFEngine {
             last_spf_calculation: 0.0,
             dr_election_managers: HashMap::new(),
             interface_states: HashMap::new(),
+            interface_state_manager: InterfaceStateManager::new(),
             connected_areas,
             external_routes: Vec::new(),
             area_options: OSPFOptions::standard_area_options(),
@@ -112,6 +117,7 @@ impl OSPFEngine {
         }
         
         self.current_time = time;
+        self.interface_state_manager.update_time(time);
         
         let dead_neighbors = self.neighbor_manager.update_time(time);
         // Clean up DD state for neighbors that went down
@@ -893,6 +899,136 @@ impl OSPFEngine {
         console_log!("Router {} Opaque LSA support: {}", self.router_id, enabled);
     }
     
+    /// Get extended interface state
+    pub fn get_extended_interface_state(&self, interface_id: u32) -> Option<&ExtendedInterfaceState> {
+        self.interface_state_manager.get_interface(interface_id)
+    }
+    
+    /// Get mutable extended interface state
+    pub fn get_extended_interface_state_mut(&mut self, interface_id: u32) -> Option<&mut ExtendedInterfaceState> {
+        self.interface_state_manager.get_interface_mut(interface_id)
+    }
+    
+    /// Transition interface to new state
+    pub fn transition_interface_state(&mut self, interface_id: u32, new_state: OSPFInterfaceState) {
+        if let Some(interface_state) = self.interface_state_manager.get_interface_mut(interface_id) {
+            let old_state = interface_state.state;
+            interface_state.transition_to_state(new_state, self.current_time);
+            
+            console_log!("Router {} interface {} transitioned from {} to {}", 
+                self.router_id, interface_id, 
+                old_state as u8, new_state as u8);
+            
+            // Update legacy interface state for Network LSA generation
+            if let Some(legacy_state) = self.interface_states.get_mut(&interface_id) {
+                legacy_state.is_dr = matches!(new_state, OSPFInterfaceState::DR);
+            }
+        }
+    }
+    
+    /// Update interface with neighbor information
+    pub fn update_interface_neighbor(&mut self, interface_id: u32, neighbor_id: String, is_full: bool) {
+        if let Some(interface_state) = self.interface_state_manager.get_interface_mut(interface_id) {
+            interface_state.add_neighbor(neighbor_id.clone());
+            
+            if is_full {
+                interface_state.mark_neighbor_full(neighbor_id.clone());
+            }
+            
+            // Update legacy interface state
+            if let Some(legacy_state) = self.interface_states.get_mut(&interface_id) {
+                if is_full {
+                    legacy_state.fully_adjacent_neighbors.insert(neighbor_id);
+                }
+            }
+        }
+    }
+    
+    /// Remove neighbor from interface
+    pub fn remove_interface_neighbor(&mut self, interface_id: u32, neighbor_id: &str) {
+        if let Some(interface_state) = self.interface_state_manager.get_interface_mut(interface_id) {
+            interface_state.remove_neighbor(neighbor_id);
+            
+            // Update legacy interface state
+            if let Some(legacy_state) = self.interface_states.get_mut(&interface_id) {
+                legacy_state.fully_adjacent_neighbors.remove(neighbor_id);
+            }
+        }
+    }
+    
+    /// Get interface state summary
+    pub fn get_interface_state_summary(&self, interface_id: u32) -> Option<String> {
+        self.interface_state_manager.get_interface(interface_id).map(|state| state.get_summary())
+    }
+    
+    /// Get all interface states
+    pub fn get_all_interface_states(&self) -> Vec<(u32, String)> {
+        self.interface_state_manager
+            .get_all_interfaces()
+            .iter()
+            .map(|(id, state)| (*id, state.get_summary()))
+            .collect()
+    }
+    
+    /// Get DR interfaces
+    pub fn get_dr_interfaces(&self) -> Vec<u32> {
+        self.interface_state_manager
+            .get_dr_interfaces()
+            .iter()
+            .map(|(id, _)| *id)
+            .collect()
+    }
+    
+    /// Get BDR interfaces
+    pub fn get_bdr_interfaces(&self) -> Vec<u32> {
+        self.interface_state_manager
+            .get_bdr_interfaces()
+            .iter()
+            .map(|(id, _)| *id)
+            .collect()
+    }
+    
+    /// Get total adjacency count across all interfaces
+    pub fn get_total_adjacency_count(&self) -> usize {
+        self.interface_state_manager.get_total_adjacency_count()
+    }
+    
+    /// Check for expired wait timers and return interfaces ready for DR election
+    pub fn check_wait_timers(&mut self) -> Vec<u32> {
+        self.interface_state_manager.check_wait_timers()
+    }
+    
+    /// Start wait timer for interface
+    pub fn start_interface_wait_timer(&mut self, interface_id: u32) {
+        if let Some(interface_state) = self.interface_state_manager.get_interface_mut(interface_id) {
+            interface_state.start_wait_timer(self.current_time);
+            console_log!("Router {} started wait timer for interface {}", self.router_id, interface_id);
+        }
+    }
+    
+    /// Update interface DR/BDR information
+    pub fn update_interface_dr_bdr(&mut self, interface_id: u32, dr_ip: String, bdr_ip: String) {
+        if let Some(interface_state) = self.interface_state_manager.get_interface_mut(interface_id) {
+            interface_state.update_dr_bdr(dr_ip, bdr_ip);
+        }
+    }
+    
+    /// Set interface as passive
+    pub fn set_interface_passive(&mut self, interface_id: u32, is_passive: bool) {
+        if let Some(interface_state) = self.interface_state_manager.get_interface_mut(interface_id) {
+            interface_state.set_passive(is_passive);
+            console_log!("Router {} set interface {} passive: {}", self.router_id, interface_id, is_passive);
+        }
+    }
+    
+    /// Set interface as stub
+    pub fn set_interface_stub(&mut self, interface_id: u32, is_stub: bool) {
+        if let Some(interface_state) = self.interface_state_manager.get_interface_mut(interface_id) {
+            interface_state.set_stub(is_stub);
+            console_log!("Router {} set interface {} stub: {}", self.router_id, interface_id, is_stub);
+        }
+    }
+    
     pub fn reset_database_updated_flag(&mut self) {
         // Reset the flag after SPF calculation
         self.lsa_manager.reset_database_updated();
@@ -1130,10 +1266,21 @@ impl OSPFEngine {
     pub fn initialize_interface_state(&mut self, interface_id: u32, interface_ip: String, network_mask: String) {
         self.interface_states.insert(interface_id, InterfaceState {
             is_dr: false,
-            interface_ip,
-            network_mask,
+            interface_ip: interface_ip.clone(),
+            network_mask: network_mask.clone(),
             fully_adjacent_neighbors: HashSet::new(),
         });
+        
+        // Also initialize extended interface state
+        let extended_state = ExtendedInterfaceState::new(
+            interface_ip,
+            network_mask,
+            self.area_id.clone(),
+            OSPFNetworkType::Broadcast,
+        );
+        self.interface_state_manager.add_interface(interface_id, extended_state);
+        
+        console_log!("Router {} initialized interface state for interface {}", self.router_id, interface_id);
     }
     
     /// Update DR status and generate Network LSA if needed
