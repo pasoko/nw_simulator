@@ -63,7 +63,8 @@ impl PingManager {
 
         self.active_pings.insert(identifier, ping_request);
         
-        let icmp_packet = ICMPPacket::new_echo_request(identifier, sequence_number);
+        let icmp_packet = ICMPPacket::new_echo_request(identifier, sequence_number)
+            .with_addresses(String::new(), destination_ip.clone());
         
         console_log!("Created ping request from {} to {} (id: {})", 
             source_id, destination_ip, identifier);

@@ -107,6 +107,8 @@ pub struct ICMPPacket {
     pub identifier: u16,
     pub sequence_number: u16,
     pub data: Vec<u8>,
+    pub source_ip: String,
+    pub destination_ip: String,
 }
 
 /// ICMPタイプ
@@ -127,6 +129,8 @@ impl ICMPPacket {
             identifier,
             sequence_number,
             data: vec![0; 32],  // 32バイトのダミーデータ
+            source_ip: String::new(),
+            destination_ip: String::new(),
         }
     }
 
@@ -138,6 +142,14 @@ impl ICMPPacket {
             identifier,
             sequence_number,
             data: vec![0; 32],  // 32バイトのダミーデータ
+            source_ip: String::new(),
+            destination_ip: String::new(),
         }
+    }
+
+    pub fn with_addresses(mut self, source: String, destination: String) -> Self {
+        self.source_ip = source;
+        self.destination_ip = destination;
+        self
     }
 }

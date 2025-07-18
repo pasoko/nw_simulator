@@ -87,6 +87,9 @@ mod device_test;
 #[cfg(test)]
 mod ping_test;
 
+#[cfg(test)]
+mod ping_routing_test;
+
 use simulation::NetworkSimulation;
 use ui_state::UIState;
 use serialization::SerializationHelper;

@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use crate::simulation::NetworkSimulation;
-    use crate::device::ICMPType;
+    // use crate::device::ICMPType;
 
     #[test]
     fn test_ping_integration() {
@@ -93,7 +93,7 @@ mod tests {
 
         // ルーターを追加
         let r1 = sim.add_router("R1".to_string(), 0.0, 0.0);
-        let r2 = sim.add_router("R2".to_string(), 100.0, 0.0);
+        let _r2 = sim.add_router("R2".to_string(), 100.0, 0.0);
 
         // ホストを追加
         let h1 = sim.add_host(

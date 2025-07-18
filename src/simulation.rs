@@ -6,7 +6,7 @@ use crate::ospf_engine::OSPFEngine;
 use crate::event_manager::{EventManager, SimulationEvent};
 use crate::failure_manager::FailureManager;
 use crate::route_calculator::RouteCalculator;
-use crate::router::OSPFNeighborState;
+use crate::router::{OSPFNeighborState, RoutingTableEntry};
 use crate::ping_manager::{PingManager, PingResult};
 use crate::device::{ICMPPacket, ICMPType};
 use crate::console_log;
@@ -891,11 +891,14 @@ impl NetworkSimulation {
         }
 
         // ping要求を作成
-        let (identifier, icmp_packet) = self.ping_manager.create_ping_request(
+        let (identifier, mut icmp_packet) = self.ping_manager.create_ping_request(
             host_id,
             destination_ip.clone(),
             self.simulation_time
         );
+        
+        // 送信元IPアドレスを設定
+        icmp_packet.source_ip = host.ip_address.clone();
 
         // 次ホップを決定（同一サブネットならdestination_ip、そうでなければdefault_gateway）
         let _next_hop = host.get_next_hop(&destination_ip);
@@ -923,9 +926,10 @@ impl NetworkSimulation {
     fn process_icmp_packet(&mut self, packet: ICMPPacket, from_id: u32, to_id: u32) {
         match packet.packet_type {
             ICMPType::EchoRequest => {
-                // Echo Requestを受信したら、Echo Replyを返す
+                // ホストで受信した場合
                 if let Some(host) = self.topology.hosts.get(&to_id) {
-                    if !host.is_failed {
+                    if !host.is_failed && host.ip_address == packet.destination_ip {
+                        // 宛先が自分のIPアドレスの場合、Echo Replyを返す
                         let reply = ICMPPacket::new_echo_reply(
                             packet.identifier,
                             packet.sequence_number
@@ -940,12 +944,75 @@ impl NetworkSimulation {
                         
                         self.protocol_engine.schedule_event(reply_event);
                         console_log!("Host {} sending echo reply to {}", to_id, from_id);
+                        return;
+                    }
+                }
+                
+                // ルーターで受信した場合
+                if let Some(router) = self.topology.routers.get(&to_id) {
+                    // 宛先IPがルーター自身のインターフェースの場合
+                    for interface in router.interfaces.values() {
+                        if interface.ip_address == packet.destination_ip {
+                            let reply = ICMPPacket::new_echo_reply(
+                                packet.identifier,
+                                packet.sequence_number
+                            );
+                            
+                            let reply_event = PacketEvent {
+                                timestamp: self.simulation_time + 0.001,
+                                from_router_id: to_id,
+                                to_router_id: from_id,
+                                packet: ProtocolPacket::ICMP(reply),
+                            };
+                            
+                            self.protocol_engine.schedule_event(reply_event);
+                            console_log!("Router {} sending echo reply to {}", to_id, from_id);
+                            return;
+                        }
+                    }
+                    
+                    // ルーティングテーブルで次ホップを検索
+                    let next_hop_info = self.find_next_hop_for_icmp(to_id, &packet.destination_ip);
+                    if let Some(next_hop_router_id) = next_hop_info {
+                        // パケットを次ホップに転送
+                        let forward_event = PacketEvent {
+                            timestamp: self.simulation_time + 0.001,
+                            from_router_id: to_id,
+                            to_router_id: next_hop_router_id,
+                            packet: ProtocolPacket::ICMP(packet.clone()),
+                        };
+                        
+                        self.protocol_engine.schedule_event(forward_event);
+                        console_log!("Router {} forwarding ICMP packet to {} via router {}", 
+                            to_id, packet.destination_ip, next_hop_router_id);
+                    } else {
+                        console_log!("Router {} has no route to {}", to_id, packet.destination_ip);
                     }
                 }
             },
             ICMPType::EchoReply => {
-                // Echo Replyを受信
-                self.ping_manager.process_echo_reply(packet.identifier, self.simulation_time);
+                // ホストで受信した場合
+                if self.topology.hosts.contains_key(&to_id) {
+                    self.ping_manager.process_echo_reply(packet.identifier, self.simulation_time);
+                    return;
+                }
+                
+                // ルーターで受信した場合は転送
+                if self.topology.routers.contains_key(&to_id) {
+                    let next_hop_info = self.find_next_hop_for_icmp(to_id, &packet.source_ip);
+                    if let Some(next_hop_router_id) = next_hop_info {
+                        let forward_event = PacketEvent {
+                            timestamp: self.simulation_time + 0.001,
+                            from_router_id: to_id,
+                            to_router_id: next_hop_router_id,
+                            packet: ProtocolPacket::ICMP(packet.clone()),
+                        };
+                        
+                        self.protocol_engine.schedule_event(forward_event);
+                        console_log!("Router {} forwarding ICMP reply to {} via router {}", 
+                            to_id, packet.source_ip, next_hop_router_id);
+                    }
+                }
             },
             _ => {
                 console_log!("Unhandled ICMP packet type: {:?}", packet.packet_type);
@@ -956,6 +1023,91 @@ impl NetworkSimulation {
     /// 最近のping結果を取得
     pub fn get_recent_ping_results(&self, count: usize) -> Vec<PingResult> {
         self.ping_manager.get_recent_results(count)
+    }
+
+    /// ICMPパケットのための次ホップを検索
+    fn find_next_hop_for_icmp(&self, router_id: u32, destination_ip: &str) -> Option<u32> {
+        let router = self.topology.routers.get(&router_id)?;
+        
+        // ルーティングテーブルから最適なルートを検索
+        let mut best_match: Option<(&RoutingTableEntry, u32)> = None;
+        
+        for entry in &router.routing_table {
+            if self.is_ip_in_network(destination_ip, &entry.destination, &entry.netmask) {
+                // プレフィックス長を計算（ネットマスクのビット数）
+                let prefix_len = self.get_prefix_length(&entry.netmask);
+                
+                match best_match {
+                    None => best_match = Some((entry, prefix_len)),
+                    Some((_, best_len)) => {
+                        if prefix_len > best_len {
+                            best_match = Some((entry, prefix_len));
+                        }
+                    }
+                }
+            }
+        }
+        
+        if let Some((best_entry, _)) = best_match {
+            // next_hopがルーターIDの形式かチェック
+            if let Ok(next_router_id) = best_entry.next_hop.parse::<u32>() {
+                return Some(next_router_id);
+            }
+            
+            // next_hopがIPアドレスの場合、そのIPを持つルーターを検索
+            for (rid, r) in &self.topology.routers {
+                for interface in r.interfaces.values() {
+                    if interface.ip_address == best_entry.next_hop {
+                        return Some(*rid);
+                    }
+                }
+            }
+            
+            // ホストの場合もチェック
+            for (hid, h) in &self.topology.hosts {
+                if h.ip_address == destination_ip {
+                    if let Some(connected_router) = h.connected_router_id {
+                        return Some(connected_router);
+                    }
+                }
+            }
+        }
+        
+        None
+    }
+
+    /// IPアドレスが特定のネットワークに属するかチェック
+    fn is_ip_in_network(&self, ip: &str, network: &str, netmask: &str) -> bool {
+        let ip_parts: Vec<u8> = ip.split('.').filter_map(|s| s.parse().ok()).collect();
+        let net_parts: Vec<u8> = network.split('.').filter_map(|s| s.parse().ok()).collect();
+        let mask_parts: Vec<u8> = netmask.split('.').filter_map(|s| s.parse().ok()).collect();
+        
+        if ip_parts.len() != 4 || net_parts.len() != 4 || mask_parts.len() != 4 {
+            return false;
+        }
+        
+        for i in 0..4 {
+            if (ip_parts[i] & mask_parts[i]) != (net_parts[i] & mask_parts[i]) {
+                return false;
+            }
+        }
+        
+        true
+    }
+
+    /// ネットマスクのプレフィックス長を取得
+    fn get_prefix_length(&self, netmask: &str) -> u32 {
+        let mask_parts: Vec<u8> = netmask.split('.').filter_map(|s| s.parse().ok()).collect();
+        if mask_parts.len() != 4 {
+            return 0;
+        }
+        
+        let mut prefix_len = 0;
+        for part in mask_parts {
+            prefix_len += part.count_ones();
+        }
+        
+        prefix_len
     }
 }
 
