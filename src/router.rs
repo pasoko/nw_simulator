@@ -138,14 +138,19 @@ pub struct NetworkLSA {
 pub struct SummaryLSA {
     pub network_mask: String,
     pub metric: u32,
+    pub tos: u8,
+    pub tos_metric: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ASExternalLSA {
     pub network_mask: String,
     pub metric: u32,
+    pub metric_type: u8,
     pub forwarding_address: String,
     pub external_route_tag: u32,
+    pub tos: u8,
+    pub tos_metric: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

@@ -386,8 +386,11 @@ mod tests {
         let as_external = ASExternalLSA {
             network_mask: "255.255.255.0".to_string(),
             metric: 100,
+            metric_type: 1, // Type2
             forwarding_address: "0.0.0.0".to_string(),
             external_route_tag: 0,
+            tos: 0,
+            tos_metric: 0,
         };
         
         let lsa = LSA {

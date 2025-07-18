@@ -855,6 +855,10 @@ impl NetworkSimulation {
     pub fn get_ospf_engine(&self, router_id: u32) -> Option<&OSPFEngine> {
         self.ospf_engines.get(&router_id)
     }
+    
+    pub fn get_ospf_engine_mut(&mut self, router_id: u32) -> Option<&mut OSPFEngine> {
+        self.ospf_engines.get_mut(&router_id)
+    }
 
     pub fn update_interface_config(&mut self, router_id: u32, interface_id: u32, config: crate::router::InterfaceConfig) -> Result<(), String> {
         if let Some(router) = self.topology.routers.get_mut(&router_id) {
@@ -1065,7 +1069,7 @@ impl NetworkSimulation {
             }
             
             // ホストの場合もチェック
-            for (hid, h) in &self.topology.hosts {
+            for (_hid, h) in &self.topology.hosts {
                 if h.ip_address == destination_ip {
                     if let Some(connected_router) = h.connected_router_id {
                         return Some(connected_router);

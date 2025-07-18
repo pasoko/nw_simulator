@@ -34,7 +34,7 @@ mod tests {
         
         // DRを特定
         let mut dr_found = false;
-        let mut network_lsa_found = false;
+        let mut _network_lsa_found = false;
         
         for (router_id, _) in &sim.topology.routers {
             if let Some(engine) = sim.get_ospf_engine(*router_id) {
@@ -45,7 +45,7 @@ mod tests {
                 let lsa_db = engine.get_lsa_database();
                 for (_key, lsa) in lsa_db {
                     if lsa.header.ls_type == LSAType::NetworkLSA {
-                        network_lsa_found = true;
+                        _network_lsa_found = true;
                         console_log!(
                             "Network LSA found: LS ID={}, Adv Router={}",
                             lsa.header.link_state_id,
@@ -109,14 +109,14 @@ mod tests {
         }
         
         // Network LSAが生成されていないことを確認
-        let mut network_lsa_found = false;
+        let mut _network_lsa_found = false;
         
         for (router_id, _) in &sim.topology.routers {
             if let Some(engine) = sim.get_ospf_engine(*router_id) {
                 let lsa_db = engine.get_lsa_database();
                 for (_key, lsa) in lsa_db {
                     if lsa.header.ls_type == LSAType::NetworkLSA {
-                        network_lsa_found = true;
+                        _network_lsa_found = true;
                         console_log!(
                             "Unexpected Network LSA on P2P: LS ID={}, Adv Router={}",
                             lsa.header.link_state_id,
@@ -133,7 +133,7 @@ mod tests {
             }
         }
         
-        assert!(!network_lsa_found, "No Network LSA should be generated on P2P links");
+        assert!(!_network_lsa_found, "No Network LSA should be generated on P2P links");
     }
 
     #[test]

@@ -12,6 +12,8 @@ use crate::ospf_checksum::verify_lsa_checksum;
 use crate::ospf_dr_election::{DRElectionManager, DRElectionCandidate};
 use crate::network_type::OSPFNetworkType;
 use crate::network_lsa::NetworkLSAGenerator;
+use crate::summary_lsa::SummaryLSAGenerator;
+use crate::as_external_lsa::{ASExternalLSAGenerator, ExternalMetricType};
 use crate::console_log;
 
 /// Refactored OSPF Engine
@@ -35,9 +37,17 @@ pub struct OSPFEngine {
     timer_manager: OSPFTimerManager,
     dr_election_managers: HashMap<u32, DRElectionManager>,  // Per-interface DR election
     network_lsa_generator: NetworkLSAGenerator,
+    summary_lsa_generator: SummaryLSAGenerator,
+    as_external_lsa_generator: ASExternalLSAGenerator,
     
     // Track interface states for Network LSA generation
     interface_states: HashMap<u32, InterfaceState>,
+    
+    // Track area membership for ABR functionality
+    connected_areas: HashSet<String>,
+    
+    // Track external routes for ASBR functionality
+    external_routes: Vec<(String, String, u32, ExternalMetricType, String, u32)>,
 }
 
 #[derive(Debug, Clone)]
@@ -53,18 +63,25 @@ impl OSPFEngine {
         let mut timer_manager = OSPFTimerManager::new(router_id.clone());
         timer_manager.start_hello_timer();  // Start hello timer immediately
         
+        let mut connected_areas = HashSet::new();
+        connected_areas.insert(area_id.clone());
+        
         OSPFEngine {
             neighbor_manager: OSPFNeighborManager::new(40), // 40s dead interval
             lsa_manager: OSPFLSAManager::new(router_id.clone()),
             packet_processor: OSPFPacketProcessor::new(router_id.clone(), area_id.clone()),
             timer_manager,
             network_lsa_generator: NetworkLSAGenerator::new(router_id.clone()),
+            summary_lsa_generator: SummaryLSAGenerator::new(router_id.clone()),
+            as_external_lsa_generator: ASExternalLSAGenerator::new(router_id.clone()),
             router_id,
             area_id,
             current_time: 0.0,
             spf_calculation_pending: false,
             dr_election_managers: HashMap::new(),
             interface_states: HashMap::new(),
+            connected_areas,
+            external_routes: Vec::new(),
         }
     }
     
@@ -1014,6 +1031,96 @@ impl OSPFEngine {
         }
         
         None
+    }
+    
+    /// Add an area to the connected areas (for ABR functionality)
+    pub fn add_area(&mut self, area_id: String) {
+        self.connected_areas.insert(area_id);
+        console_log!("Router {} now connected to {} areas", 
+            self.router_id, self.connected_areas.len());
+    }
+    
+    /// Check if this router is an ABR
+    pub fn is_abr(&self) -> bool {
+        self.connected_areas.len() > 1
+    }
+    
+    /// Check if this router is an ASBR
+    pub fn is_asbr(&self) -> bool {
+        !self.external_routes.is_empty()
+    }
+    
+    /// Add an external route (for ASBR functionality)
+    pub fn add_external_route(
+        &mut self,
+        network: String,
+        mask: String,
+        metric: u32,
+        metric_type: ExternalMetricType,
+        forwarding_address: String,
+        tag: u32,
+    ) {
+        self.external_routes.push((network, mask, metric, metric_type, forwarding_address, tag));
+        console_log!("Router {} added external route, now has {} external routes", 
+            self.router_id, self.external_routes.len());
+    }
+    
+    /// Generate Summary LSAs for inter-area routes
+    pub fn generate_summary_lsas(&mut self, inter_area_routes: &[(String, String, u32, String)]) -> Vec<LSA> {
+        if !self.is_abr() {
+            return Vec::new();
+        }
+        
+        let mut all_lsas = Vec::new();
+        
+        // Generate Summary LSAs for each connected area
+        for area in &self.connected_areas.clone() {
+            let sequence_start = self.lsa_manager.get_next_sequence_number();
+            let lsas = self.summary_lsa_generator.generate_all_summary_lsas(
+                inter_area_routes,
+                area,
+                sequence_start,
+            );
+            
+            // Add to LSA database
+            for lsa in &lsas {
+                self.lsa_manager.add_lsa(lsa.clone());
+            }
+            
+            all_lsas.extend(lsas);
+        }
+        
+        if !all_lsas.is_empty() {
+            console_log!("ABR {} generated {} Summary LSAs", 
+                self.router_id, all_lsas.len());
+        }
+        
+        all_lsas
+    }
+    
+    /// Generate AS-External LSAs for external routes
+    pub fn generate_as_external_lsas(&mut self) -> Vec<LSA> {
+        if !self.is_asbr() {
+            return Vec::new();
+        }
+        
+        let sequence_start = self.lsa_manager.get_next_sequence_number();
+        let lsas = self.as_external_lsa_generator.generate_all_as_external_lsas(
+            &self.external_routes,
+            sequence_start,
+        );
+        
+        // Add to LSA database
+        for lsa in &lsas {
+            self.lsa_manager.add_lsa(lsa.clone());
+        }
+        
+        if !lsas.is_empty() {
+            console_log!("ASBR {} generated {} AS-External LSAs", 
+                self.router_id, lsas.len());
+        }
+        
+        lsas
     }
 }
 
