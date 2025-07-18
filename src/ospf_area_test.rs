@@ -81,8 +81,8 @@ mod area_tests {
             router_id: "1.1.1.1".to_string(),
             area_id: "1.1.1.1".to_string(), // Different area!
             checksum: 0,
-            auth_type: 0,
-            authentication: 0,
+            auth_type: crate::ospf_auth::AuthType::Null,
+            auth_data: crate::ospf_auth::AuthData::None,
             data: OSPFPacketData::Hello(HelloPacket {
                 network_mask: "255.255.255.252".to_string(),
                 hello_interval: 10,

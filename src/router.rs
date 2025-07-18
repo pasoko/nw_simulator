@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
+use crate::ospf_auth::{AuthConfig, AuthType};
 use crate::console_log;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -17,6 +18,8 @@ pub struct RouterInterface {
     pub priority: u8,             // DR/BDR選出優先度
     pub mtu: u16,                 // 最大転送単位
     pub manual_config: bool,      // 手動設定フラグ
+    // OSPFv2 認証設定
+    pub auth_config: AuthConfig,  // 認証設定
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -235,6 +238,16 @@ impl RouterState {
             if let Some(enabled) = config.enabled {
                 interface.enabled = enabled;
             }
+            // 認証設定の更新
+            if let Some(auth_type) = config.auth_type {
+                interface.auth_config.auth_type = auth_type;
+            }
+            if let Some(auth_key) = config.auth_key {
+                interface.auth_config.auth_key = Some(auth_key);
+            }
+            if let Some(key_id) = config.auth_key_id {
+                interface.auth_config.key_id = Some(key_id);
+            }
             Ok(())
         } else {
             Err(format!("Interface {} not found", interface_id))
@@ -252,4 +265,7 @@ pub struct InterfaceConfig {
     pub priority: Option<u8>,
     pub mtu: Option<u16>,
     pub enabled: Option<bool>,
+    pub auth_type: Option<AuthType>,
+    pub auth_key: Option<String>,
+    pub auth_key_id: Option<u8>,
 }

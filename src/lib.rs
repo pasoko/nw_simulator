@@ -13,6 +13,7 @@ mod network;
 mod network_type;
 mod device;
 mod ospf;
+mod ospf_auth;
 mod protocol;
 mod simulation;
 mod ospf_engine;
@@ -92,6 +93,12 @@ mod ping_routing_test;
 
 #[cfg(test)]
 mod router_config_test;
+
+#[cfg(test)]
+mod ospf_auth_test;
+
+#[cfg(test)]
+mod ospf_auth_integration_test;
 
 use simulation::NetworkSimulation;
 use ui_state::UIState;

@@ -31,6 +31,7 @@ mod tests {
             priority: 1,
             mtu: 1500,
             manual_config: false,
+            auth_config: crate::ospf_auth::AuthConfig::default(),
         };
         
         let interface2 = RouterInterface {
@@ -46,6 +47,7 @@ mod tests {
             priority: 1,
             mtu: 1500,
             manual_config: false,
+            auth_config: crate::ospf_auth::AuthConfig::default(),
         };
         
         router.add_interface(interface1.clone());
@@ -73,6 +75,7 @@ mod tests {
             priority: 1,
             mtu: 1500,
             manual_config: false,
+            auth_config: crate::ospf_auth::AuthConfig::default(),
         };
         
         router.add_interface(interface1);
@@ -91,6 +94,7 @@ mod tests {
             priority: 1,
             mtu: 1500,
             manual_config: false,
+            auth_config: crate::ospf_auth::AuthConfig::default(),
         };
         
         router.add_interface(interface1_updated);

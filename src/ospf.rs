@@ -1,5 +1,6 @@
 use serde::{Serialize, Deserialize};
 use crate::router::LSAData;
+use crate::ospf_auth::{AuthType, AuthData};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OSPFPacket {
@@ -8,8 +9,8 @@ pub struct OSPFPacket {
     pub router_id: String,
     pub area_id: String,
     pub checksum: u16,
-    pub auth_type: u16,
-    pub authentication: u64,
+    pub auth_type: AuthType,
+    pub auth_data: AuthData,
     pub data: OSPFPacketData,
 }
 

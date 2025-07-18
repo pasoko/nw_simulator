@@ -40,6 +40,9 @@ mod tests {
             priority: Some(10),
             mtu: Some(9000),
             enabled: None,
+            auth_type: None,
+            auth_key: None,
+            auth_key_id: None,
         };
         
         sim.update_interface_config(r1, interface_id, new_config).unwrap();
@@ -92,6 +95,9 @@ mod tests {
             priority: Some(interface.priority),
             mtu: Some(interface.mtu),
             enabled: None,
+            auth_type: None,
+            auth_key: None,
+            auth_key_id: None,
         };
         
         sim.update_interface_config(r1, interface_id, new_config).unwrap();

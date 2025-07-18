@@ -651,8 +651,8 @@ impl NetworkSimulation {
             router_id: ospf_state.router_id.clone(),
             area_id: ospf_state.area_id.clone(),
             checksum: 0,
-            auth_type: 0,
-            authentication: 0,
+            auth_type: crate::ospf_auth::AuthType::Null,
+            auth_data: crate::ospf_auth::AuthData::None,
             data: OSPFPacketData::Hello(hello_packet),
         }
     }

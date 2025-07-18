@@ -461,8 +461,8 @@ impl OSPFPacketProcessor {
             router_id: self.router_id.clone(),
             area_id: self.area_id.clone(),
             checksum: 0,
-            auth_type: 0,
-            authentication: 0,
+            auth_type: crate::ospf_auth::AuthType::Null,
+            auth_data: crate::ospf_auth::AuthData::None,
             data: OSPFPacketData::DatabaseDescription(dd_packet),
         };
         
@@ -495,8 +495,8 @@ impl OSPFPacketProcessor {
             router_id: self.router_id.clone(),
             area_id: self.area_id.clone(),
             checksum: 0,
-            auth_type: 0,
-            authentication: 0,
+            auth_type: crate::ospf_auth::AuthType::Null,
+            auth_data: crate::ospf_auth::AuthData::None,
             data: OSPFPacketData::LinkStateRequest(lsr_packet),
         };
         
@@ -523,8 +523,8 @@ impl OSPFPacketProcessor {
             router_id: self.router_id.clone(),
             area_id: self.area_id.clone(),
             checksum: 0,
-            auth_type: 0,
-            authentication: 0,
+            auth_type: crate::ospf_auth::AuthType::Null,
+            auth_data: crate::ospf_auth::AuthData::None,
             data: OSPFPacketData::LinkStateUpdate(lsu_packet),
         };
         
@@ -558,8 +558,8 @@ impl OSPFPacketProcessor {
             router_id: self.router_id.clone(),
             area_id: self.area_id.clone(),
             checksum: 0,
-            auth_type: 0,
-            authentication: 0,
+            auth_type: crate::ospf_auth::AuthType::Null,
+            auth_data: crate::ospf_auth::AuthData::None,
             data: OSPFPacketData::LinkStateAcknowledgment(lsack_packet),
         };
         
@@ -597,8 +597,8 @@ impl OSPFPacketProcessor {
             router_id: self.router_id.clone(),
             area_id: self.area_id.clone(),
             checksum: 0,
-            auth_type: 0,
-            authentication: 0,
+            auth_type: crate::ospf_auth::AuthType::Null,
+            auth_data: crate::ospf_auth::AuthData::None,
             data: OSPFPacketData::DatabaseDescription(dd_packet),
         };
         

@@ -564,6 +564,25 @@ class RouterDetailsUI {
                             有効
                         </label>
                     </div>
+                    
+                    <h4>OSPF認証設定</h4>
+                    <div class="form-group">
+                        <label>認証タイプ:</label>
+                        <select id="if-auth-type" onchange="window.routerDetailsUI.updateAuthFields()">
+                            <option value="0" ${(!iface.auth_config || iface.auth_config.auth_type === 0) ? 'selected' : ''}>なし</option>
+                            <option value="1" ${(iface.auth_config && iface.auth_config.auth_type === 1) ? 'selected' : ''}>シンプルパスワード</option>
+                            <option value="2" ${(iface.auth_config && iface.auth_config.auth_type === 2) ? 'selected' : ''}>MD5</option>
+                        </select>
+                    </div>
+                    <div id="auth-password-group" class="form-group" style="display: ${(iface.auth_config && iface.auth_config.auth_type > 0) ? 'block' : 'none'}">
+                        <label>認証キー/パスワード:</label>
+                        <input type="text" id="if-auth-key" value="${iface.auth_config?.auth_key || ''}" maxlength="8" placeholder="最大8文字">
+                    </div>
+                    <div id="auth-keyid-group" class="form-group" style="display: ${(iface.auth_config && iface.auth_config.auth_type === 2) ? 'block' : 'none'}">
+                        <label>キーID (MD5):</label>
+                        <input type="number" id="if-auth-keyid" value="${iface.auth_config?.key_id || 1}" min="1" max="255">
+                    </div>
+                    
                     <div class="form-buttons">
                         <button type="button" onclick="window.routerDetailsUI.saveInterfaceConfig(${routerId}, ${interfaceId})">保存</button>
                         <button type="button" onclick="window.routerDetailsUI.closeInterfaceConfig()">キャンセル</button>
@@ -582,7 +601,28 @@ class RouterDetailsUI {
         }
     }
 
+    updateAuthFields() {
+        const authType = parseInt(document.getElementById('if-auth-type').value);
+        const passwordGroup = document.getElementById('auth-password-group');
+        const keyIdGroup = document.getElementById('auth-keyid-group');
+        
+        if (authType === 0) {
+            // No authentication
+            passwordGroup.style.display = 'none';
+            keyIdGroup.style.display = 'none';
+        } else if (authType === 1) {
+            // Simple password
+            passwordGroup.style.display = 'block';
+            keyIdGroup.style.display = 'none';
+        } else if (authType === 2) {
+            // MD5
+            passwordGroup.style.display = 'block';
+            keyIdGroup.style.display = 'block';
+        }
+    }
+
     async saveInterfaceConfig(routerId, interfaceId) {
+        const authType = parseInt(document.getElementById('if-auth-type').value);
         const config = {
             ip_address: document.getElementById('if-ip').value,
             netmask: document.getElementById('if-netmask').value,
@@ -591,7 +631,10 @@ class RouterDetailsUI {
             dead_interval: parseInt(document.getElementById('if-dead').value),
             priority: parseInt(document.getElementById('if-priority').value),
             mtu: parseInt(document.getElementById('if-mtu').value),
-            enabled: document.getElementById('if-enabled').checked
+            enabled: document.getElementById('if-enabled').checked,
+            auth_type: authType,
+            auth_key: authType > 0 ? document.getElementById('if-auth-key').value : null,
+            auth_key_id: authType === 2 ? parseInt(document.getElementById('if-auth-keyid').value) : null
         };
 
         try {

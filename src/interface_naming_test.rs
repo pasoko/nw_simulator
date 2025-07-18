@@ -122,6 +122,7 @@ mod interface_naming_tests {
             priority: 1,
             mtu: 1500,
             manual_config: false,
+            auth_config: crate::ospf_auth::AuthConfig::default(),
         });
         
         // カウンターが増加していることを確認
@@ -145,6 +146,7 @@ mod interface_naming_tests {
             priority: 1,
             mtu: 1500,
             manual_config: false,
+            auth_config: crate::ospf_auth::AuthConfig::default(),
         });
         
         assert_eq!(router.next_interface_number, 3);
@@ -170,6 +172,7 @@ mod interface_naming_tests {
             priority: 1,
             mtu: 1500,
             manual_config: false,
+            auth_config: crate::ospf_auth::AuthConfig::default(),
         });
         
         // カスタム名が保持されていることを確認

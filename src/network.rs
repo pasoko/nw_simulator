@@ -111,6 +111,7 @@ impl NetworkTopology {
             priority: 1,           // DR選出優先度デフォルト
             mtu: 1500,            // Ethernetデフォルト
             manual_config: false,  // 自動設定
+            auth_config: crate::ospf_auth::AuthConfig::default(),  // 認証なし（デフォルト）
         };
 
         let interface2 = RouterInterface {
@@ -126,6 +127,7 @@ impl NetworkTopology {
             priority: 1,           // DR選出優先度デフォルト
             mtu: 1500,            // Ethernetデフォルト
             manual_config: false,  // 自動設定
+            auth_config: crate::ospf_auth::AuthConfig::default(),  // 認証なし（デフォルト）
         };
 
         if let Some(router1) = self.routers.get_mut(&router1_id) {
@@ -216,6 +218,7 @@ impl NetworkTopology {
             priority: 1,
             mtu: 1500,
             manual_config: true,
+            auth_config: crate::ospf_auth::AuthConfig::default(),  // 認証なし（デフォルト）
         };
 
         // ルーターにインターフェースを追加
