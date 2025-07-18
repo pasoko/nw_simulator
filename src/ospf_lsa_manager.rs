@@ -48,6 +48,16 @@ impl OSPFLSAManager {
             self.router_id, neighbor_id, interface_id, cost);
     }
     
+    pub fn get_next_sequence_number(&mut self) -> u32 {
+        let seq = self.lsa_sequence_number;
+        self.lsa_sequence_number = if seq >= MAX_SEQUENCE_NUMBER {
+            INITIAL_SEQUENCE_NUMBER
+        } else {
+            seq + 1
+        };
+        seq
+    }
+    
     pub fn remove_router_link(&mut self, neighbor_id: u32) {
         self.router_links.retain(|(n, _, _)| *n != neighbor_id);
         console_log!("Router {} removed link to neighbor {}", self.router_id, neighbor_id);
@@ -100,6 +110,11 @@ impl OSPFLSAManager {
             self.router_id, router_lsa.num_links, self.lsa_sequence_number, lsa.header.ls_checksum);
         
         lsa
+    }
+    
+    pub fn add_lsa(&mut self, lsa: LSA) -> bool {
+        self.update_lsa_database(lsa);
+        true
     }
     
     pub fn update_lsa_database(&mut self, lsa: LSA) {

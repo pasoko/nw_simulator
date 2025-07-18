@@ -1,8 +1,8 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use crate::ospf::{HelloPacket, DatabaseDescriptionPacket, 
     LinkStateRequestPacket, LinkStateUpdatePacket, LinkStateAcknowledgmentPacket,
     OSPFPacket, OSPFPacketType, OSPFPacketData};
-use crate::router::{OSPFNeighborState, LSA as RouterLSA, OSPFNeighbor};
+use crate::router::{OSPFNeighborState, LSA as RouterLSA, OSPFNeighbor, LSA};
 use crate::protocol::{PacketEvent, ProtocolPacket};
 use crate::ospf_neighbor::OSPFNeighborManager;
 use crate::ospf_lsa_manager::OSPFLSAManager;
@@ -11,6 +11,7 @@ use crate::ospf_timer::{OSPFTimerManager, OSPFTimerEvent};
 use crate::ospf_checksum::verify_lsa_checksum;
 use crate::ospf_dr_election::{DRElectionManager, DRElectionCandidate};
 use crate::network_type::OSPFNetworkType;
+use crate::network_lsa::NetworkLSAGenerator;
 use crate::console_log;
 
 /// Refactored OSPF Engine
@@ -33,6 +34,18 @@ pub struct OSPFEngine {
     packet_processor: OSPFPacketProcessor,
     timer_manager: OSPFTimerManager,
     dr_election_managers: HashMap<u32, DRElectionManager>,  // Per-interface DR election
+    network_lsa_generator: NetworkLSAGenerator,
+    
+    // Track interface states for Network LSA generation
+    interface_states: HashMap<u32, InterfaceState>,
+}
+
+#[derive(Debug, Clone)]
+struct InterfaceState {
+    is_dr: bool,
+    interface_ip: String,
+    network_mask: String,
+    fully_adjacent_neighbors: HashSet<String>,
 }
 
 impl OSPFEngine {
@@ -45,11 +58,13 @@ impl OSPFEngine {
             lsa_manager: OSPFLSAManager::new(router_id.clone()),
             packet_processor: OSPFPacketProcessor::new(router_id.clone(), area_id.clone()),
             timer_manager,
+            network_lsa_generator: NetworkLSAGenerator::new(router_id.clone()),
             router_id,
             area_id,
             current_time: 0.0,
             spf_calculation_pending: false,
             dr_election_managers: HashMap::new(),
+            interface_states: HashMap::new(),
         }
     }
     
@@ -930,6 +945,75 @@ impl OSPFEngine {
         
         // 既存のネイバーのDead intervalも更新
         self.neighbor_manager.update_interface_dead_interval(interface_id, dead_interval);
+    }
+    
+    /// Initialize interface state for Network LSA generation
+    pub fn initialize_interface_state(&mut self, interface_id: u32, interface_ip: String, network_mask: String) {
+        self.interface_states.insert(interface_id, InterfaceState {
+            is_dr: false,
+            interface_ip,
+            network_mask,
+            fully_adjacent_neighbors: HashSet::new(),
+        });
+    }
+    
+    /// Update DR status and generate Network LSA if needed
+    pub fn update_dr_status(&mut self, interface_id: u32) -> Option<LSA> {
+        let is_dr = if let Some(dr_manager) = self.dr_election_managers.get(&interface_id) {
+            dr_manager.is_dr()
+        } else {
+            false
+        };
+        
+        if let Some(interface_state) = self.interface_states.get_mut(&interface_id) {
+            let was_dr = interface_state.is_dr;
+            interface_state.is_dr = is_dr;
+            
+            // Update fully adjacent neighbors
+            interface_state.fully_adjacent_neighbors.clear();
+            interface_state.fully_adjacent_neighbors.insert(self.router_id.clone()); // DR itself
+            
+            // Add all Full neighbors on this interface
+            for neighbor in self.neighbor_manager.get_all_neighbors() {
+                if neighbor.state == OSPFNeighborState::Full && neighbor.interface_id == interface_id {
+                    interface_state.fully_adjacent_neighbors.insert(neighbor.router_id.clone());
+                }
+            }
+            
+            // Generate Network LSA if we are DR and have adjacent neighbors
+            if is_dr && interface_state.fully_adjacent_neighbors.len() > 1 {
+                let lsa = self.network_lsa_generator.generate_network_lsa(
+                    &interface_state.interface_ip,
+                    &interface_state.network_mask,
+                    &interface_state.fully_adjacent_neighbors,
+                    self.lsa_manager.get_next_sequence_number(),
+                );
+                
+                // Add to LSA database
+                self.lsa_manager.add_lsa(lsa.clone());
+                
+                console_log!("Router {} generated Network LSA for interface {}", 
+                    self.router_id, interface_id);
+                
+                return Some(lsa);
+            } else if was_dr && !is_dr {
+                // No longer DR - flush Network LSA
+                let lsa = self.network_lsa_generator.create_maxage_network_lsa(
+                    &interface_state.interface_ip,
+                    &interface_state.network_mask,
+                    self.lsa_manager.get_next_sequence_number(),
+                );
+                
+                self.lsa_manager.add_lsa(lsa.clone());
+                
+                console_log!("Router {} flushing Network LSA for interface {} (no longer DR)", 
+                    self.router_id, interface_id);
+                
+                return Some(lsa);
+            }
+        }
+        
+        None
     }
 }
 

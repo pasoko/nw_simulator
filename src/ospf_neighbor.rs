@@ -109,6 +109,10 @@ impl OSPFNeighborManager {
         self.neighbors.len()
     }
     
+    pub fn get_all_neighbors(&self) -> Vec<&OSPFNeighbor> {
+        self.neighbors.values().collect()
+    }
+    
     /// Get all neighbor IDs (regardless of state)
     pub fn get_all_neighbor_ids(&self) -> Vec<u32> {
         self.neighbors.keys().cloned().collect()

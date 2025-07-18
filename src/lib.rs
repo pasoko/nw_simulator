@@ -11,6 +11,7 @@ use wasm_bindgen::prelude::*;
 mod router;
 mod network;
 mod network_type;
+mod network_lsa;
 mod device;
 mod ospf;
 mod ospf_auth;
@@ -99,6 +100,9 @@ mod ospf_auth_test;
 
 #[cfg(test)]
 mod ospf_auth_integration_test;
+
+#[cfg(test)]
+mod network_lsa_test;
 
 use simulation::NetworkSimulation;
 use ui_state::UIState;

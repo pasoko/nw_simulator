@@ -1024,6 +1024,7 @@ impl NetworkSimulation {
     pub fn get_recent_ping_results(&self, count: usize) -> Vec<PingResult> {
         self.ping_manager.get_recent_results(count)
     }
+    
 
     /// ICMPパケットのための次ホップを検索
     fn find_next_hop_for_icmp(&self, router_id: u32, destination_ip: &str) -> Option<u32> {
