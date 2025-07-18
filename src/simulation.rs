@@ -217,6 +217,13 @@ impl NetworkSimulation {
             }
         }
         
+        // Set authentication configuration for all interfaces
+        if let Some(router) = self.topology.routers.get(&router_id) {
+            for (interface_id, interface) in &router.interfaces {
+                ospf_engine.update_interface_auth(*interface_id, interface.auth_config.clone());
+            }
+        }
+        
         // IMPORTANT: Generate initial Router LSA immediately
         // This ensures LSA exists in database for DD exchange
         console_log!("Router {} generating initial Router LSA with {} configured links", 
@@ -864,11 +871,14 @@ impl NetworkSimulation {
         if let Some(router) = self.topology.routers.get_mut(&router_id) {
             router.update_interface_config(interface_id, config)?;
             
-            // OSPFエンジンのタイマー設定も更新
+            // OSPFエンジンのタイマー設定と認証設定も更新
             if let Some(ospf_engine) = self.ospf_engines.get_mut(&router_id) {
                 if let Some(interface) = router.interfaces.get(&interface_id) {
                     // OSPFタイマーの更新（hello_interval, dead_intervalなど）
                     ospf_engine.update_interface_timers(interface_id, interface.hello_interval, interface.dead_interval);
+                    
+                    // 認証設定の更新
+                    ospf_engine.update_interface_auth(interface_id, interface.auth_config.clone());
                 }
             }
             

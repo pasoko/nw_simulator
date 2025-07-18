@@ -112,6 +112,9 @@ mod summary_lsa_test;
 #[cfg(test)]
 mod as_external_lsa_test;
 
+#[cfg(test)]
+mod ospf_auth_packet_test;
+
 use simulation::NetworkSimulation;
 use ui_state::UIState;
 use serialization::SerializationHelper;

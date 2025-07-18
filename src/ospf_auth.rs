@@ -30,6 +30,8 @@ impl TryFrom<u16> for AuthType {
 pub enum AuthData {
     /// No authentication data
     None,
+    /// Null authentication (same as None, but more explicit)
+    Null,
     /// Simple password (8 bytes)
     SimplePassword([u8; 8]),
     /// Cryptographic authentication
@@ -45,7 +47,7 @@ impl AuthData {
     /// Create authentication data from packet fields
     pub fn from_packet(auth_type: AuthType, auth_field: u64) -> Self {
         match auth_type {
-            AuthType::Null => AuthData::None,
+            AuthType::Null => AuthData::Null,
             AuthType::SimplePassword => {
                 let bytes = auth_field.to_be_bytes();
                 AuthData::SimplePassword(bytes)
@@ -66,7 +68,7 @@ impl AuthData {
     /// Convert to packet field representation
     pub fn to_packet_field(&self) -> u64 {
         match self {
-            AuthData::None => 0,
+            AuthData::None | AuthData::Null => 0,
             AuthData::SimplePassword(password) => {
                 u64::from_be_bytes(*password)
             }
@@ -124,30 +126,31 @@ impl AuthConfig {
     }
 
     /// Generate authentication data for a packet
-    pub fn generate_auth_data(&mut self) -> AuthData {
+    pub fn generate_auth_data(&mut self) -> (AuthType, AuthData) {
         match self.auth_type {
-            AuthType::Null => AuthData::None,
+            AuthType::Null => (AuthType::Null, AuthData::Null),
             AuthType::SimplePassword => {
                 if let Some(password) = &self.auth_key {
                     let mut bytes = [0u8; 8];
                     let password_bytes = password.as_bytes();
                     let len = password_bytes.len().min(8);
                     bytes[..len].copy_from_slice(&password_bytes[..len]);
-                    AuthData::SimplePassword(bytes)
+                    (AuthType::SimplePassword, AuthData::SimplePassword(bytes))
                 } else {
-                    AuthData::None
+                    (AuthType::Null, AuthData::Null)
                 }
             }
             AuthType::CryptographicMD5 => {
                 // Increment sequence number for each packet
                 self.crypto_sequence_number = self.crypto_sequence_number.wrapping_add(1);
                 
-                AuthData::Cryptographic {
+                let auth_data = AuthData::Cryptographic {
                     key_id: self.key_id.unwrap_or(1),
                     auth_data_len: 16, // MD5 digest length
                     crypto_sequence_number: self.crypto_sequence_number,
                     message_digest: Vec::new(), // To be calculated
-                }
+                };
+                (AuthType::CryptographicMD5, auth_data)
             }
         }
     }
@@ -160,7 +163,7 @@ pub fn verify_authentication(
     expected_config: &AuthConfig,
 ) -> Result<(), String> {
     match (auth_type, auth_data, &expected_config.auth_type) {
-        (AuthType::Null, AuthData::None, AuthType::Null) => Ok(()),
+        (AuthType::Null, AuthData::None | AuthData::Null, AuthType::Null) => Ok(()),
         
         (AuthType::SimplePassword, AuthData::SimplePassword(received), AuthType::SimplePassword) => {
             if let Some(expected_password) = &expected_config.auth_key {
@@ -209,8 +212,9 @@ mod tests {
         let mut config = AuthConfig::new(AuthType::SimplePassword)
             .with_simple_password("secret".to_string());
         
-        let auth_data = config.generate_auth_data();
+        let (auth_type, auth_data) = config.generate_auth_data();
         
+        assert_eq!(auth_type, AuthType::SimplePassword);
         match auth_data {
             AuthData::SimplePassword(bytes) => {
                 assert_eq!(&bytes[..6], b"secret");

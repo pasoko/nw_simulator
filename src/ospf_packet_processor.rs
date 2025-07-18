@@ -4,6 +4,7 @@ use crate::ospf::{OSPFPacket, OSPFPacketType, OSPFPacketData, HelloPacket, Datab
 use crate::router::{OSPFNeighborState, LSAType, LSAHeader as RouterLSAHeader};
 use crate::protocol::{ProtocolPacket, PacketEvent};
 use crate::ospf_checksum::verify_lsa_checksum;
+use crate::ospf_auth::{AuthType, AuthData, AuthConfig};
 use crate::console_log;
 
 /// Database Description Exchange State
@@ -37,6 +38,7 @@ pub struct OSPFPacketProcessor {
     dead_interval: u32,
     dd_sequence_number: u32,
     neighbor_dd_state: HashMap<u32, DDExchangeState>,
+    interface_auth_configs: HashMap<u32, AuthConfig>,  // Interface ID -> AuthConfig
 }
 
 impl OSPFPacketProcessor {
@@ -48,6 +50,27 @@ impl OSPFPacketProcessor {
             dead_interval: 40,
             dd_sequence_number: 0x80000001,
             neighbor_dd_state: HashMap::new(),
+            interface_auth_configs: HashMap::new(),
+        }
+    }
+    
+    /// Update authentication configuration for an interface
+    pub fn update_interface_auth(&mut self, interface_id: u32, auth_config: AuthConfig) {
+        let auth_type = auth_config.auth_type.clone();
+        self.interface_auth_configs.insert(interface_id, auth_config);
+        console_log!("Router {} updated auth config for interface {}: type={:?}", 
+            self.router_id, interface_id, auth_type);
+    }
+    
+    /// Get authentication data for a packet
+    pub fn get_auth_data(&self, interface_id: u32) -> (AuthType, AuthData) {
+        if let Some(auth_config) = self.interface_auth_configs.get(&interface_id) {
+            // Clone the config to avoid borrowing issues
+            let mut auth_config = auth_config.clone();
+            auth_config.generate_auth_data()
+        } else {
+            // Default to no authentication
+            (AuthType::Null, AuthData::Null)
         }
     }
     
@@ -332,7 +355,7 @@ impl OSPFPacketProcessor {
         (updated_lsas, ack_headers, neighbor_to_full)
     }
     
-    pub fn create_dd_packet_event(&mut self, to_router_id: u32, lsa_database: &HashMap<String, crate::router::LSA>) -> PacketEvent {
+    pub fn create_dd_packet_event(&mut self, to_router_id: u32, interface_id: u32, lsa_database: &HashMap<String, crate::router::LSA>) -> PacketEvent {
         let mut flags = 0u8;
         let dd_seq_num;
         let mut lsa_headers_to_send = Vec::new();
@@ -455,14 +478,17 @@ impl OSPFPacketProcessor {
             dd_state.awaiting_ack = true;
         }
         
+        // Get authentication data for this interface
+        let (auth_type, auth_data) = self.get_auth_data(interface_id);
+        
         let ospf_packet = OSPFPacket {
             version: 2,
             packet_type: OSPFPacketType::DatabaseDescription,
             router_id: self.router_id.clone(),
             area_id: self.area_id.clone(),
             checksum: 0,
-            auth_type: crate::ospf_auth::AuthType::Null,
-            auth_data: crate::ospf_auth::AuthData::None,
+            auth_type,
+            auth_data,
             data: OSPFPacketData::DatabaseDescription(dd_packet),
         };
         
@@ -512,10 +538,13 @@ impl OSPFPacketProcessor {
         }
     }
     
-    pub fn create_lsu_packet_event(&self, to_router_id: u32, lsas: &[LSA]) -> PacketEvent {
+    pub fn create_lsu_packet_event(&self, to_router_id: u32, interface_id: u32, lsas: &[LSA]) -> PacketEvent {
         let lsu_packet = LinkStateUpdatePacket {
             lsas: lsas.to_vec(),
         };
+        
+        // Get authentication data for this interface
+        let (auth_type, auth_data) = self.get_auth_data(interface_id);
         
         let ospf_packet = OSPFPacket {
             version: 2,
@@ -523,8 +552,8 @@ impl OSPFPacketProcessor {
             router_id: self.router_id.clone(),
             area_id: self.area_id.clone(),
             checksum: 0,
-            auth_type: crate::ospf_auth::AuthType::Null,
-            auth_data: crate::ospf_auth::AuthData::None,
+            auth_type,
+            auth_data,
             data: OSPFPacketData::LinkStateUpdate(lsu_packet),
         };
         

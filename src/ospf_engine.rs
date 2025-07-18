@@ -14,6 +14,7 @@ use crate::network_type::OSPFNetworkType;
 use crate::network_lsa::NetworkLSAGenerator;
 use crate::summary_lsa::SummaryLSAGenerator;
 use crate::as_external_lsa::{ASExternalLSAGenerator, ExternalMetricType};
+use crate::ospf_auth::AuthConfig;
 use crate::console_log;
 
 /// Refactored OSPF Engine
@@ -269,8 +270,10 @@ impl OSPFEngine {
                             }
                             
                             // Send Database Description packet
+                            let interface_id = self.get_neighbor_interface(from_router_id);
                             let dd_event = self.packet_processor.create_dd_packet_event(
                                 from_router_id, 
+                                interface_id,
                                 self.lsa_manager.get_lsa_database()
                             );
                             events.push(dd_event);
@@ -353,8 +356,10 @@ impl OSPFEngine {
             
             // Send DD packet if needed
             if should_send_dd {
+                let interface_id = self.get_neighbor_interface(from_router_id);
                 let dd_event = self.packet_processor.create_dd_packet_event(
                     from_router_id, 
+                    interface_id,
                     self.lsa_manager.get_lsa_database()
                 );
                 events.push(dd_event);
@@ -382,7 +387,8 @@ impl OSPFEngine {
                 self.router_id, from_router_id, lsas_to_send.len());
             
             // Create and send LSU packet
-            let lsu_event = self.packet_processor.create_lsu_packet_event(from_router_id, &lsas_to_send);
+            let interface_id = self.get_neighbor_interface(from_router_id);
+            let lsu_event = self.packet_processor.create_lsu_packet_event(from_router_id, interface_id, &lsas_to_send);
             events.push(lsu_event);
         } else {
             console_log!("Router {} has no LSAs to send in response to LSR from router {}", 
@@ -706,7 +712,8 @@ impl OSPFEngine {
             console_log!("Router {} sending LSU to neighbor {} for LSA {}", 
                 self.router_id, neighbor_id, lsa.header.link_state_id);
             
-            let lsu_event = self.packet_processor.create_lsu_packet_event(neighbor_id, &[packet_lsa.clone()]);
+            let interface_id = self.get_neighbor_interface(neighbor_id);
+            let lsu_event = self.packet_processor.create_lsu_packet_event(neighbor_id, interface_id, &[packet_lsa.clone()]);
             events.push(lsu_event);
         }
         
@@ -795,7 +802,8 @@ impl OSPFEngine {
             console_log!("Router {} sending LSU to neighbor {} for LSA {}", 
                 self.router_id, neighbor_id, lsa.header.link_state_id);
             
-            let lsu_event = self.packet_processor.create_lsu_packet_event(neighbor_id, &[packet_lsa.clone()]);
+            let interface_id = self.get_neighbor_interface(neighbor_id);
+            let lsu_event = self.packet_processor.create_lsu_packet_event(neighbor_id, interface_id, &[packet_lsa.clone()]);
             events.push(lsu_event);
         }
         
@@ -855,14 +863,17 @@ impl OSPFEngine {
             // Generate interface-specific Hello packet
             let hello_packet = self.packet_processor.generate_hello_packet(&active_neighbors, dr, bdr, network_mask);
             
+            // Get authentication data for this interface
+            let (auth_type, auth_data) = self.packet_processor.get_auth_data(*interface_id);
+            
             let packet = ProtocolPacket::OSPF(OSPFPacket {
                 version: 2,
                 packet_type: OSPFPacketType::Hello,
                 router_id: self.router_id.clone(),
                 area_id: self.area_id.clone(),
                 checksum: 0,
-                auth_type: crate::ospf_auth::AuthType::Null,
-                auth_data: crate::ospf_auth::AuthData::None,
+                auth_type,
+                auth_data,
                 data: OSPFPacketData::Hello(hello_packet),
             });
             
@@ -1121,6 +1132,25 @@ impl OSPFEngine {
         }
         
         lsas
+    }
+    
+    /// Update authentication configuration for an interface
+    pub fn update_interface_auth(&mut self, interface_id: u32, auth_config: AuthConfig) {
+        self.packet_processor.update_interface_auth(interface_id, auth_config);
+    }
+    
+    /// Get interface ID for a neighbor
+    fn get_neighbor_interface(&self, neighbor_id: u32) -> u32 {
+        // Try to get the actual interface ID from neighbor manager
+        self.neighbor_manager.get_neighbor_interface(neighbor_id)
+            .unwrap_or_else(|| {
+                // Fallback: find the interface from router links
+                self.lsa_manager.get_router_links()
+                    .iter()
+                    .find(|(n, _, _)| *n == neighbor_id)
+                    .map(|(_, interface_id, _)| *interface_id)
+                    .unwrap_or(1) // Default interface ID
+            })
     }
 }
 

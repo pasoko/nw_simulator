@@ -249,6 +249,11 @@ impl OSPFNeighborManager {
             }
         }
     }
+    
+    /// Get the interface ID for a neighbor
+    pub fn get_neighbor_interface(&self, neighbor_id: u32) -> Option<u32> {
+        self.neighbors.get(&neighbor_id).map(|n| n.interface_id)
+    }
 }
 
 #[cfg(test)]
