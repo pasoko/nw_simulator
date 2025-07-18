@@ -29,6 +29,9 @@ pub enum SimulationEventType {
     NeighborDeadTimerExpired { router_id: u32, neighbor_id: u32 },
     InterfaceConfigChanged { router_id: u32, interface_id: u32 },
     StubAreaConfigured { router_id: u32, area_type: String },
+    VirtualLinkConfigured { local_router_id: u32, remote_router_id: u32, transit_area_id: String, interface_id: u32 },
+    VirtualLinkRemoved { local_router_id: u32, remote_router_id: u32 },
+    VirtualLinkStateChanged { local_router_id: u32, remote_router_id: u32, old_state: String, new_state: String },
 }
 
 impl SimulationEvent {
@@ -299,6 +302,9 @@ impl EventManager {
                 SimulationEventType::NeighborDeadTimerExpired { .. } => stats.dead_timer_expirations += 1,
                 SimulationEventType::InterfaceConfigChanged { .. } => {}, // No specific stat for interface config changes
                 SimulationEventType::StubAreaConfigured { .. } => {}, // No specific counter for this yet
+                SimulationEventType::VirtualLinkConfigured { .. } => {}, // No specific counter for virtual links yet
+                SimulationEventType::VirtualLinkRemoved { .. } => {},
+                SimulationEventType::VirtualLinkStateChanged { .. } => {},
             }
         }
         
@@ -328,6 +334,9 @@ impl EventManager {
             SimulationEventType::NeighborDeadTimerExpired { router_id: id, .. } => *id == router_id,
             SimulationEventType::InterfaceConfigChanged { router_id: id, .. } => *id == router_id,
             SimulationEventType::StubAreaConfigured { router_id: id, .. } => *id == router_id,
+            SimulationEventType::VirtualLinkConfigured { local_router_id: id, .. } => *id == router_id,
+            SimulationEventType::VirtualLinkRemoved { local_router_id: id, .. } => *id == router_id,
+            SimulationEventType::VirtualLinkStateChanged { local_router_id: id, .. } => *id == router_id,
         }
     }
 }

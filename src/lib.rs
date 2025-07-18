@@ -23,6 +23,7 @@ mod ospf_tos;
 mod ospf_lsa_age_manager;
 mod opaque_lsa;
 mod stub_area;
+mod virtual_link;
 mod protocol;
 mod simulation;
 mod ospf_engine;
@@ -137,6 +138,9 @@ mod ospf_lsa_age_test;
 
 #[cfg(test)]
 mod opaque_lsa_test;
+
+#[cfg(test)]
+mod virtual_link_test;
 
 use simulation::NetworkSimulation;
 use ui_state::UIState;

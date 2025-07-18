@@ -3,7 +3,7 @@ use crate::network::NetworkTopology;
 use crate::protocol::{ProtocolEngine, PacketEvent, ProtocolPacket};
 use crate::ospf::{OSPFPacket, OSPFPacketType, OSPFPacketData, HelloPacket};
 use crate::ospf_engine::OSPFEngine;
-use crate::event_manager::{EventManager, SimulationEvent};
+use crate::event_manager::{EventManager, SimulationEvent, SimulationEventType};
 use crate::failure_manager::FailureManager;
 use crate::stub_area::AreaType;
 use crate::route_calculator::RouteCalculator;
@@ -943,6 +943,125 @@ impl NetworkSimulation {
         } else {
             Err(format!("OSPF not enabled on router {}", router_id))
         }
+    }
+    
+    /// Configure a virtual link between two ABRs
+    pub fn configure_virtual_link(
+        &mut self, 
+        local_router_id: u32, 
+        remote_router_id: u32, 
+        transit_area_id: String,
+    ) -> Result<u32, String> {
+        // Get remote router ID string
+        let remote_router_id_str = if let Some(router) = self.topology.routers.get(&remote_router_id) {
+            if let Some(ospf_state) = &router.ospf_state {
+                ospf_state.router_id.clone()
+            } else {
+                return Err(format!("OSPF not enabled on router {}", remote_router_id));
+            }
+        } else {
+            return Err(format!("Router {} not found", remote_router_id));
+        };
+        
+        // Get the highest interface ID across all routers to ensure uniqueness
+        let mut max_interface_id = 1000u32; // Start from a high number for virtual links
+        for router in self.topology.routers.values() {
+            for interface_id in router.interfaces.keys() {
+                if *interface_id >= max_interface_id {
+                    max_interface_id = *interface_id + 1;
+                }
+            }
+        }
+        
+        // Configure virtual link on local router
+        if let Some(engine) = self.get_ospf_engine_mut(local_router_id) {
+            let interface_id = engine.configure_virtual_link(
+                remote_router_id_str.clone(),
+                transit_area_id.clone(),
+                max_interface_id,
+            )?;
+            
+            console_log!(
+                "Virtual link configured: {} -> {} through area {}",
+                local_router_id, remote_router_id, transit_area_id
+            );
+            
+            // Log event
+            let event = SimulationEvent {
+                timestamp: self.simulation_time,
+                event_type: SimulationEventType::VirtualLinkConfigured {
+                    local_router_id,
+                    remote_router_id,
+                    transit_area_id: transit_area_id.clone(),
+                    interface_id,
+                },
+                description: format!("Virtual link configured: {} -> {} through area {}", 
+                    local_router_id, remote_router_id, transit_area_id),
+            };
+            self.event_manager.log_event(event);
+            
+            Ok(interface_id)
+        } else {
+            Err(format!("OSPF not enabled on router {}", local_router_id))
+        }
+    }
+    
+    /// Remove a virtual link
+    pub fn remove_virtual_link(
+        &mut self, 
+        local_router_id: u32, 
+        remote_router_id: u32,
+    ) -> Result<(), String> {
+        // Get remote router ID string
+        let remote_router_id_str = if let Some(router) = self.topology.routers.get(&remote_router_id) {
+            if let Some(ospf_state) = &router.ospf_state {
+                ospf_state.router_id.clone()
+            } else {
+                return Err(format!("OSPF not enabled on router {}", remote_router_id));
+            }
+        } else {
+            return Err(format!("Router {} not found", remote_router_id));
+        };
+        
+        if let Some(engine) = self.get_ospf_engine_mut(local_router_id) {
+            if engine.remove_virtual_link(&remote_router_id_str) {
+                console_log!(
+                    "Virtual link removed: {} -> {}",
+                    local_router_id, remote_router_id
+                );
+                
+                // Log event
+                let event = SimulationEvent {
+                    timestamp: self.simulation_time,
+                    event_type: SimulationEventType::VirtualLinkRemoved {
+                        local_router_id,
+                        remote_router_id,
+                    },
+                    description: format!("Virtual link removed: {} -> {}", local_router_id, remote_router_id),
+                };
+                self.event_manager.log_event(event);
+                
+                Ok(())
+            } else {
+                Err(format!("Virtual link {} -> {} not found", local_router_id, remote_router_id))
+            }
+        } else {
+            Err(format!("OSPF not enabled on router {}", local_router_id))
+        }
+    }
+    
+    /// Get virtual link status for all routers
+    pub fn get_virtual_link_status(&self) -> Vec<(u32, Vec<(String, String, String, bool)>)> {
+        let mut status = Vec::new();
+        
+        for (router_id, engine) in &self.ospf_engines {
+            let vlink_status = engine.get_virtual_link_status();
+            if !vlink_status.is_empty() {
+                status.push((*router_id, vlink_status));
+            }
+        }
+        
+        status
     }
 
     pub fn update_interface_config(&mut self, router_id: u32, interface_id: u32, config: crate::router::InterfaceConfig) -> Result<(), String> {

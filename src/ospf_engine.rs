@@ -20,6 +20,7 @@ use crate::ospf_interface_state::{ExtendedInterfaceState, InterfaceStateManager,
 use crate::ospf_tos::{TOSCapabilities, TOSValue, TOSMetric, TOSRoutingTable};
 use crate::opaque_lsa::{OpaqueLSAGenerator, OpaqueLSAProcessor, TELink};
 use crate::stub_area::{StubAreaManager, AreaType};
+use crate::virtual_link::VirtualLinkManager;
 use crate::console_log;
 
 /// Refactored OSPF Engine
@@ -74,6 +75,9 @@ pub struct OSPFEngine {
     
     // Stub area support
     stub_area_manager: Option<StubAreaManager>,
+    
+    // Virtual link support
+    virtual_link_manager: Option<VirtualLinkManager>,
 }
 
 #[derive(Debug, Clone)]
@@ -119,6 +123,7 @@ impl OSPFEngine {
             tos_capabilities: TOSCapabilities::new(),
             tos_routing_table: TOSRoutingTable::new(),
             stub_area_manager: None,
+            virtual_link_manager: None,
         }
     }
     
@@ -1813,6 +1818,113 @@ impl OSPFEngine {
     /// Check if router is ABR
     pub fn is_abr(&self) -> bool {
         self.connected_areas.len() > 1 && self.connected_areas.contains("0.0.0.0")
+    }
+    
+    /// Configure a virtual link to a remote ABR
+    pub fn configure_virtual_link(
+        &mut self, 
+        remote_router_id: String, 
+        transit_area_id: String,
+        starting_interface_id: u32,
+    ) -> Result<u32, String> {
+        // Validate transit area cannot be stub
+        if let Some(ref manager) = self.stub_area_manager {
+            if transit_area_id == self.area_id && matches!(manager.get_area_type(), AreaType::Stub { .. }) {
+                return Err("Transit area cannot be a stub area".to_string());
+            }
+        }
+        
+        // Initialize virtual link manager if not present
+        if self.virtual_link_manager.is_none() {
+            self.virtual_link_manager = Some(VirtualLinkManager::new(
+                self.router_id.clone(),
+                starting_interface_id,
+            ));
+        }
+        
+        // Configure the virtual link
+        if let Some(ref mut vl_manager) = self.virtual_link_manager {
+            vl_manager.update_time(self.current_time);
+            vl_manager.configure_virtual_link(remote_router_id, transit_area_id)
+        } else {
+            Err("Failed to initialize virtual link manager".to_string())
+        }
+    }
+    
+    /// Remove a virtual link
+    pub fn remove_virtual_link(&mut self, remote_router_id: &str) -> bool {
+        if let Some(ref mut vl_manager) = self.virtual_link_manager {
+            vl_manager.remove_virtual_link(remote_router_id)
+        } else {
+            false
+        }
+    }
+    
+    /// Get virtual link interfaces for inclusion in routing
+    pub fn get_virtual_interfaces(&self) -> Vec<crate::router::RouterInterface> {
+        if let Some(ref vl_manager) = self.virtual_link_manager {
+            vl_manager.get_virtual_interfaces()
+        } else {
+            Vec::new()
+        }
+    }
+    
+    /// Process hello packet on virtual link
+    pub fn process_virtual_link_hello(
+        &mut self, 
+        remote_router_id: &str,
+        hello_options: OSPFOptions,
+    ) -> bool {
+        if let Some(ref mut vl_manager) = self.virtual_link_manager {
+            vl_manager.update_time(self.current_time);
+            vl_manager.process_hello(remote_router_id, hello_options)
+        } else {
+            false
+        }
+    }
+    
+    /// Update virtual link state based on SPF results
+    pub fn update_virtual_links_from_spf(&mut self, spf_results: &HashMap<String, (u32, Option<String>)>) {
+        if let Some(ref mut vl_manager) = self.virtual_link_manager {
+            vl_manager.update_time(self.current_time);
+            
+            for (remote_id, _vlink) in vl_manager.get_virtual_links().clone() {
+                if let Some((cost, next_hop)) = spf_results.get(&remote_id) {
+                    vl_manager.update_virtual_link_from_spf(&remote_id, *cost, next_hop.clone());
+                } else {
+                    // No route to remote ABR
+                    vl_manager.update_virtual_link_from_spf(&remote_id, u32::MAX, None);
+                }
+            }
+        }
+    }
+    
+    /// Check if router has any virtual links
+    pub fn has_virtual_links(&self) -> bool {
+        if let Some(ref vl_manager) = self.virtual_link_manager {
+            vl_manager.has_virtual_links()
+        } else {
+            false
+        }
+    }
+    
+    /// Get virtual link status
+    pub fn get_virtual_link_status(&self) -> Vec<(String, String, String, bool)> {
+        if let Some(ref vl_manager) = self.virtual_link_manager {
+            vl_manager.get_virtual_links()
+                .iter()
+                .map(|(remote_id, vlink)| {
+                    (
+                        remote_id.clone(),
+                        vlink.transit_area_id.clone(),
+                        format!("{:?}", vlink.state),
+                        vlink.state == crate::virtual_link::VirtualLinkState::PointToPoint,
+                    )
+                })
+                .collect()
+        } else {
+            Vec::new()
+        }
     }
 }
 
