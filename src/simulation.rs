@@ -76,6 +76,18 @@ impl NetworkSimulation {
         if let Some(link) = self.topology.links.get(&link_id) {
             if let Some(engine1) = self.ospf_engines.get_mut(&router1_id) {
                 engine1.add_router_link(router2_id, link.router1_interface_id, cost);
+                
+                // Initialize interface state for Network LSA generation
+                if let Some(router) = self.topology.routers.get(&router1_id) {
+                    if let Some(interface) = router.interfaces.get(&link.router1_interface_id) {
+                        engine1.initialize_interface_state(
+                            link.router1_interface_id,
+                            interface.ip_address.clone(),
+                            interface.netmask.clone()
+                        );
+                    }
+                }
+                
                 console_log!("Router {} link configuration updated", router1_id);
                 // Only regenerate LSA if we have neighbors and the topology actually changed
                 if engine1.get_neighbor_count() > 0 && engine1.get_lsa_count() > 0 {
@@ -90,6 +102,18 @@ impl NetworkSimulation {
             }
             if let Some(engine2) = self.ospf_engines.get_mut(&router2_id) {
                 engine2.add_router_link(router1_id, link.router2_interface_id, cost);
+                
+                // Initialize interface state for Network LSA generation
+                if let Some(router) = self.topology.routers.get(&router2_id) {
+                    if let Some(interface) = router.interfaces.get(&link.router2_interface_id) {
+                        engine2.initialize_interface_state(
+                            link.router2_interface_id,
+                            interface.ip_address.clone(),
+                            interface.netmask.clone()
+                        );
+                    }
+                }
+                
                 console_log!("Router {} link configuration updated", router2_id);
                 // Only regenerate LSA if we have neighbors and the topology actually changed
                 if engine2.get_neighbor_count() > 0 && engine2.get_lsa_count() > 0 {
@@ -210,10 +234,32 @@ impl NetworkSimulation {
                 ospf_engine.add_router_link(link.router2_id, link.router1_interface_id, link.cost);
                 // Initialize DR election for this interface
                 ospf_engine.initialize_interface_dr_election(link.router1_interface_id, link.network_type.clone(), 1);
+                
+                // Initialize interface state for Network LSA generation
+                if let Some(router) = self.topology.routers.get(&router_id) {
+                    if let Some(interface) = router.interfaces.get(&link.router1_interface_id) {
+                        ospf_engine.initialize_interface_state(
+                            link.router1_interface_id,
+                            interface.ip_address.clone(),
+                            interface.netmask.clone()
+                        );
+                    }
+                }
             } else if link.router2_id == router_id {
                 ospf_engine.add_router_link(link.router1_id, link.router2_interface_id, link.cost);
                 // Initialize DR election for this interface
                 ospf_engine.initialize_interface_dr_election(link.router2_interface_id, link.network_type.clone(), 1);
+                
+                // Initialize interface state for Network LSA generation
+                if let Some(router) = self.topology.routers.get(&router_id) {
+                    if let Some(interface) = router.interfaces.get(&link.router2_interface_id) {
+                        ospf_engine.initialize_interface_state(
+                            link.router2_interface_id,
+                            interface.ip_address.clone(),
+                            interface.netmask.clone()
+                        );
+                    }
+                }
             }
         }
         

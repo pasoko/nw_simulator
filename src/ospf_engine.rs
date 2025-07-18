@@ -247,6 +247,13 @@ impl OSPFEngine {
                                     if election_changed {
                                         console_log!("Router {} DR election changed on interface {} in TwoWay state", 
                                             self.router_id, interface_id);
+                                        
+                                        // Generate or update Network LSA if we are DR
+                                        if let Some(network_lsa) = self.update_dr_status(interface_id) {
+                                            console_log!("Router {} generated/updated Network LSA after DR election", 
+                                                self.router_id);
+                                            // The LSA is already added to database, will be flooded in next update
+                                        }
                                     }
                                 }
                             }
@@ -335,6 +342,17 @@ impl OSPFEngine {
                         // When neighbor reaches Full state from Exchange
                         let full_neighbor_count = self.neighbor_manager.get_neighbors_in_state(OSPFNeighborState::Full).len();
                         console_log!("Router {} now has {} Full neighbors", self.router_id, full_neighbor_count);
+                        
+                        // Update Network LSA if we are DR on any interface
+                        let neighbors = self.neighbor_manager.get_all_neighbors();
+                        if let Some(neighbor) = neighbors.iter().find(|n| n.router_id == format!("1.1.1.{}", from_router_id)) {
+                            let interface_id = neighbor.interface_id;
+                            if let Some(_network_lsa) = self.update_dr_status(interface_id) {
+                                console_log!("Router {} updated Network LSA after neighbor {} reached Full state", 
+                                    self.router_id, from_router_id);
+                                // The LSA is already added to database, will be flooded in next update
+                            }
+                        }
                         
                         // DD exchange and LSR/LSU process should have already synchronized LSAs
                         // No need to flood all LSAs again
@@ -466,6 +484,17 @@ impl OSPFEngine {
             self.timer_manager.stop_dd_retransmission_timer(from_router_id);
             console_log!("Router {} stopped DD retransmission timer for neighbor {} (Full state via LSU)", 
                 self.router_id, from_router_id);
+            
+            // Update Network LSA if we are DR on any interface
+            let neighbors = self.neighbor_manager.get_all_neighbors();
+            if let Some(neighbor) = neighbors.iter().find(|n| n.router_id == format!("1.1.1.{}", from_router_id)) {
+                let interface_id = neighbor.interface_id;
+                if let Some(_network_lsa) = self.update_dr_status(interface_id) {
+                    console_log!("Router {} updated Network LSA after neighbor {} reached Full state via LSU", 
+                        self.router_id, from_router_id);
+                    // The LSA is already added to database, will be flooded in next update
+                }
+            }
             
             // DD exchange and LSR/LSU process should have already synchronized LSAs
             // No need to flood all LSAs again when reaching Full state
