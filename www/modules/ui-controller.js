@@ -90,6 +90,7 @@ class UIController {
         // Update cursor based on mode
         switch(this.mode) {
             case 'add-router':
+            case 'add-terminal':
                 canvas.style.cursor = 'crosshair';
                 break;
             case 'move-router':

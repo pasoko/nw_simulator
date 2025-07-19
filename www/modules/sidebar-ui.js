@@ -12,6 +12,7 @@ class SidebarUI {
         this.collapsed = false;
         this.modeIcons = {
             'add-router': '➕',
+            'add-terminal': '🖥️',
             'move-router': '✋',
             'connect-routers': '🔗',
             'delete-router': '🗑️',
@@ -20,6 +21,7 @@ class SidebarUI {
         };
         this.modeColors = {
             'add-router': '#2196F3',
+            'add-terminal': '#673AB7',
             'move-router': '#00BCD4',
             'connect-routers': '#4CAF50',
             'delete-router': '#F44336',
@@ -118,6 +120,7 @@ class SidebarUI {
     createToolButtons() {
         const tools = [
             { id: 'add-router', label: 'Add', icon: '➕', mode: 'add-router' },
+            { id: 'add-terminal', label: 'Terminal', icon: '🖥️', mode: 'add-terminal' },
             { id: 'move-router', label: 'Move', icon: '✋', mode: 'move-router' },
             { id: 'connect-routers', label: 'Connect', icon: '🔗', mode: 'connect-routers' },
             { id: 'disconnect-routers', label: 'Disconnect', icon: '✂️', mode: 'disconnect-routers' },
@@ -223,6 +226,7 @@ class SidebarUI {
     getModeDisplayName(mode) {
         const names = {
             'add-router': 'Add Router',
+            'add-terminal': 'Add Terminal',
             'move-router': 'Move Router',
             'connect-routers': 'Connect Routers',
             'delete-router': 'Delete Router',

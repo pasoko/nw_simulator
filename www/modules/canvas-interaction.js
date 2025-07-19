@@ -15,12 +15,16 @@ class CanvasInteraction {
         this.lastMouseX = 0;
         this.lastMouseY = 0;
         this.draggingRouter = null;
+        this.draggingTerminal = null;
         this.dragOffset = { x: 0, y: 0 };
         this.hoveredRouter = null;
+        this.hoveredTerminal = null;
     }
 
     init(canvas) {
         this.setupCanvasEventListeners(canvas);
+        // Initial update of terminals list
+        this.updateTerminalsFromSimulator();
     }
 
     setupCanvasEventListeners(canvas) {
@@ -40,14 +44,24 @@ class CanvasInteraction {
         const x = event.clientX - rect.left;
         const y = event.clientY - rect.top;
         
-        // Check if clicking on a router for dragging (only in move-router mode)
+        // Check if clicking on a router or terminal for dragging (only in move-router mode)
         const clickedRouter = this.findRouterAt(x, y);
-        if (clickedRouter && uiController.getMode() === 'move-router') {
-            this.draggingRouter = clickedRouter;
-            this.dragOffset.x = x - clickedRouter.x;
-            this.dragOffset.y = y - clickedRouter.y;
-            stateManager.canvas.style.cursor = 'grabbing';
-            event.preventDefault(); // Prevent text selection
+        const clickedTerminal = this.findTerminalAt(x, y);
+        
+        if (uiController.getMode() === 'move-router') {
+            if (clickedRouter) {
+                this.draggingRouter = clickedRouter;
+                this.dragOffset.x = x - clickedRouter.x;
+                this.dragOffset.y = y - clickedRouter.y;
+                stateManager.canvas.style.cursor = 'grabbing';
+                event.preventDefault(); // Prevent text selection
+            } else if (clickedTerminal) {
+                this.draggingTerminal = clickedTerminal;
+                this.dragOffset.x = x - clickedTerminal.x;
+                this.dragOffset.y = y - clickedTerminal.y;
+                stateManager.canvas.style.cursor = 'grabbing';
+                event.preventDefault(); // Prevent text selection
+            }
         }
     }
 
@@ -61,6 +75,8 @@ class CanvasInteraction {
         
         // Handle hover effects
         const router = this.findRouterAt(x, y);
+        const terminal = this.findTerminalAt(x, y);
+        
         if (router && router !== this.hoveredRouter) {
             if (this.hoveredRouter) {
                 animationEffects.stopRouterHover(this.hoveredRouter.id);
@@ -74,10 +90,10 @@ class CanvasInteraction {
         
         // Update cursor
         const mode = uiController.getMode();
-        if (router) {
+        if (router || terminal) {
             stateManager.canvas.style.cursor = mode === 'move-router' ? 'grab' : 'pointer';
         } else {
-            stateManager.canvas.style.cursor = mode === 'add-router' ? 'crosshair' : 'default';
+            stateManager.canvas.style.cursor = (mode === 'add-router' || mode === 'add-terminal') ? 'crosshair' : 'default';
         }
         
         // Handle router dragging
@@ -99,6 +115,26 @@ class CanvasInteraction {
                 stateManager.canvasRenderer.render();
             }
         }
+        
+        // Handle terminal dragging
+        if (this.draggingTerminal && uiController.getMode() === 'move-router') {
+            const newX = x - this.dragOffset.x;
+            const newY = y - this.dragOffset.y;
+            
+            // Update terminal position
+            this.draggingTerminal.x = newX;
+            this.draggingTerminal.y = newY;
+            
+            // Update simulator with new position
+            if (stateManager.simulator) {
+                stateManager.simulator.update_terminal_position(this.draggingTerminal.id, newX, newY);
+            }
+            
+            // Re-render canvas
+            if (stateManager.canvasRenderer) {
+                stateManager.canvasRenderer.render();
+            }
+        }
     }
 
     handleMouseUp(event) {
@@ -106,11 +142,15 @@ class CanvasInteraction {
             this.draggingRouter = null;
             stateManager.canvas.style.cursor = 'grab';
         }
+        if (this.draggingTerminal) {
+            this.draggingTerminal = null;
+            stateManager.canvas.style.cursor = 'grab';
+        }
     }
 
     handleClick(event) {
         // Don't handle click if we were dragging
-        if (this.draggingRouter) {
+        if (this.draggingRouter || this.draggingTerminal) {
             return;
         }
         
@@ -137,6 +177,9 @@ class CanvasInteraction {
         switch (mode) {
             case 'add-router':
                 this.handleAddRouter(x, y);
+                break;
+            case 'add-terminal':
+                this.handleAddTerminal(x, y);
                 break;
             case 'connect-routers':
                 this.handleConnectRouters(x, y);
@@ -185,77 +228,159 @@ class CanvasInteraction {
         }
     }
 
-    handleConnectRouters(x, y) {
-        const clickedRouter = this.findRouterAt(x, y);
-        if (!clickedRouter) return;
+    handleAddTerminal(x, y) {
+        // Check if there's already a router or terminal at this position
+        const existingRouter = this.findRouterAt(x, y);
+        const existingTerminal = this.findTerminalAt(x, y);
+        if (existingRouter || existingTerminal) {
+            eventLogger.log('Cannot place terminal: position already occupied');
+            return;
+        }
         
-        const selectedRouters = uiController.getSelectedRouters();
+        const terminalName = prompt('Enter terminal name:');
+        if (!terminalName) return;
         
-        if (selectedRouters.length === 0) {
-            // Select first router
-            uiController.selectRouter(clickedRouter);
-            eventLogger.log(`Selected router "${clickedRouter.name}" as first router`);
-            
-            // Add selection animation
-            animationEffects.animateRouterSelection(stateManager.canvasRenderer.ctx, clickedRouter);
-            
-            // Update mode indicator - removed as it no longer exists in modern UI
-        } else if (selectedRouters.length === 1) {
-            // Connect to second router
-            const firstRouter = selectedRouters[0];
-            
-            if (firstRouter.id === clickedRouter.id) {
-                eventLogger.log('Cannot connect router to itself');
-                return;
-            }
-            
-            // Check if connection already exists
-            const existingConnection = stateManager.connections.find(conn => 
-                (conn.from_router_id === firstRouter.id && conn.to_router_id === clickedRouter.id) ||
-                (conn.from_router_id === clickedRouter.id && conn.to_router_id === firstRouter.id)
-            );
-            
-            if (existingConnection) {
-                eventLogger.log('Connection already exists between these routers');
-                uiController.clearSelectedRouters();
-                uiController.setMode('connect-routers');
-                return;
-            }
-            
-            const cost = parseInt(prompt('Enter link cost (1-100):', '10'));
-            if (isNaN(cost) || cost < 1 || cost > 100) {
-                eventLogger.log('Invalid cost. Please enter a number between 1 and 100.');
-                return;
-            }
-            
-            if (stateManager.simulator) {
-                stateManager.simulator.connect_routers(firstRouter.id, clickedRouter.id, cost);
-                eventLogger.log(`Connected "${firstRouter.name}" to "${clickedRouter.name}" with cost ${cost}`);
+        const ipAddress = prompt('Enter IP address (e.g., 192.168.1.100):');
+        if (!ipAddress) return;
+        
+        const netmask = prompt('Enter netmask (e.g., 255.255.255.0):', '255.255.255.0');
+        if (!netmask) return;
+        
+        const defaultGateway = prompt('Enter default gateway (e.g., 192.168.1.1):');
+        if (!defaultGateway) return;
+        
+        if (stateManager.simulator) {
+            try {
+                const terminalId = stateManager.simulator.add_terminal(terminalName, ipAddress, netmask, defaultGateway, x, y);
+                eventLogger.log(`Terminal "${terminalName}" added with ID ${terminalId} at (${x.toFixed(0)}, ${y.toFixed(0)})`);
                 
-                // Skip connection animation for now to avoid visual issues
-                // TODO: Fix animation persistence issue
-                /*
-                animationEffects.animateConnectionChange(
-                    stateManager.canvasRenderer.ctx,
-                    firstRouter,
-                    clickedRouter,
-                    true,
-                    300  // Shorter duration to ensure it completes quickly
-                );
-                */
-                
-                // Update connections list
+                // Update terminals and connections list
+                this.updateTerminalsFromSimulator();
                 this.updateConnectionsFromSimulator();
+                
+                // Update UI
+                uiController.updateRoutersList();
                 
                 // Re-render
                 if (stateManager.canvasRenderer) {
                     stateManager.canvasRenderer.render();
                 }
+            } catch (error) {
+                eventLogger.log(`Failed to add terminal: ${error}`);
+            }
+        }
+    }
+
+    handleConnectRouters(x, y) {
+        const clickedRouter = this.findRouterAt(x, y);
+        const clickedTerminal = this.findTerminalAt(x, y);
+        
+        if (!clickedRouter && !clickedTerminal) return;
+        
+        const selectedRouters = uiController.getSelectedRouters();
+        
+        if (selectedRouters.length === 0) {
+            // Select first device (router or terminal)
+            const selectedDevice = clickedRouter || clickedTerminal;
+            uiController.selectRouter(selectedDevice);
+            eventLogger.log(`Selected ${clickedRouter ? 'router' : 'terminal'} "${selectedDevice.name}" as first device`);
+            
+            // Add selection animation for routers only
+            if (clickedRouter) {
+                animationEffects.animateRouterSelection(stateManager.canvasRenderer.ctx, clickedRouter);
+            }
+            
+            // Update mode indicator - removed as it no longer exists in modern UI
+        } else if (selectedRouters.length === 1) {
+            // Connect to second device
+            const firstDevice = selectedRouters[0];
+            const secondDevice = clickedRouter || clickedTerminal;
+            
+            if (firstDevice.id === secondDevice.id) {
+                eventLogger.log('Cannot connect device to itself');
+                return;
+            }
+            
+            // Determine connection type
+            const firstIsRouter = stateManager.routers.some(r => r.id === firstDevice.id);
+            const secondIsRouter = clickedRouter !== null;
+            
+            // Handle different connection types
+            if (firstIsRouter && secondIsRouter) {
+                // Router to Router connection
+                this.connectRouters(firstDevice, secondDevice);
+            } else if (!firstIsRouter && secondIsRouter) {
+                // Terminal to Router connection
+                this.connectTerminalToRouter(firstDevice, secondDevice);
+            } else if (firstIsRouter && !secondIsRouter) {
+                // Router to Terminal connection
+                this.connectTerminalToRouter(secondDevice, firstDevice);
+            } else {
+                eventLogger.log('Cannot connect terminal to terminal');
+                uiController.clearSelectedRouters();
+                return;
             }
             
             // Reset selection
             uiController.clearSelectedRouters();
             uiController.setMode('connect-routers');
+        }
+    }
+    
+    connectRouters(firstRouter, secondRouter) {
+        if (firstRouter.id === secondRouter.id) {
+            eventLogger.log('Cannot connect router to itself');
+            return;
+        }
+        
+        // Check if connection already exists
+        const existingConnection = stateManager.connections.find(conn => 
+            (conn.from_router_id === firstRouter.id && conn.to_router_id === secondRouter.id) ||
+            (conn.from_router_id === secondRouter.id && conn.to_router_id === firstRouter.id)
+        );
+        
+        if (existingConnection) {
+            eventLogger.log('Connection already exists between these routers');
+            return;
+        }
+        
+        const cost = parseInt(prompt('Enter link cost (1-100):', '10'));
+        if (isNaN(cost) || cost < 1 || cost > 100) {
+            eventLogger.log('Invalid cost. Please enter a number between 1 and 100.');
+            return;
+        }
+        
+        if (stateManager.simulator) {
+            stateManager.simulator.connect_routers(firstRouter.id, secondRouter.id, cost);
+            eventLogger.log(`Connected "${firstRouter.name}" to "${secondRouter.name}" with cost ${cost}`);
+            
+            // Update connections list
+            this.updateConnectionsFromSimulator();
+            
+            // Re-render
+            if (stateManager.canvasRenderer) {
+                stateManager.canvasRenderer.render();
+            }
+        }
+    }
+    
+    connectTerminalToRouter(terminal, router) {
+        if (stateManager.simulator) {
+            try {
+                stateManager.simulator.connect_terminal_to_router(terminal.id, router.id);
+                eventLogger.log(`Connected terminal "${terminal.name}" to router "${router.name}"`);
+                
+                // Update connections and terminals list
+                this.updateConnectionsFromSimulator();
+                this.updateTerminalsFromSimulator();
+                
+                // Re-render
+                if (stateManager.canvasRenderer) {
+                    stateManager.canvasRenderer.render();
+                }
+            } catch (error) {
+                eventLogger.log(`Failed to connect terminal to router: ${error}`);
+            }
         }
     }
 
@@ -450,6 +575,26 @@ class CanvasInteraction {
         if (connectionsJson) {
             stateManager.connections = JSON.parse(connectionsJson);
         }
+    }
+    
+    updateTerminalsFromSimulator() {
+        if (!stateManager.simulator) return;
+        
+        const terminalsJson = stateManager.simulator.get_all_terminals_json();
+        if (terminalsJson) {
+            stateManager.terminals = JSON.parse(terminalsJson);
+        }
+    }
+    
+    findTerminalAt(x, y) {
+        if (!stateManager.terminals) return null;
+        
+        const TERMINAL_RADIUS = 20;
+        return stateManager.terminals.find(terminal => {
+            const dx = x - terminal.x;
+            const dy = y - terminal.y;
+            return Math.sqrt(dx * dx + dy * dy) <= TERMINAL_RADIUS;
+        });
     }
     
     showRouterDetails(router) {

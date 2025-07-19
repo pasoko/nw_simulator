@@ -49,9 +49,17 @@ class TerminalManager {
     }
 
     drawTerminals(ctx) {
-        this.terminals.forEach(terminal => {
-            this.drawTerminal(ctx, terminal);
-        });
+        // Draw terminals from stateManager (for positioning) if available
+        if (stateManager.terminals && stateManager.terminals.length > 0) {
+            stateManager.terminals.forEach(terminal => {
+                this.drawTerminal(ctx, terminal);
+            });
+        } else {
+            // Fallback to internal terminals map
+            this.terminals.forEach(terminal => {
+                this.drawTerminal(ctx, terminal);
+            });
+        }
     }
 
     drawTerminal(ctx, terminal) {

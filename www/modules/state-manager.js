@@ -10,6 +10,7 @@ class StateManager {
         this.mode = 'add-router';
         this.selectedRouters = [];
         this.routers = [];
+        this.terminals = [];
         this.connections = [];
         
         // Canvas and rendering state
@@ -21,6 +22,7 @@ class StateManager {
         // Available modes
         this.modes = {
             ADD_ROUTER: 'add-router',
+            ADD_TERMINAL: 'add-terminal',
             MOVE_ROUTER: 'move-router',
             CONNECT_ROUTERS: 'connect-routers',
             DELETE_ROUTER: 'delete-router',
