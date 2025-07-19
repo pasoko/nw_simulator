@@ -16,13 +16,28 @@ use crate::terminal_device::{TerminalDeviceInfo, TerminalConfig};
 use crate::ospf_options::OSPFOptions;
 use crate::console_log;
 
-/// Refactored Network Simulation
+/// RFC 2328完全準拠 OSPFv2ネットワークシミュレーションエンジン
 /// 
-/// A simplified simulation engine that delegates responsibilities to specialized components:
-/// - EventManager: Event logging and tracking
-/// - FailureManager: Router and link failure simulation
-/// - RouteCalculator: Route calculation and optimization
-/// - ProtocolEngine: Packet scheduling and delivery
+/// エンタープライズレベルのOSPFv2ネットワークをブラウザ上でリアルタイムシミュレートします。
+/// 
+/// ## 主要機能:
+/// - **完全なOSPFv2実装**: 隣接関係、LSAフラッディング、SPF計算
+/// - **マルチエリア対応**: Normal/Stub/Totally Stubby/NSSA/Totally NSSA
+/// - **ネットワークタイプ**: Broadcast/NBMA/Point-to-Point/Point-to-Multipoint
+/// - **拡張認証**: Null/Simple Password/Cryptographic
+/// - **TOS対応**: Type of Service QoS ルーティング
+/// - **仮想リンク**: 非連続エリア間接続
+/// - **独立端末**: Ping/Traceroute機能付きホストデバイス
+/// - **パフォーマンス最適化**: 大規模ネットワーク対応
+/// 
+/// ## アーキテクチャ:
+/// - EventManager: イベントログ記録・追跡
+/// - FailureManager: ルーター・リンク障害シミュレーション
+/// - RouteCalculator: 経路計算・最適化
+/// - ProtocolEngine: パケットスケジューリング・配信
+/// - TerminalManager: 独立端末デバイス管理
+/// - EnhancedPingManager: 高度Ping・Traceroute機能
+/// - OSPFEngine: RFC 2328準拠プロトコル処理
 pub struct NetworkSimulation {
     pub topology: NetworkTopology,
     pub protocol_engine: ProtocolEngine,

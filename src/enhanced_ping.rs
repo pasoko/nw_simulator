@@ -3,10 +3,23 @@ use serde::{Serialize, Deserialize};
 use crate::device::{ICMPPacket, ICMPType};
 use crate::console_log;
 
-/// 拡張されたPing機能
+/// 拡張Ping・Traceroute機能モジュール
 /// 
-/// OSPFv2ネットワークシミュレーションで使用される完全なping実装。
-/// 複数のシーケンス番号、TTL管理、統計収集、連続ping機能をサポート。
+/// エンタープライズネットワーク診断機能を提供します。
+/// 
+/// ## 主要機能:
+/// - **拡張Ping**: カスタムパケットサイズ、TTL、間隔設定
+/// - **Traceroute**: ホップバイホップ経路追跡とレイテンシ測定
+/// - **統計収集**: パケットロス率、RTT分析、Jitter計算
+/// - **セッション管理**: 複数同時セッション、自動タイムアウト
+/// - **リアルタイム診断**: OSPFコンバージェンス時の到達性変化監視
+/// 
+/// ## 対応機能:
+/// - ICMP Echo Request/Reply処理
+/// - TTL減算とTime Exceeded応答
+/// - パケットサイズ可変（最大65507バイト）
+/// - 統計的レイテンシ分析（平均/最小/最大/Jitter）
+/// - 非同期送信とタイムアウト管理
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PingSession {

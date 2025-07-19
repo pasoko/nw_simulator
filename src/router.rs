@@ -1,3 +1,22 @@
+/// ルーター状態管理モジュール
+/// 
+/// RFC 2328準拠のOSPFv2ルーター実装。エンタープライズグレードの機能を提供。
+/// 
+/// ## 主要機能:
+/// - **OSPFv2状態管理**: 隣接関係FSM、LSAデータベース、ルーティングテーブル
+/// - **インターフェース管理**: Hello間隔、Dead検出、MTU、認証設定
+/// - **認証対応**: Null/Simple Password/Cryptographic (MD5)
+/// - **DR/BDR選出**: 優先度ベースの指定ルーター選出
+/// - **LSA処理**: Router/Network/Summary/AS-External/Opaque LSA
+/// - **TOS対応**: Type of Service QoSルーティング
+/// - **エリア管理**: Normal/Stub/NSSA エリアタイプ対応
+/// 
+/// ## RFC 2328準拠要素:
+/// - Section 9.1: インターフェースデータ構造
+/// - Section 10: 隣接関係データ構造
+/// - Section 12: LSAデータ構造
+/// - Section 11: ルーティングテーブル計算
+
 use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
 use crate::ospf_auth::{AuthConfig, AuthType};

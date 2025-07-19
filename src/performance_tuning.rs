@@ -2,10 +2,29 @@ use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
 use crate::console_log;
 
-/// Performance Tuning Module
+/// パフォーマンスチューニングモジュール
 /// 
-/// This module provides performance optimization features for large-scale OSPF network simulations.
-/// It includes various tuning parameters and optimization strategies to improve simulation performance.
+/// 大規模OSPFv2ネットワークシミュレーション向けの包括的性能最適化機能。
+/// 
+/// ## 主要機能:
+/// - **アダプティブプロファイル**: ネットワークサイズに応じた自動最適化
+/// - **ルートキャッシュ**: 計算済み経路の効率的キャッシュとTTL管理
+/// - **並列処理**: マルチスレッドSPF計算とパケット処理
+/// - **メモリ最適化**: LSAプール、パケットプール管理
+/// - **スロットリング**: SPF計算頻度制御とCPU負荷軽減
+/// - **メトリクス収集**: リアルタイム性能監視と分析
+/// 
+/// ## パフォーマンスプロファイル:
+/// - **Small Network** (< 50ルーター): 低レイテンシ優先
+/// - **Medium Network** (50-200ルーター): バランス重視
+/// - **Large Network** (> 200ルーター): スループット優先
+/// - **Real-time**: 応答性最優先（ライブデモ用）
+/// 
+/// ## 最適化技術:
+/// - 増分SPF計算
+/// - LSA遅延エイジング
+/// - パケット集約処理
+/// - メモリプール再利用
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PerformanceProfile {

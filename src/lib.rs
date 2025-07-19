@@ -1,9 +1,21 @@
+// RFC 2328完全準拠 OSPFv2ネットワークシミュレーター
 // WebAssembly エントリポイント
 // 
-// このモジュールは、RustベースのOSPFネットワークシミュレーターをWebAssemblyとして
-// ブラウザで実行可能にするためのメインインターフェースを提供します。
-// NetworkSimulatorクラスがJavaScript側に公開され、ルーター管理、リンク接続、
-// OSPFプロトコル制御、シミュレーション実行などのAPIを提供します。
+// このモジュールは、RFC 2328に完全準拠したOSPFv2ネットワークシミュレーターの
+// WebAssemblyインターフェースを提供します。Rustで実装された高性能OSPFエンジンを
+// Webブラウザでリアルタイムシミュレーション可能にします。
+//
+// 主要機能:
+// - RFC 2328準拠OSPFv2プロトコル完全実装
+// - マルチエリア対応（Normal/Stub/Totally Stubby/NSSA）
+// - 仮想リンクと複数エリア間接続
+// - NBMA/Broadcast/Point-to-Point/Point-to-Multipointネットワーク
+// - LSAタイプ完全対応（Router/Network/Summary/AS-External/Opaque）
+// - TOS (Type of Service) QoS対応ルーティング
+// - 拡張認証（Null/Simple/Cryptographic）
+// - 独立端末デバイスとping/traceroute機能
+// - リアルタイムパフォーマンス監視と自動最適化
+// - 大規模ネットワーク対応パフォーマンスチューニング
 
 #![allow(dead_code)]
 use wasm_bindgen::prelude::*;

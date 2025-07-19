@@ -26,14 +26,35 @@ use crate::nbma_support::{NBMAManager, NBMAInterfaceConfig, NBMANeighborConfig};
 use crate::performance_tuning::{PerformanceTuner, PerformanceProfile};
 use crate::console_log;
 
-/// Refactored OSPF Engine
+/// RFC 2328完全準拠 OSPFv2プロトコルエンジン
 /// 
-/// A simplified OSPF engine that delegates responsibilities to specialized components:
-/// - OSPFNeighborManager: Neighbor state management
-/// - OSPFLSAManager: LSA database management
-/// - OSPFPacketProcessor: Packet processing
-/// - OSPFTimerManager: Timer management
-/// - DRElectionManager: DR/BDR election management
+/// エンタープライズグレードのOSPFv2実装。RFC 2328の全機能を包括的にサポート。
+/// 
+/// ## RFC 2328準拠機能:
+/// - **隣接関係管理**: 7状態FSM (Down/Init/2-Way/ExStart/Exchange/Loading/Full)
+/// - **LSAデータベース**: Router/Network/Summary/AS-External/Opaque LSA完全対応
+/// - **SPF計算**: Dijkstraアルゴリズム + 増分更新最適化
+/// - **エリア管理**: Normal/Stub/Totally Stubby/NSSA/Totally NSSA
+/// - **認証**: Null/Simple Password/Cryptographic (MD5)
+/// - **TOS対応**: Type of Service QoSルーティング
+/// - **仮想リンク**: 非連続エリア間バックボーン接続
+/// 
+/// ## 拡張機能:
+/// - **NBMA対応**: Frame Relay/ATM等の非ブロードキャストネットワーク
+/// - **パフォーマンス最適化**: 大規模ネットワーク向け自動チューニング
+/// - **Opaque LSA**: トラフィックエンジニアリング情報配布
+/// - **ルート集約**: エリア境界での経路集約
+/// 
+/// ## コンポーネント設計:
+/// - OSPFNeighborManager: 隣接関係状態管理・FSM制御
+/// - OSPFLSAManager: LSAデータベース管理・エイジング
+/// - OSPFPacketProcessor: パケット処理・検証
+/// - OSPFTimerManager: Hello/Dead/Retransmissionタイマー
+/// - DRElectionManager: DR/BDR選出・維持
+/// - StubAreaManager: Stubエリア特殊処理
+/// - VirtualLinkManager: 仮想リンク管理
+/// - NBMAManager: NBMA静的隣接設定
+/// - PerformanceTuner: 動的パフォーマンス最適化
 pub struct OSPFEngine {
     router_id: String,
     pub area_id: String,

@@ -4,9 +4,29 @@ use crate::network_type::OSPFNetworkType;
 use crate::router::InterfaceConfig;
 use crate::console_log;
 
-/// NBMA (Non-Broadcast Multi-Access) ネットワークサポート
+/// NBMA (Non-Broadcast Multi-Access) ネットワーク対応モジュール
 /// 
-/// RFC 2328 Section 7.5: NBMA networks
+/// RFC 2328 Section 7.5準拠のNBMAネットワーク実装。
+/// Frame Relay、ATM等の非ブロードキャストマルチアクセスネットワークをサポート。
+/// 
+/// ## RFC 2328準拠機能:
+/// - **静的隣接設定**: NBMAネットワークでの手動隣接設定
+/// - **ポールタイマー**: Dead状態隣接への定期的Hello送信
+/// - **DR/BDR選出**: NBMAネットワークでの指定ルーター機能
+/// - **Hello処理**: ブロードキャストできない環境での隣接発見
+/// 
+/// ## 対応ネットワーク:
+/// - Frame Relay (RFC 2427)
+/// - ATM (RFC 2684)
+/// - X.25パケット交換ネットワーク
+/// - その他の非ブロードキャストWANプロトコル
+/// 
+/// ## 主要機能:
+/// - インターフェース単位のNBMA設定
+/// - 静的隣接リスト管理
+/// - ポールタイマー自動管理
+/// - DR選出時の隣接優先度制御
+/// 
 /// NBMAネットワークでは、ブロードキャストがサポートされないため、
 /// 隣接関係は手動で設定し、Hello/LSAパケットはユニキャストで送信する必要がある。
 

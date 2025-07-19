@@ -1,22 +1,48 @@
-# OSPF Network Simulator
+# RFC 2328完全準拠 OSPFv2ネットワークシミュレーター
 
-WebAssemblyとRustで構築されたOSPFv2ネットワークシミュレーターです。ブラウザ上でルーターの設置、接続、OSPFプロトコルの動作をリアルタイムで可視化できます。
+WebAssemblyとRustで構築されたRFC 2328完全準拠のOSPFv2ネットワークシミュレーターです。ブラウザ上でエンタープライズレベルのOSPFネットワークを構築・可視化・分析できます。
 
-## 機能
+## 主要機能
 
-- 仮想ルーターの設置、移動、削除
-- ルーター間の接続と切断（コスト設定可能）
-- OSPFv2プロトコルのリアルタイムシミュレーション
-- パケット送受信の可視化アニメーション（Hello、DD、LSR、LSU、LSAck）
-- SPFアルゴリズムによるルーティングテーブル計算
-- 時間経過によるネットワーク状態の変化をシミュレート
-- リンク障害・復旧シミュレーション（Toggle Failureモード）
-- リアルタイムシミュレーション統計表示
-- シミュレーションログの記録とJSON形式でのエクスポート
-- シミュレーション速度調整機能（×1/×0.1）
-- ダークモード/ライトモードの切り替え
-- レスポンシブなサイドバーUI
-- ルーター詳細情報の表示（OSPF状態、隣接関係、LSAデータベース、ルーティングテーブル）
+### OSPFv2プロトコル完全実装（RFC 2328準拠）
+- **完全な隣接関係管理**: Down/Init/2-Way/ExStart/Exchange/Loading/Full状態遷移
+- **LSAタイプ完全対応**: Router/Network/Summary/AS-External/Opaque LSA
+- **マルチエリア対応**: Normal/Stub/Totally Stubby/NSSA/Totally NSSAエリア
+- **ネットワークタイプ完全対応**: Broadcast/NBMA/Point-to-Point/Point-to-Multipoint
+- **仮想リンク**: 複数エリア間の非連続接続をサポート
+- **拡張認証**: Null/Simple Password/Cryptographic認証
+- **TOS (Type of Service)**: QoS対応ルーティング
+
+### ネットワークシミュレーション機能
+- **リアルタイム可視化**: パケット送受信アニメーション、状態遷移の可視化
+- **大規模ネットワーク対応**: 数百台のルーターを持つエンタープライズネットワーク
+- **障害シミュレーション**: リンク/ルーター障害の動的シミュレーション
+- **パフォーマンス分析**: SPF計算時間、パケット処理時間の詳細測定
+- **ルートアグリゲーション**: エリア境界での経路集約
+
+### 独立端末デバイス機能
+- **ターミナルデバイス**: OSPFネットワークに接続する独立ホスト
+- **拡張Ping機能**: カスタマイズ可能なping（パケットサイズ、TTL、間隔）
+- **Traceroute**: ホップごとの経路追跡とレイテンシ測定
+- **リアルタイム到達性テスト**: ネットワーク変更時の即座の接続性確認
+
+### パフォーマンス最適化
+- **アダプティブチューニング**: ネットワークサイズに応じた自動最適化
+- **ルートキャッシュ**: 計算済み経路の効率的なキャッシュ機能
+- **並列処理**: 大規模ネットワークでのマルチスレッド処理
+- **メモリ管理**: 効率的なLSAエイジング、パケットプール管理
+
+### NBMA ネットワーク対応
+- **静的隣接設定**: Frame Relay、ATM等の非ブロードキャストネットワーク
+- **ポールタイマー**: dead隣接への定期的Helloパケット送信
+- **DR/BDR選出**: NBMAネットワークでの指定ルーター機能
+
+### 高度なUI機能
+- **ダークモード/ライトモード**: 現代的なテーマ切り替え
+- **リアルタイム詳細表示**: OSPF状態、LSAデータベース、ルーティングテーブル
+- **シミュレーション速度調整**: ×1/×0.1の可変速度制御
+- **イベントログ**: 包括的なネットワークイベント記録とJSON形式エクスポート
+- **レスポンシブUI**: サイドバー、詳細パネルの動的リサイズ
 
 ## 必要環境
 
@@ -228,19 +254,38 @@ WSL2 Ubuntu環境の場合：
 ### プロジェクト構造
 ```
 nw_simulator/
-├── Cargo.toml          # Rust依存関係
-├── CLAUDE.md           # プロジェクト要件定義
-├── src/                # Rustソースコード
+├── Cargo.toml          # Rust依存関係設定
+├── CLAUDE.md           # プロジェクト要件定義と実装指針
+├── src/                # Rustソースコード（RFC 2328完全準拠）
 │   ├── lib.rs          # WebAssemblyエントリポイント
 │   ├── network.rs      # ネットワークトポロジー管理
 │   ├── network_type.rs # ネットワークタイプ定義
-│   ├── ospf.rs         # OSPFパケット型定義
+│   ├── network_lsa.rs  # Network LSA生成・管理
+│   ├── summary_lsa.rs  # Summary LSA処理
+│   ├── as_external_lsa.rs # AS-External LSA処理
+│   ├── opaque_lsa.rs   # Opaque LSA対応
+│   ├── device.rs       # 汎用デバイス定義
+│   ├── ospf.rs         # OSPFv2パケット型定義
+│   ├── ospf_auth.rs    # OSPF認証（Null/Simple/Cryptographic）
+│   ├── ospf_options.rs # OSPFオプションフィールド
+│   ├── ospf_interface_state.rs # インターフェース状態管理
+│   ├── ospf_tos.rs     # Type of Service対応
+│   ├── ospf_lsa_age_manager.rs # LSAエイジング管理
 │   ├── ospf_engine.rs  # OSPFプロトコルエンジン
 │   ├── ospf_neighbor.rs # OSPF隣接関係管理
 │   ├── ospf_lsa_manager.rs # LSAデータベース管理
 │   ├── ospf_packet_processor.rs # OSPFパケット処理
 │   ├── ospf_timer.rs   # OSPFタイマー管理
+│   ├── ospf_dr_election.rs # DR/BDR選出処理
 │   ├── ospf_checksum.rs # OSPFチェックサム計算
+│   ├── stub_area.rs    # Stubエリア実装
+│   ├── virtual_link.rs # 仮想リンク機能
+│   ├── route_aggregation.rs # ルート集約
+│   ├── terminal_device.rs # 独立端末デバイス
+│   ├── terminal_manager.rs # 端末デバイス管理
+│   ├── enhanced_ping.rs # 拡張Ping機能
+│   ├── nbma_support.rs # NBMAネットワーク対応
+│   ├── performance_tuning.rs # パフォーマンスチューニング
 │   ├── protocol.rs     # プロトコル定義
 │   ├── router.rs       # ルーター状態管理
 │   ├── route_calculator.rs # ルート計算制御
@@ -249,9 +294,15 @@ nw_simulator/
 │   ├── ui_state.rs     # UI状態管理
 │   ├── event_manager.rs # イベント管理
 │   ├── failure_manager.rs # 障害シミュレーション管理
+│   ├── ping_manager.rs # Ping管理
 │   ├── wasm_interface.rs # WebAssemblyインターフェース
-│   └── serialization.rs # シリアライゼーション
-├── www/                # フロントエンド
+│   ├── serialization.rs # シリアライゼーション
+│   └── ospf_refactored/ # リファクタリング版OSPFモジュール
+│       ├── error_handling/ # エラー処理システム
+│       ├── events/     # イベントシステム
+│       ├── packets/    # パケット処理システム
+│       └── state/      # 状態管理システム
+├── www/                # フロントエンドコード
 │   ├── index.html      # メインHTMLページ
 │   ├── index.js        # メインJavaScriptエントリポイント
 │   ├── packet-visualizer-enhanced.js # 拡張版パケット可視化
@@ -266,11 +317,15 @@ nw_simulator/
 │   │   ├── app-initializer.js      # アプリケーション初期化
 │   │   ├── canvas-interaction.js   # Canvas操作処理
 │   │   ├── display-updater.js      # 表示更新処理
+│   │   ├── refactored-ospf-adapter.js # OSPFアダプター
+│   │   ├── resizable-panel.js      # リサイズ可能パネル
 │   │   ├── router-details-ui.js    # ルーター詳細UI
 │   │   ├── router-icon.js          # ルーターアイコン描画
 │   │   ├── sidebar-ui.js           # サイドバーUI
 │   │   ├── theme-manager.js        # テーマ管理
-│   │   └── ui-controller.js        # UI制御
+│   │   ├── ui-controller.js        # UI制御
+│   │   ├── nbma-gui.js             # NBMA設定GUI
+│   │   └── performance-monitor.js  # パフォーマンス監視
 │   ├── styles/         # CSSスタイルシート
 │   │   ├── animations.css   # アニメーション定義
 │   │   ├── dark-mode.css    # ダークモード
@@ -279,6 +334,7 @@ nw_simulator/
 │   │   └── sidebar-modern.css # モダンサイドバー
 │   ├── webpack.config.js # Webpack設定
 │   └── package.json    # フロントエンド依存関係
+├── pkg/                # 生成されるWebAssemblyファイル
 ├── Dockerfile          # 本番用コンテナ定義
 ├── Dockerfile.dev      # 開発用コンテナ定義
 ├── docker-compose.yml  # Docker Compose設定
@@ -356,10 +412,25 @@ cargo test
 
 ## アーキテクチャ
 
-- **バックエンド**: Rust → WebAssembly
-- **フロントエンド**: Vanilla JavaScript + Canvas API
-- **Webサーバー**: Nginx（Dockerコンテナ内）
-- **プロトコル実装**: OSPFv2（隣接関係確立、LSAデータベース同期、SPF計算）
+### コア技術スタック
+- **バックエンド**: Rust → WebAssembly（高性能ネットワークシミュレーション）
+- **フロントエンド**: Vanilla JavaScript + Canvas API（リアルタイム可視化）
+- **Webサーバー**: Nginx（Dockerコンテナ内での軽量配信）
+- **プロトコル実装**: RFC 2328完全準拠 OSPFv2
+
+### OSPFv2エンジン設計
+- **状態管理**: 完全な隣接関係FSM（7状態遷移）
+- **LSAデータベース**: 分散同期とエイジング機能
+- **SPF計算**: Dijkstraアルゴリズムの最適化実装
+- **タイマー管理**: Hello/Dead/Wait/Retransmissionタイマー
+- **エリア管理**: マルチエリア対応（Normal/Stub/NSSA）
+- **認証**: Cryptographic認証を含む3レベル対応
+
+### パフォーマンス設計
+- **メモリ効率**: LSAプール、パケットプール管理
+- **計算最適化**: 増分SPF、ルートキャッシュ
+- **スケーラビリティ**: 数百ルーターまでの大規模対応
+- **リアルタイム**: 1ms精度のイベント処理
 
 ## 開発について
 

@@ -1,3 +1,21 @@
+/// ネットワークトポロジー管理モジュール
+/// 
+/// OSPFv2ネットワークシミュレーション用のトポロジー管理機能を提供します。
+/// 
+/// ## 主要機能:
+/// - **ルーター管理**: 動的ルーター追加・削除・状態管理
+/// - **リンク管理**: Point-to-Point/Broadcast/NBMA/Point-to-Multipointリンク
+/// - **ホスト管理**: 独立端末デバイスの接続・管理
+/// - **インターフェース管理**: OSPFインターフェース設定・状態追跡
+/// - **障害シミュレーション**: リンク・ルーター障害の動的制御
+/// - **メトリック管理**: コスト・帯域幅・遅延パラメータ
+/// 
+/// ## 対応ネットワークタイプ:
+/// - Broadcast: Ethernet等の共有メディア
+/// - NBMA: Frame Relay、ATM等の非ブロードキャスト
+/// - Point-to-Point: 専用線、PPP等の直接接続
+/// - Point-to-Multipoint: 部分メッシュネットワーク
+
 use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
 use crate::router::{RouterState, RouterInterface};
