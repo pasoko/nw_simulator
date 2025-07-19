@@ -8,6 +8,7 @@ import { RouterIcon } from './router-icon.js';
 import themeManager from './theme-manager.js';
 import animationEffects from './animation-effects.js';
 import hostManager from './host-manager.js';
+import terminalManager from './terminal-manager.js';
 
 class CanvasRenderer {
     constructor() {
@@ -88,6 +89,9 @@ class CanvasRenderer {
         
         // Draw hosts
         hostManager.drawHosts(this.ctx);
+        
+        // Draw terminals
+        terminalManager.drawTerminals(this.ctx);
         
         // Draw packet statistics
         this.drawPacketStats();

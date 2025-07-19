@@ -13,6 +13,7 @@ import simulationController from './simulation-controller.js';
 import eventLogger from './event-logger.js';
 import resizablePanel from './resizable-panel.js';
 import hostManager from './host-manager.js';
+import terminalManager from './terminal-manager.js';
 
 class ApplicationInitializer {
     constructor() {
@@ -167,6 +168,9 @@ class ApplicationInitializer {
             
             console.log('- Initializing host manager...');
             hostManager.init();
+            
+            console.log('- Initializing terminal manager...');
+            terminalManager.init();
             
             // Setup event listeners for inter-module communication
             console.log('- Setting up event listeners...');

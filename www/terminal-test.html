@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Terminal Manager Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #f5f5f5;
+        }
+        .test-section {
+            background: white;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            border: none;
+            border-radius: 4px;
+            background: #3498db;
+            color: white;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #2980b9;
+        }
+        #output {
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: monospace;
+            max-height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+        .success {
+            color: #2ecc71;
+        }
+        .error {
+            color: #e74c3c;
+        }
+    </style>
+</head>
+<body>
+    <h1>Terminal Manager GUI Test</h1>
+    
+    <div class="test-section">
+        <h2>Test Controls</h2>
+        <button onclick="testAddTerminal()">1. Add Terminal</button>
+        <button onclick="testConnectTerminal()">2. Connect Terminal</button>
+        <button onclick="testPing()">3. Test Ping</button>
+        <button onclick="testFailureSimulation()">4. Test Failure</button>
+        <button onclick="clearOutput()">Clear Output</button>
+    </div>
+    
+    <div class="test-section">
+        <h2>Test Output</h2>
+        <div id="output"></div>
+    </div>
+    
+    <script type="module">
+        import init, { NetworkSimulator } from './pkg/nw_simulator.js';
+        
+        let simulator = null;
+        let terminalId = null;
+        let routerId = null;
+        
+        async function initialize() {
+            try {
+                await init();
+                simulator = new NetworkSimulator();
+                window.simulator = simulator;
+                
+                // Create a router for testing
+                routerId = simulator.add_router("TestRouter", 300, 200);
+                simulator.enable_ospf(routerId);
+                
+                log('✅ Simulator initialized successfully', 'success');
+                log(`Router created with ID: ${routerId}`);
+            } catch (error) {
+                log(`❌ Initialization failed: ${error}`, 'error');
+            }
+        }
+        
+        window.testAddTerminal = function() {
+            try {
+                terminalId = simulator.add_terminal(
+                    "Terminal1",
+                    "192.168.1.100",
+                    "255.255.255.0",
+                    "192.168.1.1",
+                    100,
+                    200
+                );
+                log(`✅ Terminal added with ID: ${terminalId}`, 'success');
+                
+                // Get terminal info
+                const info = JSON.parse(simulator.get_terminal_info_json(terminalId));
+                log(`Terminal info: ${JSON.stringify(info, null, 2)}`);
+            } catch (error) {
+                log(`❌ Failed to add terminal: ${error}`, 'error');
+            }
+        };
+        
+        window.testConnectTerminal = function() {
+            if (!terminalId || !routerId) {
+                log('❌ Please add a terminal first', 'error');
+                return;
+            }
+            
+            try {
+                simulator.connect_terminal_to_router(terminalId, routerId);
+                log(`✅ Terminal ${terminalId} connected to router ${routerId}`, 'success');
+            } catch (error) {
+                log(`❌ Failed to connect terminal: ${error}`, 'error');
+            }
+        };
+        
+        window.testPing = function() {
+            if (!terminalId) {
+                log('❌ Please add a terminal first', 'error');
+                return;
+            }
+            
+            try {
+                // Start enhanced ping session
+                const sessionId = simulator.start_enhanced_ping(
+                    terminalId,
+                    "192.168.1.100",
+                    "192.168.1.1",
+                    3,     // count
+                    1.0,   // interval
+                    56,    // packet size
+                    64     // TTL
+                );
+                
+                log(`✅ Started ping session ${sessionId}`, 'success');
+                
+                // Simulate sending pings
+                let pingCount = 0;
+                const pingInterval = setInterval(() => {
+                    const sent = simulator.send_next_ping(sessionId);
+                    if (sent) {
+                        pingCount++;
+                        log(`Ping ${pingCount} sent`);
+                        
+                        // Get session details
+                        const details = simulator.get_ping_session_details(sessionId);
+                        log(`Session details: ${details}`);
+                    }
+                    
+                    if (pingCount >= 3) {
+                        clearInterval(pingInterval);
+                        
+                        // Stop session and get summary
+                        const summary = simulator.stop_ping_session(sessionId);
+                        log(`\nPing summary: ${summary}`, 'success');
+                    }
+                }, 1000);
+                
+            } catch (error) {
+                log(`❌ Failed to start ping: ${error}`, 'error');
+            }
+        };
+        
+        window.testFailureSimulation = function() {
+            if (!terminalId) {
+                log('❌ Please add a terminal first', 'error');
+                return;
+            }
+            
+            try {
+                const failed = simulator.set_terminal_failed(terminalId, true);
+                if (failed) {
+                    log(`✅ Terminal ${terminalId} marked as failed`, 'success');
+                    
+                    setTimeout(() => {
+                        simulator.set_terminal_failed(terminalId, false);
+                        log(`✅ Terminal ${terminalId} recovered`, 'success');
+                    }, 2000);
+                }
+            } catch (error) {
+                log(`❌ Failed to simulate failure: ${error}`, 'error');
+            }
+        };
+        
+        window.clearOutput = function() {
+            document.getElementById('output').innerHTML = '';
+        };
+        
+        function log(message, type = '') {
+            const output = document.getElementById('output');
+            const timestamp = new Date().toLocaleTimeString();
+            const line = document.createElement('div');
+            line.className = type;
+            line.textContent = `[${timestamp}] ${message}`;
+            output.appendChild(line);
+            output.scrollTop = output.scrollHeight;
+        }
+        
+        // Initialize on load
+        initialize();
+    </script>
+</body>
+</html>
