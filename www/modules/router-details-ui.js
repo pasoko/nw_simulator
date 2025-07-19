@@ -15,18 +15,44 @@ class RouterDetailsUI {
     }
 
     init() {
+        console.log('[RouterDetailsUI] Initializing...');
+        
+        // Make router details UI globally accessible
+        window.routerDetailsUI = this;
+        
         // Listen for router list updates
         window.addEventListener('routerListUpdated', () => {
+            console.log('[RouterDetailsUI] routerListUpdated event received');
             this.updateAllExpandedRouters();
         });
         
-        // Start periodic updates during simulation
+        // Listen for periodic updates from app initializer
+        window.addEventListener('periodicUpdate', () => {
+            console.log('[RouterDetailsUI] periodicUpdate event received');
+            this.updateAllExpandedRouters();
+        });
+        
+        // Always run periodic updates for real-time data
+        console.log('[RouterDetailsUI] Starting periodic updates from init...');
+        this.startPeriodicUpdates();
+        
+        // Force immediate update
+        setTimeout(() => {
+            console.log('[RouterDetailsUI] Force immediate update after 100ms');
+            this.updateAllExpandedRouters();
+        }, 100);
+        
+        // Increase update frequency during simulation
         window.addEventListener('simulationStarted', () => {
-            this.startPeriodicUpdates();
+            this.stopPeriodicUpdates();
+            this.updateInterval = setInterval(() => {
+                this.updateAllExpandedRouters();
+            }, 500); // Update every 0.5 seconds during simulation
         });
         
         window.addEventListener('simulationStopped', () => {
             this.stopPeriodicUpdates();
+            this.startPeriodicUpdates(); // Resume normal update rate
         });
     }
 
@@ -315,6 +341,7 @@ class RouterDetailsUI {
         }
         
         try {
+            console.log(`[RouterDetailsUI] Getting routes for router ${routerId} at`, new Date().toISOString());
             const detailsJson = stateManager.simulator.get_router_details_json(routerId);
             console.log('Routes Details JSON:', detailsJson);
             
@@ -487,25 +514,64 @@ class RouterDetailsUI {
     }
 
     updateAllExpandedRouters() {
-        if (this.isUpdating) return;
-        this.isUpdating = true;
+        // Remove isUpdating check to ensure updates always happen
+        
+        // Force update by getting fresh router data
+        if (!stateManager.simulator) {
+            return;
+        }
+        
+        // Debug: Log when update is called
+        console.log('[RouterDetailsUI] updateAllExpandedRouters called at', new Date().toISOString());
+        console.log('[RouterDetailsUI] Expanded routers:', Array.from(this.expandedRouters));
         
         this.expandedRouters.forEach(routerId => {
             const activeTab = this.activeTab.get(routerId) || 'summary';
-            const content = document.getElementById(`tab-content-${routerId}`);
-            if (content) {
-                content.innerHTML = this.getTabContent(routerId, activeTab);
+            const tabContentElement = document.getElementById(`tab-content-${routerId}`);
+            
+            if (tabContentElement) {
+                // Preserve scroll position
+                const scrollTop = tabContentElement.scrollTop;
+                
+                // Get fresh content for the active tab
+                const newContent = this.getTabContent(routerId, activeTab);
+                console.log(`[RouterDetailsUI] Updating router ${routerId} ${activeTab} tab content`);
+                
+                // Force update DOM regardless of content comparison
+                // This ensures real-time data is always displayed
+                console.log(`[RouterDetailsUI] Force updating router ${routerId} ${activeTab} tab`);
+                
+                // Use requestAnimationFrame for smooth updates
+                requestAnimationFrame(() => {
+                    tabContentElement.innerHTML = newContent;
+                    tabContentElement.scrollTop = scrollTop;
+                });
+            }
+            
+            // Also update the router card header (status badges, etc)
+            const routerCard = document.querySelector(`[data-router-id="${routerId}"]`);
+            if (routerCard && window.sidebarUI) {
+                // Get fresh router data
+                const routersJson = stateManager.simulator.get_routers_json();
+                if (routersJson) {
+                    const routers = JSON.parse(routersJson);
+                    const router = routers.find(r => r.id === routerId);
+                    if (router) {
+                        window.sidebarUI.updateRouterCard(routerCard, router);
+                    }
+                }
             }
         });
-        
-        this.isUpdating = false;
     }
 
     startPeriodicUpdates() {
         this.stopPeriodicUpdates();
+        console.log('[RouterDetailsUI] Starting periodic updates...');
         this.updateInterval = setInterval(() => {
+            console.log('[RouterDetailsUI] Periodic update triggered');
             this.updateAllExpandedRouters();
-        }, 2000); // Update every 2 seconds
+        }, 1000); // Update every 1 second for better real-time feel
+        console.log('[RouterDetailsUI] Periodic updates started with interval ID:', this.updateInterval);
     }
 
     stopPeriodicUpdates() {

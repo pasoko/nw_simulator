@@ -213,17 +213,20 @@ class ApplicationInitializer {
 
     setupPeriodicUpdates() {
         // Initial update
+        console.log('[AppInitializer] Initial router list update');
         uiController.updateRoutersList();
         
-        // Start periodic updates only when not simulating
+        // Start periodic updates for real-time data
         this.updateInterval = setInterval(() => {
-            // Only update when simulation is not running to prevent flickering
-            if (!stateManager.simulationRunning) {
-                uiController.updateRoutersList();
-            }
-        }, 3000); // Increased interval to reduce flicker
+            // Always update to show real-time changes
+            console.log('[AppInitializer] Periodic update triggered at', new Date().toISOString());
+            uiController.updateRoutersList();
+            
+            // Also dispatch custom event to ensure router details get updated
+            window.dispatchEvent(new CustomEvent('periodicUpdate'));
+        }, 2000); // Update every 2 seconds for balance between performance and real-time feel
         
-        console.log('Periodic updates started (paused during simulation)');
+        console.log('[AppInitializer] Periodic updates started with interval ID:', this.updateInterval);
     }
 
     showError(message) {

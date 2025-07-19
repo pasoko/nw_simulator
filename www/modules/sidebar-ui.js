@@ -12,6 +12,7 @@ class SidebarUI {
         this.collapsed = false;
         this.updateDebounceTimer = null;
         this.lastRoutersJson = null;
+        this.isMouseDown = false;
         this.modeIcons = {
             'add-router': '➕',
             'add-terminal': '🖥️',
@@ -202,6 +203,15 @@ class SidebarUI {
         const routerList = document.getElementById('router-list');
         if (!routerList) return;
         
+        // Track mouse down/up for interaction detection
+        document.addEventListener('mousedown', () => {
+            this.isMouseDown = true;
+        });
+        
+        document.addEventListener('mouseup', () => {
+            this.isMouseDown = false;
+        });
+        
         // Handle all router card clicks
         routerList.addEventListener('click', (e) => {
             const target = e.target;
@@ -320,11 +330,12 @@ class SidebarUI {
         try {
             const routersJson = stateManager.simulator.get_routers_json();
             
-            // Skip update if data hasn't changed
-            if (routersJson === this.lastRoutersJson) {
-                return;
-            }
-            this.lastRoutersJson = routersJson;
+            // Remove the JSON comparison check to ensure updates are always processed
+            // The differential update will handle unnecessary re-renders
+            // if (routersJson === this.lastRoutersJson) {
+            //     return;
+            // }
+            // this.lastRoutersJson = routersJson;
             
             if (!routersJson) {
                 if (routerList.children.length !== 1 || !routerList.querySelector('p')) {
@@ -357,24 +368,35 @@ class SidebarUI {
     }
 
     updateRoutersDifferentially(routerList, routers) {
-        // Prevent updates while user is interacting
-        if (this.isUserInteracting()) {
-            return;
-        }
-        
         // Use RequestAnimationFrame for smooth updates
         requestAnimationFrame(() => {
             this._performDifferentialUpdate(routerList, routers);
         });
     }
 
-    isUserInteracting() {
-        // Check if any router card is being hovered or has focus
-        const hoveredCard = document.querySelector('.router-card:hover');
+    isUserInteracting(element) {
+        // Check if user is specifically interacting with this element
+        // Allow updates to other elements
         const focusedElement = document.activeElement;
-        const isInRouterList = focusedElement && focusedElement.closest('#router-list');
         
-        return hoveredCard || isInRouterList;
+        // Check if user is typing in an input field
+        if (focusedElement && (focusedElement.tagName === 'INPUT' || focusedElement.tagName === 'TEXTAREA')) {
+            return element.contains(focusedElement);
+        }
+        
+        // Check if user is selecting text
+        const selection = window.getSelection();
+        if (selection && selection.toString().length > 0) {
+            const range = selection.getRangeAt(0);
+            return element.contains(range.commonAncestorContainer);
+        }
+        
+        // Check if mouse is down (dragging)
+        if (this.isMouseDown) {
+            return true;
+        }
+        
+        return false;
     }
 
     _performDifferentialUpdate(routerList, routers) {
@@ -432,6 +454,8 @@ class SidebarUI {
     }
 
     updateRouterCard(card, router) {
+        // Always update - no longer skip for user interaction
+        
         // Update only the parts that have changed
         const nameElement = card.querySelector('.router-name');
         const currentName = `${router.name} (ID: ${router.id})`;
@@ -455,11 +479,11 @@ class SidebarUI {
             expandIcon.textContent = routerDetailsUI.expandedRouters.has(router.id) ? '▼' : '▶';
         }
         
-        // Update expanded content if expanded
+        // Always update expanded content if expanded (real-time updates)
         if (routerDetailsUI.expandedRouters.has(router.id)) {
             const contentElement = card.querySelector('.router-content');
             if (contentElement && contentElement.classList.contains('expanded')) {
-                // Update content without collapsing
+                // Force update content for real-time data
                 this.updateExpandedContent(contentElement, router.id);
             }
         }
@@ -493,27 +517,31 @@ class SidebarUI {
     }
 
     updateExpandedContent(contentElement, routerId) {
-        // Preserve active tab and scroll position
-        const activeTab = routerDetailsUI.activeTab.get(routerId) || 'overview';
+        // Check if the content element exists and has the router details structure
+        const routerTabs = contentElement.querySelector('.router-tabs');
         const tabContent = contentElement.querySelector('.tab-content');
-        const scrollTop = tabContent ? tabContent.scrollTop : 0;
         
-        // Get fresh content
-        const newContent = routerDetailsUI.createRouterDetailsContent(routerId);
-        
-        // Only update if actually different
-        if (contentElement.innerHTML !== newContent) {
-            contentElement.innerHTML = newContent;
-            
-            // Restore scroll position
-            const newTabContent = contentElement.querySelector('.tab-content');
-            if (newTabContent) {
-                newTabContent.scrollTop = scrollTop;
-            }
-            
-            // Re-activate the correct tab
-            routerDetailsUI.switchTab(routerId, activeTab);
+        if (!routerTabs || !tabContent) {
+            // Full rebuild if structure is missing
+            contentElement.innerHTML = routerDetailsUI.createRouterDetailsContent(routerId);
+            return;
         }
+        
+        // Preserve active tab and scroll position
+        const activeTab = routerDetailsUI.activeTab.get(routerId) || 'summary';
+        const scrollTop = tabContent.scrollTop;
+        
+        // Update only the tab content, not the entire structure
+        const newTabContent = routerDetailsUI.getTabContent(routerId, activeTab);
+        tabContent.innerHTML = newTabContent;
+        tabContent.scrollTop = scrollTop;
+        
+        // Update tab button states
+        const tabButtons = routerTabs.querySelectorAll('.tab-button');
+        tabButtons.forEach(btn => {
+            const isActive = btn.dataset.tab === activeTab;
+            btn.classList.toggle('active', isActive);
+        });
     }
 
     createRouterCardElement(router) {
@@ -612,5 +640,11 @@ class SidebarUI {
     }
 }
 
+// Create singleton instance
+const sidebarUI = new SidebarUI();
+
+// Make it globally accessible
+window.sidebarUI = sidebarUI;
+
 // Export singleton instance
-export default new SidebarUI();
+export default sidebarUI;

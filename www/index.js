@@ -23,6 +23,7 @@ async function main() {
         
         // 2. メインアプリケーションの初期化
         eventLogger.log('Starting OSPF Network Simulator...');
+        window.appInitializer = appInitializer; // Make globally accessible for debugging
         await appInitializer.init();
         eventLogger.log('Application modules initialized successfully');
         
