@@ -28,6 +28,7 @@ mod route_aggregation;
 mod terminal_device;
 mod terminal_manager;
 mod enhanced_ping;
+mod nbma_support;
 mod protocol;
 mod simulation;
 mod ospf_engine;
@@ -154,6 +155,9 @@ mod terminal_device_test;
 
 #[cfg(test)]
 mod enhanced_ping_test;
+
+#[cfg(test)]
+mod nbma_support_test;
 
 use simulation::NetworkSimulation;
 use ui_state::UIState;
@@ -652,5 +656,71 @@ impl NetworkSimulator {
     /// Start traceroute
     pub fn start_traceroute(&mut self, source_id: u32, source_ip: String, destination_ip: String, max_hops: u8) -> u32 {
         self.simulation.start_traceroute(source_id, source_ip, destination_ip, max_hops)
+    }
+    
+    // ==========================================
+    // NBMA Network Support Methods
+    // ==========================================
+    
+    /// Configure an interface as NBMA
+    pub fn configure_nbma_interface(
+        &mut self,
+        router_id: u32,
+        interface_id: u32,
+        network_type: String,
+        hello_interval: u32,
+        dead_interval: u32,
+        priority: u8,
+    ) -> Result<(), JsValue> {
+        self.simulation.configure_nbma_interface(
+            router_id,
+            interface_id,
+            network_type,
+            hello_interval,
+            dead_interval,
+            priority,
+        ).map_err(|e| JsValue::from_str(&e))
+    }
+    
+    /// Add a static neighbor for NBMA interface
+    pub fn add_nbma_neighbor(
+        &mut self,
+        router_id: u32,
+        interface_id: u32,
+        neighbor_ip: String,
+        priority: u8,
+        poll_interval: u32,
+    ) -> Result<(), JsValue> {
+        self.simulation.add_nbma_neighbor(
+            router_id,
+            interface_id,
+            neighbor_ip,
+            priority,
+            poll_interval,
+        ).map_err(|e| JsValue::from_str(&e))
+    }
+    
+    /// Remove a static neighbor from NBMA interface
+    pub fn remove_nbma_neighbor(
+        &mut self,
+        router_id: u32,
+        interface_id: u32,
+        neighbor_ip: String,
+    ) -> Result<(), JsValue> {
+        self.simulation.remove_nbma_neighbor(
+            router_id,
+            interface_id,
+            neighbor_ip,
+        ).map_err(|e| JsValue::from_str(&e))
+    }
+    
+    /// Get NBMA configuration for a router interface
+    pub fn get_nbma_config(&self, router_id: u32, interface_id: u32) -> String {
+        self.simulation.get_nbma_config(router_id, interface_id)
+    }
+    
+    /// Get NBMA statistics
+    pub fn get_nbma_statistics(&self) -> String {
+        self.simulation.get_nbma_statistics()
     }
 }

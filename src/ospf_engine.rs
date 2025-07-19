@@ -22,6 +22,7 @@ use crate::opaque_lsa::{OpaqueLSAGenerator, OpaqueLSAProcessor, TELink};
 use crate::stub_area::{StubAreaManager, AreaType};
 use crate::virtual_link::VirtualLinkManager;
 use crate::route_aggregation::RouteAggregationManager;
+use crate::nbma_support::{NBMAManager, NBMAInterfaceConfig, NBMANeighborConfig};
 use crate::console_log;
 
 /// Refactored OSPF Engine
@@ -82,6 +83,9 @@ pub struct OSPFEngine {
     
     // Route aggregation support
     route_aggregation_manager: RouteAggregationManager,
+    
+    // NBMA support
+    nbma_manager: NBMAManager,
 }
 
 #[derive(Debug, Clone)]
@@ -90,6 +94,7 @@ struct InterfaceState {
     interface_ip: String,
     network_mask: String,
     fully_adjacent_neighbors: HashSet<String>,
+    network_type: OSPFNetworkType,
 }
 
 impl OSPFEngine {
@@ -129,6 +134,7 @@ impl OSPFEngine {
             stub_area_manager: None,
             virtual_link_manager: None,
             route_aggregation_manager: RouteAggregationManager::new(router_id.clone()),
+            nbma_manager: NBMAManager::new(),
         }
     }
     
@@ -1204,7 +1210,7 @@ impl OSPFEngine {
     }
     
     /// Generate Hello packet events for all physically connected neighbors
-    fn generate_hello_events(&self) -> Vec<PacketEvent> {
+    fn generate_hello_events(&mut self) -> Vec<PacketEvent> {
         let mut events = Vec::new();
         
         // Get our router ID as u32
@@ -1222,16 +1228,27 @@ impl OSPFEngine {
             return events;
         }
         
+        // Clone router_links to avoid borrow issues
+        let router_links_clone = router_links.clone();
+        
         // Get active neighbors for Hello packet
         let active_neighbors = self.neighbor_manager.get_all_active_neighbors();
         
         // Create Hello packet event for each physical neighbor
-        for (neighbor_id, interface_id, _cost) in router_links {
+        for (neighbor_id, interface_id, _cost) in router_links_clone {
+            // Check if this is an NBMA interface
+            if self.is_nbma_interface(interface_id) {
+                // For NBMA, generate unicast Hello packets
+                let nbma_events = self.generate_nbma_hello_packets(interface_id);
+                events.extend(nbma_events);
+                continue;
+            }
+            
             // Get DR/BDR for this interface
-            let (dr, bdr) = self.get_interface_dr_bdr(*interface_id);
+            let (dr, bdr) = self.get_interface_dr_bdr(interface_id);
             
             // Get network mask for this interface
-            let network_mask = if let Some(dr_manager) = self.dr_election_managers.get(interface_id) {
+            let network_mask = if let Some(dr_manager) = self.dr_election_managers.get(&interface_id) {
                 // Get mask based on network type
                 match dr_manager.get_network_type() {
                     OSPFNetworkType::PointToPoint => "255.255.255.252",
@@ -1247,7 +1264,7 @@ impl OSPFEngine {
             let hello_packet = self.packet_processor.generate_hello_packet(&active_neighbors, dr, bdr, network_mask);
             
             // Get authentication data for this interface
-            let (auth_type, auth_data) = self.packet_processor.get_auth_data(*interface_id);
+            let (auth_type, auth_data) = self.packet_processor.get_auth_data(interface_id);
             
             let packet = ProtocolPacket::OSPF(OSPFPacket {
                 version: 2,
@@ -1263,16 +1280,15 @@ impl OSPFEngine {
             let event = PacketEvent {
                 timestamp: 0.0, // Will be set by caller
                 from_router_id: our_router_id,
-                to_router_id: *neighbor_id,
+                to_router_id: neighbor_id,
                 packet,
             };
             
             events.push(event);
         }
         
-        console_log!("Router {} generated {} Hello packet events for neighbors {:?}", 
-            self.router_id, events.len(), 
-            router_links.iter().map(|(id, _, _)| id).collect::<Vec<_>>());
+        console_log!("Router {} generated {} Hello packet events", 
+            self.router_id, events.len());
         events
     }
     
@@ -1377,6 +1393,7 @@ impl OSPFEngine {
             interface_ip: interface_ip.clone(),
             network_mask: network_mask.clone(),
             fully_adjacent_neighbors: HashSet::new(),
+            network_type: OSPFNetworkType::Broadcast,
         });
         
         // Also initialize extended interface state
@@ -2014,6 +2031,202 @@ impl OSPFEngine {
                 )
             })
             .collect()
+    }
+    
+    // ==========================================
+    // NBMA Network Support Methods
+    // ==========================================
+    
+    /// Configure an interface as NBMA
+    pub fn configure_nbma_interface(
+        &mut self,
+        interface_id: u32,
+        config: NBMAInterfaceConfig,
+    ) -> Result<(), String> {
+        console_log!(
+            "Router {}: Configuring interface {} as NBMA",
+            self.router_id,
+            interface_id
+        );
+        
+        // Update interface state to reflect NBMA configuration
+        if let Some(state) = self.interface_states.get_mut(&interface_id) {
+            state.network_type = config.network_type;
+        } else {
+            self.interface_states.insert(interface_id, InterfaceState {
+                is_dr: false,
+                interface_ip: String::new(),
+                network_mask: String::new(),
+                fully_adjacent_neighbors: HashSet::new(),
+                network_type: config.network_type,
+            });
+        }
+        
+        // Configure in NBMA manager
+        self.nbma_manager.configure_nbma_interface(interface_id, config)
+    }
+    
+    /// Add a static neighbor for NBMA interface
+    pub fn add_nbma_neighbor(
+        &mut self,
+        interface_id: u32,
+        neighbor: NBMANeighborConfig,
+    ) -> Result<(), String> {
+        self.nbma_manager.add_static_neighbor(interface_id, neighbor)
+    }
+    
+    /// Remove a static neighbor from NBMA interface
+    pub fn remove_nbma_neighbor(
+        &mut self,
+        interface_id: u32,
+        neighbor_ip: &str,
+    ) -> Result<(), String> {
+        self.nbma_manager.remove_static_neighbor(interface_id, neighbor_ip)
+    }
+    
+    /// Get NBMA configuration for an interface
+    pub fn get_nbma_config(&self, interface_id: u32) -> Option<&NBMAInterfaceConfig> {
+        self.nbma_manager.get_interface_config(interface_id)
+    }
+    
+    /// Check if interface is configured as NBMA
+    pub fn is_nbma_interface(&self, interface_id: u32) -> bool {
+        self.nbma_manager.is_nbma_interface(interface_id)
+    }
+    
+    /// Get Hello destinations for NBMA interface
+    pub fn get_nbma_hello_destinations(&self, interface_id: u32) -> Vec<String> {
+        self.nbma_manager.get_hello_destinations(interface_id)
+    }
+    
+    
+    /// Update NBMA neighbor state
+    pub fn update_nbma_neighbor_state(
+        &mut self,
+        interface_id: u32,
+        neighbor_ip: &str,
+        active: bool,
+    ) {
+        if active {
+            self.nbma_manager.mark_neighbor_active(interface_id, neighbor_ip);
+        } else {
+            self.nbma_manager.mark_neighbor_inactive(interface_id, neighbor_ip);
+        }
+    }
+    
+    /// Get NBMA statistics
+    pub fn get_nbma_statistics(&self) -> crate::nbma_support::NBMAStatistics {
+        self.nbma_manager.get_statistics()
+    }
+    
+    /// Handle NBMA-specific Hello packet generation
+    pub fn generate_nbma_hello_packets(&mut self, interface_id: u32) -> Vec<PacketEvent> {
+        if !self.is_nbma_interface(interface_id) {
+            return Vec::new();
+        }
+        
+        let mut events = Vec::new();
+        let destinations = self.get_nbma_hello_destinations(interface_id);
+        let current_time = self.current_time;
+        
+        for dest_ip in destinations {
+            // Check if we should send poll hello to inactive neighbors
+            let is_active_neighbor = self.neighbor_manager.get_all_neighbors()
+                .iter()
+                .any(|n| n.router_id == dest_ip);
+            
+            if !is_active_neighbor {
+                if !self.nbma_manager.should_send_poll_hello(interface_id, &dest_ip, current_time) {
+                    continue;
+                }
+            }
+            
+            // Generate Hello packet
+            let hello = self.create_hello_packet_for_interface(interface_id);
+            
+            // Get authentication data for this interface
+            let (auth_type, auth_data) = self.packet_processor.get_auth_data(interface_id);
+            
+            let ospf_packet = OSPFPacket {
+                version: 2,
+                packet_type: OSPFPacketType::Hello,
+                router_id: self.router_id.clone(),
+                area_id: self.area_id.clone(),
+                checksum: 0,
+                auth_type,
+                auth_data,
+                data: OSPFPacketData::Hello(hello),
+            };
+            
+            // Parse router ID to get numeric ID
+            let from_id = self.router_id.split('.').last()
+                .and_then(|s| s.parse::<u32>().ok())
+                .unwrap_or(1);
+            
+            // Parse destination IP to get router ID
+            let to_id = dest_ip.split('.').last()
+                .and_then(|s| s.parse::<u32>().ok())
+                .unwrap_or(1);
+            
+            events.push(PacketEvent {
+                timestamp: current_time,
+                from_router_id: from_id,
+                to_router_id: to_id,
+                packet: ProtocolPacket::OSPF(ospf_packet),
+            });
+            
+            console_log!("Router {} generated NBMA Hello to {} on interface {}", 
+                self.router_id, dest_ip, interface_id);
+        }
+        
+        events
+    }
+    
+    /// Helper method to create Hello packet for a specific interface
+    fn create_hello_packet_for_interface(&self, interface_id: u32) -> HelloPacket {
+        // Get DR/BDR for this interface
+        let (dr, bdr) = self.get_interface_dr_bdr(interface_id);
+        
+        // Get network mask for this interface
+        let network_mask = if let Some(dr_manager) = self.dr_election_managers.get(&interface_id) {
+            // Get mask based on network type
+            match dr_manager.get_network_type() {
+                OSPFNetworkType::PointToPoint => "255.255.255.252",
+                OSPFNetworkType::Broadcast => "255.255.255.0",
+                OSPFNetworkType::NBMA => "255.255.255.0",
+                OSPFNetworkType::PointToMultipoint => "255.255.255.0",
+            }
+        } else {
+            "255.255.255.0"
+        }.to_string();
+        
+        // Get interface priority (from NBMA config if applicable)
+        let priority = if let Some(nbma_config) = self.nbma_manager.get_interface_config(interface_id) {
+            nbma_config.priority
+        } else {
+            1 // Default priority
+        };
+        
+        // Get Hello/Dead intervals (from NBMA config if applicable)
+        let (hello_interval, dead_interval) = if let Some(nbma_config) = self.nbma_manager.get_interface_config(interface_id) {
+            (nbma_config.hello_interval as u16, nbma_config.dead_interval as u32)
+        } else {
+            (10, 40) // Default intervals
+        };
+        
+        // Get active neighbors for this interface
+        let active_neighbors = self.neighbor_manager.get_all_active_neighbors();
+        
+        HelloPacket {
+            network_mask,
+            hello_interval,
+            options: self.area_options.clone(),
+            router_priority: priority,
+            router_dead_interval: dead_interval,
+            designated_router: dr,
+            backup_designated_router: bdr,
+            neighbors: active_neighbors,
+        }
     }
 }
 

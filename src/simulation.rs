@@ -1848,6 +1848,121 @@ impl NetworkSimulation {
     fn check_ping_timeouts(&mut self) {
         self.enhanced_ping_manager.check_timeouts(self.simulation_time);
     }
+    
+    // ==========================================
+    // NBMA Network Support Methods
+    // ==========================================
+    
+    /// Configure an interface as NBMA
+    pub fn configure_nbma_interface(
+        &mut self,
+        router_id: u32,
+        interface_id: u32,
+        network_type: String,
+        hello_interval: u32,
+        dead_interval: u32,
+        priority: u8,
+    ) -> Result<(), String> {
+        use crate::network_type::OSPFNetworkType;
+        use crate::nbma_support::NBMAInterfaceConfig;
+        
+        // Parse network type
+        let net_type = match network_type.as_str() {
+            "NBMA" => OSPFNetworkType::NBMA,
+            "Point-to-Multipoint" => OSPFNetworkType::PointToMultipoint,
+            _ => return Err("Invalid network type for NBMA configuration".to_string()),
+        };
+        
+        // Create NBMA configuration
+        let config = NBMAInterfaceConfig {
+            network_type: net_type,
+            static_neighbors: Vec::new(),
+            hello_interval,
+            dead_interval,
+            priority,
+        };
+        
+        // Configure in OSPF engine
+        if let Some(engine) = self.ospf_engines.get_mut(&router_id) {
+            engine.configure_nbma_interface(interface_id, config)
+        } else {
+            Err("Router not found or OSPF not enabled".to_string())
+        }
+    }
+    
+    /// Add a static neighbor for NBMA interface
+    pub fn add_nbma_neighbor(
+        &mut self,
+        router_id: u32,
+        interface_id: u32,
+        neighbor_ip: String,
+        priority: u8,
+        poll_interval: u32,
+    ) -> Result<(), String> {
+        use crate::nbma_support::NBMANeighborConfig;
+        
+        let neighbor = NBMANeighborConfig {
+            neighbor_ip,
+            priority,
+            poll_interval,
+            enabled: true,
+        };
+        
+        if let Some(engine) = self.ospf_engines.get_mut(&router_id) {
+            engine.add_nbma_neighbor(interface_id, neighbor)
+        } else {
+            Err("Router not found or OSPF not enabled".to_string())
+        }
+    }
+    
+    /// Remove a static neighbor from NBMA interface
+    pub fn remove_nbma_neighbor(
+        &mut self,
+        router_id: u32,
+        interface_id: u32,
+        neighbor_ip: String,
+    ) -> Result<(), String> {
+        if let Some(engine) = self.ospf_engines.get_mut(&router_id) {
+            engine.remove_nbma_neighbor(interface_id, &neighbor_ip)
+        } else {
+            Err("Router not found or OSPF not enabled".to_string())
+        }
+    }
+    
+    /// Get NBMA configuration for a router interface
+    pub fn get_nbma_config(&self, router_id: u32, interface_id: u32) -> String {
+        if let Some(engine) = self.ospf_engines.get(&router_id) {
+            if let Some(config) = engine.get_nbma_config(interface_id) {
+                serde_json::to_string(config).unwrap_or_default()
+            } else {
+                "{}".to_string()
+            }
+        } else {
+            "{}".to_string()
+        }
+    }
+    
+    /// Get NBMA statistics
+    pub fn get_nbma_statistics(&self) -> String {
+        let mut total_stats = crate::nbma_support::NBMAStatistics {
+            total_interfaces: 0,
+            total_static_neighbors: 0,
+            active_neighbors: 0,
+            nbma_interfaces: 0,
+            p2mp_interfaces: 0,
+        };
+        
+        for engine in self.ospf_engines.values() {
+            let stats = engine.get_nbma_statistics();
+            total_stats.total_interfaces += stats.total_interfaces;
+            total_stats.total_static_neighbors += stats.total_static_neighbors;
+            total_stats.active_neighbors += stats.active_neighbors;
+            total_stats.nbma_interfaces += stats.nbma_interfaces;
+            total_stats.p2mp_interfaces += stats.p2mp_interfaces;
+        }
+        
+        serde_json::to_string(&total_stats).unwrap_or_default()
+    }
 }
 
 #[cfg(test)]
