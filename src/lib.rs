@@ -24,6 +24,9 @@ mod ospf_lsa_age_manager;
 mod opaque_lsa;
 mod stub_area;
 mod virtual_link;
+mod route_aggregation;
+mod terminal_device;
+mod terminal_manager;
 mod protocol;
 mod simulation;
 mod ospf_engine;
@@ -141,6 +144,12 @@ mod opaque_lsa_test;
 
 #[cfg(test)]
 mod virtual_link_test;
+
+#[cfg(test)]
+mod route_aggregation_test;
+
+#[cfg(test)]
+mod terminal_device_test;
 
 use simulation::NetworkSimulation;
 use ui_state::UIState;
@@ -418,5 +427,134 @@ impl NetworkSimulator {
     pub fn get_ping_results_json(&self, count: usize) -> String {
         let results = self.simulation.get_recent_ping_results(count);
         serde_json::to_string(&results).unwrap_or_default()
+    }
+    
+    // ==========================================
+    // Terminal Device Management Methods
+    // ==========================================
+    
+    /// Add a new terminal device
+    pub fn add_terminal(&mut self, name: String, ip_address: String, netmask: String, default_gateway: String, x: f64, y: f64) -> Result<u32, JsValue> {
+        match self.simulation.add_terminal(name.clone(), ip_address.clone(), netmask, default_gateway) {
+            Ok(terminal_id) => {
+                self.ui_state.set_router_position(terminal_id, x, y);
+                console_log!("Terminal {} added with id {} at ({}, {})", name, terminal_id, x, y);
+                Ok(terminal_id)
+            }
+            Err(e) => {
+                console_log!("Error adding terminal: {}", e);
+                Err(JsValue::from_str(&e))
+            }
+        }
+    }
+    
+    /// Remove a terminal device
+    pub fn remove_terminal(&mut self, terminal_id: u32) -> bool {
+        match self.simulation.remove_terminal(terminal_id) {
+            Ok(()) => {
+                self.ui_state.remove_router_position(&terminal_id);
+                console_log!("Terminal {} removed", terminal_id);
+                true
+            }
+            Err(e) => {
+                console_log!("Error removing terminal: {}", e);
+                false
+            }
+        }
+    }
+    
+    /// Connect terminal to router
+    pub fn connect_terminal_to_router(&mut self, terminal_id: u32, router_id: u32) -> Result<(), JsValue> {
+        match self.simulation.connect_terminal_to_router(terminal_id, router_id) {
+            Ok(()) => {
+                console_log!("Connected terminal {} to router {}", terminal_id, router_id);
+                Ok(())
+            }
+            Err(e) => {
+                console_log!("Error connecting terminal to router: {}", e);
+                Err(JsValue::from_str(&e))
+            }
+        }
+    }
+    
+    /// Disconnect terminal from router
+    pub fn disconnect_terminal(&mut self, terminal_id: u32) -> Result<(), JsValue> {
+        match self.simulation.disconnect_terminal(terminal_id) {
+            Ok(()) => {
+                console_log!("Disconnected terminal {}", terminal_id);
+                Ok(())
+            }
+            Err(e) => {
+                console_log!("Error disconnecting terminal: {}", e);
+                Err(JsValue::from_str(&e))
+            }
+        }
+    }
+    
+    /// Send ping from terminal
+    pub fn send_ping_from_terminal(&mut self, terminal_id: u32, destination_ip: String) -> Result<u32, JsValue> {
+        match self.simulation.send_ping_from_terminal(terminal_id, destination_ip.clone()) {
+            Ok(identifier) => {
+                console_log!("Ping sent from terminal {} to {} (ID: {})", terminal_id, destination_ip, identifier);
+                Ok(identifier as u32)
+            }
+            Err(e) => {
+                console_log!("Failed to send ping from terminal: {}", e);
+                Err(JsValue::from_str(&e))
+            }
+        }
+    }
+    
+    /// Set terminal failed/recovered
+    pub fn set_terminal_failed(&mut self, terminal_id: u32, failed: bool) -> bool {
+        match self.simulation.set_terminal_failed(terminal_id, failed) {
+            Ok(()) => {
+                let status = if failed { "failed" } else { "recovered" };
+                console_log!("Terminal {} {}", terminal_id, status);
+                true
+            }
+            Err(e) => {
+                console_log!("Error setting terminal failure state: {}", e);
+                false
+            }
+        }
+    }
+    
+    /// Get terminal device information
+    pub fn get_terminal_info_json(&self, terminal_id: u32) -> String {
+        match self.simulation.get_terminal_info(terminal_id) {
+            Ok(info) => serde_json::to_string(&info).unwrap_or_default(),
+            Err(_) => "{}".to_string(),
+        }
+    }
+    
+    /// Get all terminals information
+    pub fn get_all_terminals_json(&self) -> String {
+        let terminals = self.simulation.get_all_terminals_info();
+        serde_json::to_string(&terminals).unwrap_or_default()
+    }
+    
+    /// Find terminal by IP address
+    pub fn find_terminal_by_ip(&self, ip_address: String) -> Option<u32> {
+        self.simulation.find_terminal_by_ip(&ip_address)
+    }
+    
+    /// Get terminal manager statistics
+    pub fn get_terminal_manager_statistics_json(&self) -> String {
+        let stats = self.simulation.get_terminal_manager_statistics();
+        serde_json::to_string(&stats).unwrap_or_default()
+    }
+    
+    /// Update terminal position
+    pub fn update_terminal_position(&mut self, terminal_id: u32, x: f64, y: f64) -> bool {
+        // Check if terminal exists in the simulation
+        if self.simulation.get_terminal_info(terminal_id).is_ok() {
+            self.ui_state.set_router_position(terminal_id, x, y);
+            console_log!("Updated position for terminal {} to ({}, {})", terminal_id, x, y);
+            true
+        } else {
+            console_log!("Failed to update position for terminal {}", terminal_id);
+            false
+        }
     }
 }

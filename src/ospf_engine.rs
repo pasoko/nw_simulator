@@ -21,6 +21,7 @@ use crate::ospf_tos::{TOSCapabilities, TOSValue, TOSMetric, TOSRoutingTable};
 use crate::opaque_lsa::{OpaqueLSAGenerator, OpaqueLSAProcessor, TELink};
 use crate::stub_area::{StubAreaManager, AreaType};
 use crate::virtual_link::VirtualLinkManager;
+use crate::route_aggregation::RouteAggregationManager;
 use crate::console_log;
 
 /// Refactored OSPF Engine
@@ -78,6 +79,9 @@ pub struct OSPFEngine {
     
     // Virtual link support
     virtual_link_manager: Option<VirtualLinkManager>,
+    
+    // Route aggregation support
+    route_aggregation_manager: RouteAggregationManager,
 }
 
 #[derive(Debug, Clone)]
@@ -105,7 +109,7 @@ impl OSPFEngine {
             summary_lsa_generator: SummaryLSAGenerator::new(router_id.clone()),
             as_external_lsa_generator: ASExternalLSAGenerator::new(router_id.clone()),
             opaque_lsa_generator: OpaqueLSAGenerator::new(router_id.clone()),
-            router_id,
+            router_id: router_id.clone(),
             area_id,
             current_time: 0.0,
             spf_calculation_pending: false,
@@ -124,6 +128,7 @@ impl OSPFEngine {
             tos_routing_table: TOSRoutingTable::new(),
             stub_area_manager: None,
             virtual_link_manager: None,
+            route_aggregation_manager: RouteAggregationManager::new(router_id.clone()),
         }
     }
     
@@ -1794,6 +1799,11 @@ impl OSPFEngine {
                 }
             }
         }
+        
+        // Update route aggregation manager with ABR/ASBR status
+        let is_abr = self.is_abr();
+        let is_asbr = !self.external_routes.is_empty(); // ASBR if has external routes
+        self.route_aggregation_manager.update_router_type(is_abr, is_asbr);
     }
     
     /// Check if LSA should be accepted based on area type
@@ -1925,6 +1935,85 @@ impl OSPFEngine {
         } else {
             Vec::new()
         }
+    }
+    
+    /// Configure route aggregation
+    pub fn configure_route_aggregation(
+        &mut self,
+        network: String,
+        mask: String,
+        area_id: Option<String>,
+        suppress: bool,
+        metric: Option<u32>,
+    ) -> Result<(), String> {
+        self.route_aggregation_manager.configure_aggregate(
+            network, mask, area_id, suppress, metric
+        )
+    }
+    
+    /// Remove route aggregation
+    pub fn remove_route_aggregation(&mut self, network: &str, mask: &str) -> bool {
+        self.route_aggregation_manager.remove_aggregate(network, mask)
+    }
+    
+    /// Update routing table for aggregation calculation
+    pub fn update_aggregation_routes(&mut self, routes: HashMap<String, u32>) {
+        self.route_aggregation_manager.update_route_metrics(routes);
+        
+        // Generate aggregate LSAs if any became active
+        let summary_lsas = self.route_aggregation_manager.generate_summary_lsas();
+        for lsa in summary_lsas {
+            self.lsa_manager.add_lsa(lsa);
+        }
+        
+        let external_lsas = self.route_aggregation_manager.generate_external_lsas();
+        for lsa in external_lsas {
+            self.lsa_manager.add_lsa(lsa);
+        }
+    }
+    
+    /// Check if a route should be suppressed due to aggregation
+    pub fn should_suppress_route(&self, network: &str, mask: &str) -> bool {
+        self.route_aggregation_manager.should_suppress_route(network, mask)
+    }
+    
+    /// Get aggregation statistics
+    pub fn get_aggregation_statistics(&self) -> crate::route_aggregation::AggregationStatistics {
+        self.route_aggregation_manager.get_statistics()
+    }
+    
+    /// Get all configured aggregates
+    pub fn get_aggregation_config(&self) -> Vec<(String, String, bool, Option<String>, bool)> {
+        self.route_aggregation_manager
+            .get_aggregates()
+            .iter()
+            .map(|(_key, agg)| {
+                (
+                    agg.network.clone(),
+                    agg.mask.clone(),
+                    agg.suppress,
+                    agg.area_id.clone(),
+                    agg.active,
+                )
+            })
+            .collect()
+    }
+    
+    /// Get active aggregates only
+    pub fn get_active_aggregates(&self) -> Vec<(String, String, u32, Option<String>)> {
+        self.route_aggregation_manager
+            .get_active_aggregates()
+            .iter()
+            .map(|agg| {
+                let metric = agg.calculate_metric(&HashMap::new()); // Will be updated with actual routes
+                (
+                    agg.network.clone(),
+                    agg.mask.clone(),
+                    metric,
+                    agg.area_id.clone(),
+                )
+            })
+            .collect()
     }
 }
 

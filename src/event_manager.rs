@@ -32,6 +32,9 @@ pub enum SimulationEventType {
     VirtualLinkConfigured { local_router_id: u32, remote_router_id: u32, transit_area_id: String, interface_id: u32 },
     VirtualLinkRemoved { local_router_id: u32, remote_router_id: u32 },
     VirtualLinkStateChanged { local_router_id: u32, remote_router_id: u32, old_state: String, new_state: String },
+    RouteAggregationConfigured { router_id: u32, network: String, mask: String, area_id: Option<String>, suppress: bool },
+    RouteAggregationRemoved { router_id: u32, network: String, mask: String },
+    RouteAggregationActivated { router_id: u32, network: String, mask: String, metric: u32 },
 }
 
 impl SimulationEvent {
@@ -305,6 +308,9 @@ impl EventManager {
                 SimulationEventType::VirtualLinkConfigured { .. } => {}, // No specific counter for virtual links yet
                 SimulationEventType::VirtualLinkRemoved { .. } => {},
                 SimulationEventType::VirtualLinkStateChanged { .. } => {},
+                SimulationEventType::RouteAggregationConfigured { .. } => {}, // No specific counter for route aggregation yet
+                SimulationEventType::RouteAggregationRemoved { .. } => {},
+                SimulationEventType::RouteAggregationActivated { .. } => {},
             }
         }
         
@@ -337,6 +343,9 @@ impl EventManager {
             SimulationEventType::VirtualLinkConfigured { local_router_id: id, .. } => *id == router_id,
             SimulationEventType::VirtualLinkRemoved { local_router_id: id, .. } => *id == router_id,
             SimulationEventType::VirtualLinkStateChanged { local_router_id: id, .. } => *id == router_id,
+            SimulationEventType::RouteAggregationConfigured { router_id: id, .. } => *id == router_id,
+            SimulationEventType::RouteAggregationRemoved { router_id: id, .. } => *id == router_id,
+            SimulationEventType::RouteAggregationActivated { router_id: id, .. } => *id == router_id,
         }
     }
 }

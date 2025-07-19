@@ -273,4 +273,11 @@ impl NetworkTopology {
             None
         }
     }
+    
+    /// 次のインターフェースIDを取得して増分
+    pub fn get_next_interface_id(&mut self) -> u32 {
+        let id = self.next_interface_id;
+        self.next_interface_id += 1;
+        id
+    }
 }

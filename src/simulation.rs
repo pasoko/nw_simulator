@@ -10,6 +10,8 @@ use crate::route_calculator::RouteCalculator;
 use crate::router::{OSPFNeighborState, RoutingTableEntry};
 use crate::ping_manager::{PingManager, PingResult};
 use crate::device::{ICMPPacket, ICMPType};
+use crate::terminal_manager::{TerminalManager, ManagerConfig};
+use crate::terminal_device::{TerminalDeviceInfo, TerminalConfig};
 use crate::ospf_options::OSPFOptions;
 use crate::console_log;
 
@@ -31,6 +33,7 @@ pub struct NetworkSimulation {
     failure_manager: FailureManager,
     route_calculator: RouteCalculator,
     ping_manager: PingManager,
+    terminal_manager: TerminalManager,
     ospf_engines: BTreeMap<u32, OSPFEngine>,  // Use BTreeMap for deterministic iteration order
     spf_needed: Vec<u32>,  // Track routers needing SPF calculation
     pause_time: Option<f64>,  // Time when simulation was paused
@@ -47,6 +50,7 @@ impl NetworkSimulation {
             failure_manager: FailureManager::new(),
             route_calculator: RouteCalculator::new(),
             ping_manager: PingManager::new(),
+            terminal_manager: TerminalManager::new(),
             ospf_engines: BTreeMap::new(),
             spf_needed: Vec::new(),
             pause_time: None,
@@ -462,6 +466,10 @@ impl NetworkSimulation {
                 engine.reset_database_updated_flag();
             }
         }
+        
+        // Process terminal device packet queues and update statistics
+        self.process_terminal_packet_queues();
+        self.update_terminal_statistics();
     }
     
     pub fn toggle_link_failure(&mut self, from_id: u32, to_id: u32) -> bool {
@@ -1063,6 +1071,123 @@ impl NetworkSimulation {
         
         status
     }
+    
+    /// Configure route aggregation on a router
+    pub fn configure_route_aggregation(
+        &mut self,
+        router_id: u32,
+        network: String,
+        mask: String,
+        area_id: Option<String>,
+        suppress: bool,
+        metric: Option<u32>,
+    ) -> Result<(), String> {
+        if let Some(engine) = self.get_ospf_engine_mut(router_id) {
+            engine.configure_route_aggregation(network.clone(), mask.clone(), area_id.clone(), suppress, metric)?;
+            
+            console_log!(
+                "Route aggregation configured on router {}: {}/{} (suppress: {}, area: {:?})",
+                router_id, network, mask, suppress, area_id
+            );
+            
+            // Log event
+            let event = SimulationEvent {
+                timestamp: self.simulation_time,
+                event_type: SimulationEventType::RouteAggregationConfigured {
+                    router_id,
+                    network,
+                    mask,
+                    area_id,
+                    suppress,
+                },
+                description: format!("Route aggregation configured on router {}", router_id),
+            };
+            self.event_manager.log_event(event);
+            
+            Ok(())
+        } else {
+            Err(format!("OSPF not enabled on router {}", router_id))
+        }
+    }
+    
+    /// Remove route aggregation from a router
+    pub fn remove_route_aggregation(
+        &mut self,
+        router_id: u32,
+        network: String,
+        mask: String,
+    ) -> Result<(), String> {
+        if let Some(engine) = self.get_ospf_engine_mut(router_id) {
+            if engine.remove_route_aggregation(&network, &mask) {
+                console_log!(
+                    "Route aggregation removed from router {}: {}/{}",
+                    router_id, network, mask
+                );
+                
+                // Log event
+                let event = SimulationEvent {
+                    timestamp: self.simulation_time,
+                    event_type: SimulationEventType::RouteAggregationRemoved {
+                        router_id,
+                        network,
+                        mask,
+                    },
+                    description: format!("Route aggregation removed from router {}", router_id),
+                };
+                self.event_manager.log_event(event);
+                
+                Ok(())
+            } else {
+                Err(format!("Route aggregation {}/{} not found on router {}", network, mask, router_id))
+            }
+        } else {
+            Err(format!("OSPF not enabled on router {}", router_id))
+        }
+    }
+    
+    /// Get route aggregation statistics for all routers
+    pub fn get_aggregation_statistics(&self) -> Vec<(u32, crate::route_aggregation::AggregationStatistics)> {
+        let mut stats = Vec::new();
+        
+        for (router_id, engine) in &self.ospf_engines {
+            let router_stats = engine.get_aggregation_statistics();
+            if router_stats.total_aggregates > 0 {
+                stats.push((*router_id, router_stats));
+            }
+        }
+        
+        stats
+    }
+    
+    /// Get aggregation configuration for all routers
+    pub fn get_aggregation_config(&self) -> Vec<(u32, Vec<(String, String, bool, Option<String>, bool)>)> {
+        let mut configs = Vec::new();
+        
+        for (router_id, engine) in &self.ospf_engines {
+            let router_config = engine.get_aggregation_config();
+            if !router_config.is_empty() {
+                configs.push((*router_id, router_config));
+            }
+        }
+        
+        configs
+    }
+    
+    /// Update routing information for aggregation calculation
+    pub fn update_aggregation_calculations(&mut self) {
+        for (router_id, engine) in &mut self.ospf_engines {
+            // Get current routing table
+            if let Some(router) = self.topology.routers.get(router_id) {
+                let mut routes = HashMap::new();
+                for entry in &router.routing_table {
+                    let route_key = format!("{}/{}", entry.destination, entry.netmask);
+                    routes.insert(route_key, entry.metric);
+                }
+                
+                engine.update_aggregation_routes(routes);
+            }
+        }
+    }
 
     pub fn update_interface_config(&mut self, router_id: u32, interface_id: u32, config: crate::router::InterfaceConfig) -> Result<(), String> {
         if let Some(router) = self.topology.routers.get_mut(&router_id) {
@@ -1152,6 +1277,21 @@ impl NetworkSimulation {
     fn process_icmp_packet(&mut self, packet: ICMPPacket, from_id: u32, to_id: u32) {
         match packet.packet_type {
             ICMPType::EchoRequest => {
+                // 端末デバイスで受信した場合
+                if let Ok(Some(reply)) = self.terminal_manager.process_icmp_packet(to_id, packet.clone(), self.simulation_time) {
+                    // 端末がEcho Replyを生成した場合、ルーターに送信
+                    let reply_event = PacketEvent {
+                        timestamp: self.simulation_time + 0.001, // 1ms遅延
+                        from_router_id: to_id,
+                        to_router_id: from_id,
+                        packet: ProtocolPacket::ICMP(reply),
+                    };
+                    
+                    self.protocol_engine.schedule_event(reply_event);
+                    console_log!("Terminal {} sending echo reply to {}", to_id, from_id);
+                    return;
+                }
+                
                 // ホストで受信した場合
                 if let Some(host) = self.topology.hosts.get(&to_id) {
                     if !host.is_failed && host.ip_address == packet.destination_ip {
@@ -1217,6 +1357,12 @@ impl NetworkSimulation {
                 }
             },
             ICMPType::EchoReply => {
+                // 端末デバイスで受信した場合
+                if let Ok(_) = self.terminal_manager.process_icmp_packet(to_id, packet.clone(), self.simulation_time) {
+                    console_log!("Terminal {} received echo reply", to_id);
+                    return;
+                }
+                
                 // ホストで受信した場合
                 if self.topology.hosts.contains_key(&to_id) {
                     self.ping_manager.process_echo_reply(packet.identifier, self.simulation_time);
@@ -1335,6 +1481,208 @@ impl NetworkSimulation {
         }
         
         prefix_len
+    }
+    
+    // ==========================================
+    // Terminal Device Management Methods
+    // ==========================================
+    
+    /// 新しい端末デバイスを追加
+    pub fn add_terminal(
+        &mut self,
+        name: String,
+        ip_address: String,
+        netmask: String,
+        default_gateway: String,
+    ) -> Result<u32, String> {
+        let terminal_id = self.terminal_manager.add_terminal(
+            name.clone(),
+            ip_address.clone(),
+            netmask,
+            default_gateway,
+        )?;
+        
+        // イベントログに記録
+        self.event_manager.log_event(crate::event_manager::SimulationEvent {
+            timestamp: self.simulation_time,
+            event_type: crate::event_manager::SimulationEventType::RouterAdded {
+                router_id: terminal_id,
+                name: format!("Terminal: {}", name),
+            },
+            description: format!("Terminal device '{}' added with IP {}", name, ip_address),
+        });
+        
+        console_log!("Terminal device {} added with ID {} (IP: {})", name, terminal_id, ip_address);
+        Ok(terminal_id)
+    }
+    
+    /// 端末デバイスを削除
+    pub fn remove_terminal(&mut self, terminal_id: u32) -> Result<(), String> {
+        self.terminal_manager.remove_terminal(terminal_id)?;
+        
+        console_log!("Terminal device {} removed", terminal_id);
+        Ok(())
+    }
+    
+    /// 端末をルーターに接続
+    pub fn connect_terminal_to_router(
+        &mut self,
+        terminal_id: u32,
+        router_id: u32,
+    ) -> Result<(), String> {
+        // ルーターが存在するかチェック
+        if !self.topology.routers.contains_key(&router_id) {
+            return Err(format!("Router {} not found", router_id));
+        }
+        
+        // 適当なインターフェースIDを割り当て
+        let interface_id = self.topology.get_next_interface_id();
+        
+        self.terminal_manager.connect_terminal_to_router(
+            terminal_id,
+            router_id,
+            interface_id,
+        )?;
+        
+        console_log!(
+            "Terminal {} connected to router {} (interface {})",
+            terminal_id, router_id, interface_id
+        );
+        
+        Ok(())
+    }
+    
+    /// 端末をルーターから切断
+    pub fn disconnect_terminal(&mut self, terminal_id: u32) -> Result<(), String> {
+        self.terminal_manager.disconnect_terminal(terminal_id)
+    }
+    
+    /// 端末からpingを送信
+    pub fn send_ping_from_terminal(
+        &mut self,
+        terminal_id: u32,
+        destination_ip: String,
+    ) -> Result<u16, String> {
+        let identifier = self.terminal_manager.send_ping_from_terminal(
+            terminal_id,
+            destination_ip.clone(),
+            self.simulation_time,
+        )?;
+        
+        console_log!(
+            "Ping sent from terminal {} to {} (ID: {})",
+            terminal_id, destination_ip, identifier
+        );
+        
+        Ok(identifier)
+    }
+    
+    /// 端末でICMPパケットを処理
+    pub fn process_terminal_icmp_packet(
+        &mut self,
+        terminal_id: u32,
+        packet: ICMPPacket,
+    ) -> Result<Option<ICMPPacket>, String> {
+        self.terminal_manager.process_icmp_packet(
+            terminal_id,
+            packet,
+            self.simulation_time,
+        )
+    }
+    
+    /// 端末の障害状態を設定
+    pub fn set_terminal_failed(&mut self, terminal_id: u32, failed: bool) -> Result<(), String> {
+        self.terminal_manager.set_terminal_failed(terminal_id, failed)?;
+        
+        let action = if failed { "failed" } else { "recovered" };
+        console_log!("Terminal {} {}", terminal_id, action);
+        
+        Ok(())
+    }
+    
+    /// 端末の設定を更新
+    pub fn update_terminal_config(
+        &mut self,
+        terminal_id: u32,
+        config: TerminalConfig,
+    ) -> Result<(), String> {
+        self.terminal_manager.update_terminal_config(terminal_id, config)
+    }
+    
+    /// 端末にARPエントリを追加
+    pub fn add_terminal_arp_entry(
+        &mut self,
+        terminal_id: u32,
+        ip: String,
+        mac: String,
+    ) -> Result<(), String> {
+        self.terminal_manager.add_arp_entry_to_terminal(terminal_id, ip, mac)
+    }
+    
+    /// 端末にルートエントリを追加
+    pub fn add_terminal_route(
+        &mut self,
+        terminal_id: u32,
+        destination: String,
+        netmask: String,
+        gateway: String,
+        metric: u32,
+    ) -> Result<(), String> {
+        self.terminal_manager.add_route_to_terminal(
+            terminal_id,
+            destination,
+            netmask,
+            gateway,
+            metric,
+            self.simulation_time,
+        )
+    }
+    
+    /// 端末デバイス情報を取得
+    pub fn get_terminal_info(&self, terminal_id: u32) -> Result<TerminalDeviceInfo, String> {
+        self.terminal_manager.get_terminal_info(terminal_id)
+    }
+    
+    /// すべての端末の情報を取得
+    pub fn get_all_terminals_info(&self) -> Vec<TerminalDeviceInfo> {
+        self.terminal_manager.get_all_terminals_info()
+    }
+    
+    /// 指定IPアドレスを持つ端末を検索
+    pub fn find_terminal_by_ip(&self, ip_address: &str) -> Option<u32> {
+        self.terminal_manager.find_terminal_by_ip(ip_address)
+    }
+    
+    /// 端末マネージャーの統計情報を取得
+    pub fn get_terminal_manager_statistics(&self) -> &crate::terminal_manager::ManagerStatistics {
+        self.terminal_manager.get_statistics()
+    }
+    
+    /// 端末マネージャーの設定を更新
+    pub fn update_terminal_manager_config(&mut self, config: ManagerConfig) {
+        self.terminal_manager.update_config(config);
+    }
+    
+    /// すべての端末の送信待ちパケットを処理（シミュレーションステップで呼び出される）
+    fn process_terminal_packet_queues(&mut self) {
+        let packets = self.terminal_manager.process_all_packet_queues(self.simulation_time);
+        
+        for (terminal_id, packet, router_id) in packets {
+            // 端末からルーターへのパケット配信をスケジュール
+            let packet_event = PacketEvent {
+                timestamp: self.simulation_time + 0.001, // 1ms後に配信
+                from_router_id: terminal_id,
+                to_router_id: router_id,
+                packet: ProtocolPacket::ICMP(packet),
+            };
+            
+            self.protocol_engine.schedule_event(packet_event);
+        }
+    }
+    
+    /// 端末マネージャーの統計を更新（シミュレーションステップで呼び出される）
+    fn update_terminal_statistics(&mut self) {
+        self.terminal_manager.update_statistics(self.simulation_time);
     }
 }
 
