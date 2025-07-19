@@ -91,6 +91,7 @@ class CanvasRenderer {
         hostManager.drawHosts(this.ctx);
         
         // Draw terminals
+        console.log('Rendering terminals, count:', stateManager.terminals ? stateManager.terminals.length : 0);
         terminalManager.drawTerminals(this.ctx);
         
         // Draw packet statistics

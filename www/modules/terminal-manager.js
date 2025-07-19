@@ -26,12 +26,18 @@ class TerminalManager {
     }
 
     setupToolbarButton() {
-        // Add terminal button to toolbar
+        // Remove any direct onclick handler from add-terminal button
+        // The button should only switch modes, not show dialog immediately
+        const addTerminalBtn = document.getElementById('add-terminal-btn');
+        if (addTerminalBtn) {
+            // Ensure no onclick handler is set
+            addTerminalBtn.onclick = null;
+        }
+        
+        // Also handle the legacy add-host button if it exists
         const addHostBtn = document.getElementById('add-host-btn');
         if (addHostBtn) {
-            // Replace the host button with terminal button
-            addHostBtn.innerHTML = '<i class="fas fa-desktop"></i> Add Terminal';
-            addHostBtn.onclick = () => this.showAddTerminalDialog();
+            addHostBtn.onclick = null;
         }
     }
 
@@ -52,6 +58,11 @@ class TerminalManager {
         // Draw terminals from stateManager (for positioning) if available
         if (stateManager.terminals && stateManager.terminals.length > 0) {
             stateManager.terminals.forEach(terminal => {
+                // Merge with stored position if available
+                const storedPosition = stateManager.terminalPositions.get(terminal.id);
+                if (storedPosition) {
+                    terminal = { ...terminal, x: storedPosition.x, y: storedPosition.y };
+                }
                 this.drawTerminal(ctx, terminal);
             });
         } else {
@@ -65,6 +76,7 @@ class TerminalManager {
     drawTerminal(ctx, terminal) {
         const x = terminal.x || 0;
         const y = terminal.y || 0;
+        console.log(`Drawing terminal ${terminal.id} at position (${x}, ${y}), original coords:`, { origX: terminal.x, origY: terminal.y });
         
         // Draw terminal icon (modern computer/laptop style)
         ctx.save();
@@ -156,17 +168,36 @@ class TerminalManager {
     handleCanvasClick(detail) {
         const { x, y } = detail;
         
-        // Check if click is on a terminal
-        this.terminals.forEach(terminal => {
-            const distance = Math.sqrt(
-                Math.pow(x - (terminal.x || 0), 2) + 
-                Math.pow(y - (terminal.y || 0), 2)
-            );
-            
-            if (distance < 35) {
-                this.selectTerminal(terminal.id);
-            }
-        });
+        // Check if click is on a terminal from stateManager
+        if (stateManager.terminals && stateManager.terminals.length > 0) {
+            stateManager.terminals.forEach(terminal => {
+                // Get position from stored positions or terminal data
+                const storedPosition = stateManager.terminalPositions.get(terminal.id);
+                const terminalX = storedPosition ? storedPosition.x : (terminal.x || 0);
+                const terminalY = storedPosition ? storedPosition.y : (terminal.y || 0);
+                
+                const distance = Math.sqrt(
+                    Math.pow(x - terminalX, 2) + 
+                    Math.pow(y - terminalY, 2)
+                );
+                
+                if (distance < 35) {
+                    this.selectTerminal(terminal.id);
+                }
+            });
+        } else {
+            // Fallback to internal terminals map
+            this.terminals.forEach(terminal => {
+                const distance = Math.sqrt(
+                    Math.pow(x - (terminal.x || 0), 2) + 
+                    Math.pow(y - (terminal.y || 0), 2)
+                );
+                
+                if (distance < 35) {
+                    this.selectTerminal(terminal.id);
+                }
+            });
+        }
     }
 
     selectTerminal(terminalId) {
@@ -307,6 +338,12 @@ class TerminalManager {
         }
     }
 
+    showAddTerminalDialogAtPosition(x, y) {
+        // Store the position for use when terminal is created
+        this.pendingTerminalPosition = { x, y };
+        this.showAddTerminalDialog();
+    }
+
     showAddTerminalDialog() {
         const dialog = document.createElement('div');
         dialog.className = 'modal-overlay';
@@ -382,19 +419,40 @@ class TerminalManager {
         
         if (!stateManager.simulator) return;
         
-        // Add terminal at a position near the center
-        const canvas = document.getElementById('network-canvas');
-        const x = canvas.width / 2 + (Math.random() - 0.5) * 200;
-        const y = canvas.height / 2 + (Math.random() - 0.5) * 200;
+        // Use the position stored when the user clicked on the canvas
+        let x, y;
+        if (this.pendingTerminalPosition) {
+            x = this.pendingTerminalPosition.x;
+            y = this.pendingTerminalPosition.y;
+            // Clear the stored position
+            this.pendingTerminalPosition = null;
+        } else {
+            // Fallback to center position if no position was stored
+            const canvas = document.getElementById('network-canvas');
+            x = canvas.width / 2 + (Math.random() - 0.5) * 200;
+            y = canvas.height / 2 + (Math.random() - 0.5) * 200;
+        }
         
         try {
             const terminalId = stateManager.simulator.add_terminal(name, ip, netmask, gateway, x, y);
-            console.log(`Terminal ${name} added with ID ${terminalId}`);
+            console.log(`Terminal ${name} added with ID ${terminalId} at position (${x}, ${y})`);
+            
+            // Explicitly update terminal position in WebAssembly to ensure it's stored
+            stateManager.simulator.update_terminal_position(terminalId, x, y);
+            
+            // Store position locally
+            stateManager.terminalPositions.set(terminalId, { x, y });
             
             this.closeAddTerminalDialog();
             
             // Update display
             window.dispatchEvent(new Event('terminalsUpdated'));
+            
+            // Update terminals from simulator
+            if (window.canvasInteraction) {
+                window.canvasInteraction.updateTerminalsFromSimulator();
+            }
+            
             canvasRenderer.render();
             
             // Select the new terminal

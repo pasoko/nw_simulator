@@ -6,7 +6,6 @@
 import stateManager from './state-manager.js';
 import routerManager from './router-manager.js';
 import connectionManager from './connection-manager.js';
-import uiController from './ui-controller.js';
 import eventLogger from './event-logger.js';
 import animationEffects from './animation-effects.js';
 
@@ -44,24 +43,36 @@ class CanvasInteraction {
         const x = event.clientX - rect.left;
         const y = event.clientY - rect.top;
         
+        console.log('Mouse down at:', { x, y }, 'Mode:', stateManager.getMode());
+        
         // Check if clicking on a router or terminal for dragging (only in move-router mode)
         const clickedRouter = this.findRouterAt(x, y);
         const clickedTerminal = this.findTerminalAt(x, y);
         
-        if (uiController.getMode() === 'move-router') {
+        console.log('Found devices:', { clickedRouter: !!clickedRouter, clickedTerminal: !!clickedTerminal });
+        
+        if (stateManager.getMode() === 'move-router') {
+            console.log('Move-router mode active, devices found:', { router: !!clickedRouter, terminal: !!clickedTerminal });
             if (clickedRouter) {
+                console.log('Starting router drag:', clickedRouter);
                 this.draggingRouter = clickedRouter;
                 this.dragOffset.x = x - clickedRouter.x;
                 this.dragOffset.y = y - clickedRouter.y;
                 stateManager.canvas.style.cursor = 'grabbing';
                 event.preventDefault(); // Prevent text selection
             } else if (clickedTerminal) {
+                console.log('Starting terminal drag:', clickedTerminal);
+                console.log('Terminal position for drag:', { x: clickedTerminal.x, y: clickedTerminal.y });
                 this.draggingTerminal = clickedTerminal;
-                this.dragOffset.x = x - clickedTerminal.x;
-                this.dragOffset.y = y - clickedTerminal.y;
+                this.dragOffset.x = x - (clickedTerminal.x || 0);
+                this.dragOffset.y = y - (clickedTerminal.y || 0);
                 stateManager.canvas.style.cursor = 'grabbing';
                 event.preventDefault(); // Prevent text selection
+            } else {
+                console.log('No device found at mouse position for dragging');
             }
+        } else {
+            console.log('Not in move-router mode, current mode:', stateManager.getMode());
         }
     }
 
@@ -89,7 +100,7 @@ class CanvasInteraction {
         }
         
         // Update cursor
-        const mode = uiController.getMode();
+        const mode = stateManager.getMode();
         if (router || terminal) {
             stateManager.canvas.style.cursor = mode === 'move-router' ? 'grab' : 'pointer';
         } else {
@@ -97,7 +108,7 @@ class CanvasInteraction {
         }
         
         // Handle router dragging
-        if (this.draggingRouter && uiController.getMode() === 'move-router') {
+        if (this.draggingRouter && stateManager.getMode() === 'move-router') {
             const newX = x - this.dragOffset.x;
             const newY = y - this.dragOffset.y;
             
@@ -117,17 +128,24 @@ class CanvasInteraction {
         }
         
         // Handle terminal dragging
-        if (this.draggingTerminal && uiController.getMode() === 'move-router') {
+        if (this.draggingTerminal && stateManager.getMode() === 'move-router') {
             const newX = x - this.dragOffset.x;
             const newY = y - this.dragOffset.y;
+            
+            console.log(`Dragging terminal ${this.draggingTerminal.id} to position (${newX}, ${newY})`);
             
             // Update terminal position
             this.draggingTerminal.x = newX;
             this.draggingTerminal.y = newY;
             
+            // Store position locally
+            stateManager.terminalPositions.set(this.draggingTerminal.id, { x: newX, y: newY });
+            console.log('Updated terminal position in terminalPositions map');
+            
             // Update simulator with new position
             if (stateManager.simulator) {
                 stateManager.simulator.update_terminal_position(this.draggingTerminal.id, newX, newY);
+                console.log('Updated terminal position in WebAssembly');
             }
             
             // Re-render canvas
@@ -172,27 +190,36 @@ class CanvasInteraction {
             }
         }
         
-        const mode = uiController.getMode();
+        const mode = stateManager.getMode();
+        console.log('Canvas clicked at:', { x, y }, 'Current mode:', mode);
         
         switch (mode) {
             case 'add-router':
+                console.log('Calling handleAddRouter');
                 this.handleAddRouter(x, y);
                 break;
             case 'add-terminal':
+                console.log('Calling handleAddTerminal');
                 this.handleAddTerminal(x, y);
                 break;
             case 'connect-routers':
+                console.log('Calling handleConnectRouters');
                 this.handleConnectRouters(x, y);
                 break;
             case 'delete-router':
+                console.log('Calling handleDeleteRouter');
                 this.handleDeleteRouter(x, y);
                 break;
             case 'disconnect-routers':
+                console.log('Calling handleDisconnectRouters');
                 this.handleDisconnectRouters(x, y);
                 break;
             case 'toggle-failure':
+                console.log('Calling handleToggleFailure');
                 this.handleToggleFailure(x, y);
                 break;
+            default:
+                console.log('Unknown mode:', mode);
         }
     }
 
@@ -219,7 +246,7 @@ class CanvasInteraction {
             eventLogger.log(`OSPF enabled on router "${routerName}"`);
             
             // Update UI
-            uiController.updateRoutersList();
+            // Router list updates are handled automatically by the UI
             
             // Re-render
             if (stateManager.canvasRenderer) {
@@ -229,45 +256,26 @@ class CanvasInteraction {
     }
 
     handleAddTerminal(x, y) {
+        console.log('handleAddTerminal called with coordinates:', { x, y });
+        
         // Check if there's already a router or terminal at this position
         const existingRouter = this.findRouterAt(x, y);
         const existingTerminal = this.findTerminalAt(x, y);
+        console.log('Position check:', { existingRouter, existingTerminal });
+        
         if (existingRouter || existingTerminal) {
+            console.log('Position occupied, canceling terminal placement');
             eventLogger.log('Cannot place terminal: position already occupied');
             return;
         }
         
-        const terminalName = prompt('Enter terminal name:');
-        if (!terminalName) return;
+        console.log('Position available, showing terminal configuration dialog');
         
-        const ipAddress = prompt('Enter IP address (e.g., 192.168.1.100):');
-        if (!ipAddress) return;
-        
-        const netmask = prompt('Enter netmask (e.g., 255.255.255.0):', '255.255.255.0');
-        if (!netmask) return;
-        
-        const defaultGateway = prompt('Enter default gateway (e.g., 192.168.1.1):');
-        if (!defaultGateway) return;
-        
-        if (stateManager.simulator) {
-            try {
-                const terminalId = stateManager.simulator.add_terminal(terminalName, ipAddress, netmask, defaultGateway, x, y);
-                eventLogger.log(`Terminal "${terminalName}" added with ID ${terminalId} at (${x.toFixed(0)}, ${y.toFixed(0)})`);
-                
-                // Update terminals and connections list
-                this.updateTerminalsFromSimulator();
-                this.updateConnectionsFromSimulator();
-                
-                // Update UI
-                uiController.updateRoutersList();
-                
-                // Re-render
-                if (stateManager.canvasRenderer) {
-                    stateManager.canvasRenderer.render();
-                }
-            } catch (error) {
-                eventLogger.log(`Failed to add terminal: ${error}`);
-            }
+        // Show the terminal configuration dialog with the position
+        if (window.terminalManager) {
+            window.terminalManager.showAddTerminalDialogAtPosition(x, y);
+        } else {
+            console.error('Terminal manager not available');
         }
     }
 
@@ -277,12 +285,12 @@ class CanvasInteraction {
         
         if (!clickedRouter && !clickedTerminal) return;
         
-        const selectedRouters = uiController.getSelectedRouters();
+        const selectedRouters = stateManager.selectedRouters;
         
         if (selectedRouters.length === 0) {
             // Select first device (router or terminal)
             const selectedDevice = clickedRouter || clickedTerminal;
-            uiController.selectRouter(selectedDevice);
+            stateManager.selectedRouters.push(selectedDevice);
             eventLogger.log(`Selected ${clickedRouter ? 'router' : 'terminal'} "${selectedDevice.name}" as first device`);
             
             // Add selection animation for routers only
@@ -317,13 +325,13 @@ class CanvasInteraction {
                 this.connectTerminalToRouter(secondDevice, firstDevice);
             } else {
                 eventLogger.log('Cannot connect terminal to terminal');
-                uiController.clearSelectedRouters();
+                stateManager.selectedRouters = [];
                 return;
             }
             
             // Reset selection
-            uiController.clearSelectedRouters();
-            uiController.setMode('connect-routers');
+            stateManager.selectedRouters = [];
+            stateManager.setMode('connect-routers');
         }
     }
     
@@ -401,7 +409,7 @@ class CanvasInteraction {
                 this.updateConnectionsFromSimulator();
                 
                 // Update UI
-                uiController.updateRoutersList();
+                // Router list updates are handled automatically by the UI
                 
                 // Re-render
                 if (stateManager.canvasRenderer) {
@@ -417,11 +425,11 @@ class CanvasInteraction {
         const clickedRouter = this.findRouterAt(x, y);
         if (!clickedRouter) return;
         
-        const selectedRouters = uiController.getSelectedRouters();
+        const selectedRouters = stateManager.selectedRouters;
         
         if (selectedRouters.length === 0) {
             // Select first router
-            uiController.selectRouter(clickedRouter);
+            stateManager.selectedRouters.push(clickedRouter);
             eventLogger.log(`Selected router "${clickedRouter.name}" as first router`);
             
             // Update mode indicator
@@ -465,8 +473,8 @@ class CanvasInteraction {
             }
             
             // Reset selection
-            uiController.clearSelectedRouters();
-            uiController.setMode('disconnect-routers');
+            stateManager.selectedRouters = [];
+            stateManager.setMode('disconnect-routers');
         }
     }
 
@@ -481,7 +489,7 @@ class CanvasInteraction {
                     
                     // Update routers list
                     this.updateRoutersFromSimulator();
-                    uiController.updateRoutersList();
+                    // Router list updates are handled automatically by the UI
                     
                     // Re-render
                     if (stateManager.canvasRenderer) {
@@ -582,19 +590,49 @@ class CanvasInteraction {
         
         const terminalsJson = stateManager.simulator.get_all_terminals_json();
         if (terminalsJson) {
+            console.log('Raw terminals JSON from WebAssembly:', terminalsJson);
             stateManager.terminals = JSON.parse(terminalsJson);
+            console.log('Parsed terminals from WebAssembly:', stateManager.terminals);
+            
+            // Merge with locally stored positions
+            stateManager.terminals = stateManager.terminals.map(terminal => {
+                const storedPosition = stateManager.terminalPositions.get(terminal.id);
+                console.log(`Terminal ${terminal.id}: stored position =`, storedPosition, 'original =', { x: terminal.x, y: terminal.y });
+                if (storedPosition) {
+                    return { ...terminal, x: storedPosition.x, y: storedPosition.y };
+                }
+                return terminal;
+            });
+            console.log('Final merged terminals:', stateManager.terminals);
         }
     }
     
     findTerminalAt(x, y) {
-        if (!stateManager.terminals) return null;
+        if (!stateManager.terminals) {
+            console.log('findTerminalAt: no terminals in stateManager');
+            return null;
+        }
+        
+        console.log('findTerminalAt: searching in', stateManager.terminals.length, 'terminals');
         
         const TERMINAL_RADIUS = 20;
-        return stateManager.terminals.find(terminal => {
-            const dx = x - terminal.x;
-            const dy = y - terminal.y;
-            return Math.sqrt(dx * dx + dy * dy) <= TERMINAL_RADIUS;
+        const found = stateManager.terminals.find(terminal => {
+            // Get position from stored positions or terminal data
+            const storedPosition = stateManager.terminalPositions.get(terminal.id);
+            const terminalX = storedPosition ? storedPosition.x : (terminal.x || 0);
+            const terminalY = storedPosition ? storedPosition.y : (terminal.y || 0);
+            
+            const dx = x - terminalX;
+            const dy = y - terminalY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            console.log(`Terminal ${terminal.id}: pos(${terminalX}, ${terminalY}), distance: ${distance}`);
+            
+            return distance <= TERMINAL_RADIUS;
         });
+        
+        console.log('findTerminalAt result:', found);
+        return found;
     }
     
     showRouterDetails(router) {
@@ -679,5 +717,8 @@ class CanvasInteraction {
 
 // Create singleton instance
 const canvasInteraction = new CanvasInteraction();
+
+// Make it globally accessible
+window.canvasInteraction = canvasInteraction;
 
 export default canvasInteraction;

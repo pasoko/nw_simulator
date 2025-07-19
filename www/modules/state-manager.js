@@ -11,6 +11,7 @@ class StateManager {
         this.selectedRouters = [];
         this.routers = [];
         this.terminals = [];
+        this.terminalPositions = new Map(); // Track terminal positions locally
         this.connections = [];
         
         // Canvas and rendering state
@@ -56,8 +57,10 @@ class StateManager {
     
     // Mode management
     setMode(newMode) {
+        console.log('StateManager.setMode called:', { oldMode: this.mode, newMode });
         this.mode = newMode;
         this.selectedRouters = [];
+        console.log('StateManager mode updated to:', this.mode);
     }
     
     getMode() {

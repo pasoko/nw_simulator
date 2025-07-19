@@ -151,9 +151,20 @@ class SidebarUI {
                 const mode = e.currentTarget.dataset.mode;
                 const action = e.currentTarget.dataset.action;
                 
+                console.log('Tool button clicked:', { mode, action, buttonId: e.currentTarget.id });
+                
                 if (mode) {
+                    console.log('Setting mode to:', mode);
                     this.setMode(mode);
+                    
+                    // Special handling for add-terminal mode
+                    if (mode === 'add-terminal') {
+                        console.log('add-terminal mode activated - waiting for canvas click');
+                        // Do NOT show dialog here - wait for canvas click
+                        return;
+                    }
                 } else if (action === 'addHost') {
+                    console.log('Host action triggered - showing host dialog');
                     window.hostManager.showAddHostDialog();
                 }
             });
@@ -195,6 +206,7 @@ class SidebarUI {
     }
 
     setMode(mode) {
+        console.log('SidebarUI.setMode called with:', mode);
         stateManager.setMode(mode);
         this.updateModeDisplay(mode);
         
@@ -207,6 +219,7 @@ class SidebarUI {
                 btn.classList.remove('active');
             }
         });
+        console.log('Mode set to:', mode, 'Active button:', document.querySelector('.tool-button.active')?.id);
     }
 
     updateModeDisplay(mode) {
