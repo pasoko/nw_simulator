@@ -38,7 +38,7 @@ class RouterDetailsUI {
         return `
             <div class="${classes.join(' ')}" data-router-id="${router.id}">
                 <div class="router-header">
-                    <div class="router-header-clickable" onclick="window.routerDetailsUI.toggleRouterDetails(${router.id})">
+                    <div class="router-header-clickable" data-router-id="${router.id}">
                         <div class="router-header-left">
                             <span class="expand-icon">${isExpanded ? '▼' : '▶'}</span>
                             <span class="router-name">${router.name} (ID: ${router.id})</span>
@@ -47,7 +47,7 @@ class RouterDetailsUI {
                             ${statusBadges.join('')}
                         </div>
                     </div>
-                    <button class="router-config-btn" onclick="window.routerDetailsUI.openRouterConfig(${router.id})" title="Router Configuration">
+                    <button class="router-config-btn" data-router-id="${router.id}" title="Router Configuration">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <circle cx="12" cy="12" r="3"/>
                             <path d="M12 1v6m0 6v6m6.364-15.364l-4.243 4.243m-4.242 4.242l-4.243 4.243m20.364-6.364h-6m-6 0h-6m15.364 6.364l-4.243-4.243m-4.242-4.242l-4.243-4.243"/>
@@ -112,13 +112,13 @@ class RouterDetailsUI {
         return `
             <div class="router-tabs">
                 <button class="tab-button ${activeTab === 'summary' ? 'active' : ''}" 
-                        onclick="window.routerDetailsUI.switchTab(${routerId}, 'summary')">概要</button>
+                        data-router-id="${routerId}" data-tab="summary">概要</button>
                 <button class="tab-button ${activeTab === 'routes' ? 'active' : ''}" 
-                        onclick="window.routerDetailsUI.switchTab(${routerId}, 'routes')">ルート</button>
+                        data-router-id="${routerId}" data-tab="routes">ルート</button>
                 <button class="tab-button ${activeTab === 'lsa' ? 'active' : ''}" 
-                        onclick="window.routerDetailsUI.switchTab(${routerId}, 'lsa')">LSA DB</button>
+                        data-router-id="${routerId}" data-tab="lsa">LSA DB</button>
                 <button class="tab-button ${activeTab === 'neighbors' ? 'active' : ''}" 
-                        onclick="window.routerDetailsUI.switchTab(${routerId}, 'neighbors')">ネイバー</button>
+                        data-router-id="${routerId}" data-tab="neighbors">ネイバー</button>
             </div>
             <div class="tab-content" id="tab-content-${routerId}">
                 ${this.getTabContent(routerId, activeTab)}

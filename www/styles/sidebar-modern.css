@@ -218,6 +218,11 @@
     flex-direction: column;
     gap: 8px;
     padding-bottom: 16px;
+    /* Prevent flickering during updates */
+    will-change: contents;
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
 }
 
 .router-card {
@@ -228,6 +233,9 @@
     cursor: pointer;
     transition: all 0.3s ease;
     position: relative;
+    /* Prevent layout shift during updates */
+    transform: translateZ(0);
+    will-change: transform;
 }
 
 .router-card:hover {

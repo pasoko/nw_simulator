@@ -10,6 +10,8 @@ import routerDetailsUI from './router-details-ui.js';
 class SidebarUI {
     constructor() {
         this.collapsed = false;
+        this.updateDebounceTimer = null;
+        this.lastRoutersJson = null;
         this.modeIcons = {
             'add-router': '➕',
             'add-terminal': '🖥️',
@@ -33,6 +35,7 @@ class SidebarUI {
     init() {
         this.setupSidebarStructure();
         this.setupEventListeners();
+        this.setupEventDelegation();
         this.updateModeDisplay(stateManager.getMode());
         routerDetailsUI.init();
     }
@@ -194,6 +197,53 @@ class SidebarUI {
         });
     }
 
+    setupEventDelegation() {
+        // Set up event delegation for router list
+        const routerList = document.getElementById('router-list');
+        if (!routerList) return;
+        
+        // Handle all router card clicks
+        routerList.addEventListener('click', (e) => {
+            const target = e.target;
+            
+            // Handle router header clicks
+            const clickableHeader = target.closest('.router-header-clickable');
+            if (clickableHeader) {
+                const routerId = parseInt(clickableHeader.dataset.routerId);
+                if (routerId) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    routerDetailsUI.toggleRouterDetails(routerId);
+                }
+                return;
+            }
+            
+            // Handle config button clicks
+            const configBtn = target.closest('.router-config-btn');
+            if (configBtn) {
+                const routerId = parseInt(configBtn.dataset.routerId);
+                if (routerId) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    routerDetailsUI.openRouterConfig(routerId);
+                }
+                return;
+            }
+            
+            // Handle tab clicks
+            const tab = target.closest('.tab-button');
+            if (tab) {
+                const routerId = parseInt(tab.dataset.routerId);
+                const tabName = tab.dataset.tab;
+                if (routerId && tabName) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    routerDetailsUI.switchTab(routerId, tabName);
+                }
+            }
+        });
+    }
+
     toggleSidebar() {
         const sidebar = document.getElementById('sidebar');
         this.collapsed = !this.collapsed;
@@ -250,6 +300,18 @@ class SidebarUI {
     }
 
     updateRoutersList() {
+        // Clear any pending debounce timer
+        if (this.updateDebounceTimer) {
+            clearTimeout(this.updateDebounceTimer);
+        }
+        
+        // Debounce updates to prevent rapid re-renders
+        this.updateDebounceTimer = setTimeout(() => {
+            this._performRouterListUpdate();
+        }, 100);
+    }
+
+    _performRouterListUpdate() {
         const routerList = document.getElementById('router-list');
         const routerCount = document.getElementById('router-count');
         
@@ -257,8 +319,17 @@ class SidebarUI {
         
         try {
             const routersJson = stateManager.simulator.get_routers_json();
+            
+            // Skip update if data hasn't changed
+            if (routersJson === this.lastRoutersJson) {
+                return;
+            }
+            this.lastRoutersJson = routersJson;
+            
             if (!routersJson) {
-                routerList.innerHTML = '<p style="text-align: center; color: #999;">No routers</p>';
+                if (routerList.children.length !== 1 || !routerList.querySelector('p')) {
+                    routerList.innerHTML = '<p style="text-align: center; color: #999;">No routers</p>';
+                }
                 routerCount.textContent = '0';
                 return;
             }
@@ -267,11 +338,14 @@ class SidebarUI {
             routerCount.textContent = routers.length;
             
             if (routers.length === 0) {
-                routerList.innerHTML = '<p style="text-align: center; color: #999;">No routers</p>';
+                if (routerList.children.length !== 1 || !routerList.querySelector('p')) {
+                    routerList.innerHTML = '<p style="text-align: center; color: #999;">No routers</p>';
+                }
                 return;
             }
             
-            routerList.innerHTML = routers.map(router => routerDetailsUI.createRouterCard(router)).join('');
+            // Use differential update to prevent flickering
+            this.updateRoutersDifferentially(routerList, routers);
             
             // Trigger router list updated event for routerDetailsUI
             window.dispatchEvent(new CustomEvent('routerListUpdated'));
@@ -280,6 +354,228 @@ class SidebarUI {
             console.error('Error updating routers list:', error);
             routerList.innerHTML = '<p style="color: red;">Error loading routers</p>';
         }
+    }
+
+    updateRoutersDifferentially(routerList, routers) {
+        // Prevent updates while user is interacting
+        if (this.isUserInteracting()) {
+            return;
+        }
+        
+        // Use RequestAnimationFrame for smooth updates
+        requestAnimationFrame(() => {
+            this._performDifferentialUpdate(routerList, routers);
+        });
+    }
+
+    isUserInteracting() {
+        // Check if any router card is being hovered or has focus
+        const hoveredCard = document.querySelector('.router-card:hover');
+        const focusedElement = document.activeElement;
+        const isInRouterList = focusedElement && focusedElement.closest('#router-list');
+        
+        return hoveredCard || isInRouterList;
+    }
+
+    _performDifferentialUpdate(routerList, routers) {
+        const existingCards = new Map();
+        const cardElements = routerList.querySelectorAll('.router-card');
+        
+        // Build map of existing cards
+        cardElements.forEach(card => {
+            const routerId = card.dataset.routerId;
+            if (routerId) {
+                existingCards.set(routerId, card);
+            }
+        });
+        
+        // Track which routers we've seen
+        const processedIds = new Set();
+        
+        // Update or create cards
+        routers.forEach((router, index) => {
+            processedIds.add(router.id);
+            
+            let card = existingCards.get(router.id);
+            if (card) {
+                // Update existing card without recreating DOM
+                this.updateRouterCard(card, router);
+                
+                // Ensure correct position
+                const expectedIndex = index;
+                const currentIndex = Array.from(routerList.children).indexOf(card);
+                if (currentIndex !== expectedIndex) {
+                    const referenceNode = routerList.children[expectedIndex];
+                    routerList.insertBefore(card, referenceNode);
+                }
+            } else {
+                // Create new card
+                card = this.createRouterCardElement(router);
+                
+                // Insert at correct position
+                if (index < routerList.children.length) {
+                    routerList.insertBefore(card, routerList.children[index]);
+                } else {
+                    routerList.appendChild(card);
+                }
+            }
+        });
+        
+        // Remove cards for deleted routers
+        existingCards.forEach((card, routerId) => {
+            if (!processedIds.has(routerId)) {
+                // Fade out before removing
+                card.style.opacity = '0';
+                setTimeout(() => card.remove(), 300);
+            }
+        });
+    }
+
+    updateRouterCard(card, router) {
+        // Update only the parts that have changed
+        const nameElement = card.querySelector('.router-name');
+        const currentName = `${router.name} (ID: ${router.id})`;
+        if (nameElement && nameElement.textContent !== currentName) {
+            nameElement.textContent = currentName;
+        }
+        
+        // Update status badges without recreating them
+        const statusContainer = card.querySelector('.router-status');
+        if (statusContainer) {
+            this.updateStatusBadges(statusContainer, router);
+        }
+        
+        // Update classes
+        const newClasses = routerDetailsUI.getRouterClasses(router);
+        card.className = newClasses.join(' ');
+        
+        // Update expand icon
+        const expandIcon = card.querySelector('.expand-icon');
+        if (expandIcon) {
+            expandIcon.textContent = routerDetailsUI.expandedRouters.has(router.id) ? '▼' : '▶';
+        }
+        
+        // Update expanded content if expanded
+        if (routerDetailsUI.expandedRouters.has(router.id)) {
+            const contentElement = card.querySelector('.router-content');
+            if (contentElement && contentElement.classList.contains('expanded')) {
+                // Update content without collapsing
+                this.updateExpandedContent(contentElement, router.id);
+            }
+        }
+    }
+
+    updateStatusBadges(container, router) {
+        const badges = [];
+        if (router.ospf_enabled) badges.push('OSPF');
+        if (router.is_failed) badges.push('FAILED');
+        if (router.is_dr) badges.push('DR');
+        if (router.is_bdr) badges.push('BDR');
+        
+        // Only update if badges have changed
+        const currentBadges = Array.from(container.querySelectorAll('.status-badge'))
+            .map(badge => badge.textContent);
+        
+        if (JSON.stringify(currentBadges) !== JSON.stringify(badges)) {
+            // Clear and recreate badges
+            container.innerHTML = '';
+            badges.forEach(badge => {
+                const span = document.createElement('span');
+                span.className = 'status-badge';
+                if (badge === 'FAILED') span.classList.add('status-failed');
+                else if (badge === 'DR') span.classList.add('status-dr');
+                else if (badge === 'BDR') span.classList.add('status-bdr');
+                else span.classList.add('status-ospf');
+                span.textContent = badge;
+                container.appendChild(span);
+            });
+        }
+    }
+
+    updateExpandedContent(contentElement, routerId) {
+        // Preserve active tab and scroll position
+        const activeTab = routerDetailsUI.activeTab.get(routerId) || 'overview';
+        const tabContent = contentElement.querySelector('.tab-content');
+        const scrollTop = tabContent ? tabContent.scrollTop : 0;
+        
+        // Get fresh content
+        const newContent = routerDetailsUI.createRouterDetailsContent(routerId);
+        
+        // Only update if actually different
+        if (contentElement.innerHTML !== newContent) {
+            contentElement.innerHTML = newContent;
+            
+            // Restore scroll position
+            const newTabContent = contentElement.querySelector('.tab-content');
+            if (newTabContent) {
+                newTabContent.scrollTop = scrollTop;
+            }
+            
+            // Re-activate the correct tab
+            routerDetailsUI.switchTab(routerId, activeTab);
+        }
+    }
+
+    createRouterCardElement(router) {
+        const card = document.createElement('div');
+        card.className = routerDetailsUI.getRouterClasses(router).join(' ');
+        card.dataset.routerId = router.id;
+        
+        // Create header
+        const header = document.createElement('div');
+        header.className = 'router-header';
+        
+        const clickable = document.createElement('div');
+        clickable.className = 'router-header-clickable';
+        clickable.dataset.routerId = router.id;
+        
+        const headerLeft = document.createElement('div');
+        headerLeft.className = 'router-header-left';
+        
+        const expandIcon = document.createElement('span');
+        expandIcon.className = 'expand-icon';
+        expandIcon.textContent = routerDetailsUI.expandedRouters.has(router.id) ? '▼' : '▶';
+        
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'router-name';
+        nameSpan.textContent = `${router.name} (ID: ${router.id})`;
+        
+        headerLeft.appendChild(expandIcon);
+        headerLeft.appendChild(nameSpan);
+        
+        const statusDiv = document.createElement('div');
+        statusDiv.className = 'router-status';
+        this.updateStatusBadges(statusDiv, router);
+        
+        clickable.appendChild(headerLeft);
+        clickable.appendChild(statusDiv);
+        
+        const configBtn = document.createElement('button');
+        configBtn.className = 'router-config-btn';
+        configBtn.dataset.routerId = router.id;
+        configBtn.title = 'Router Configuration';
+        configBtn.innerHTML = `
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M12 1v6m0 6v6m6.364-15.364l-4.243 4.243m-4.242 4.242l-4.243 4.243m20.364-6.364h-6m-6 0h-6m15.364 6.364l-4.243-4.243m-4.242-4.242l-4.243-4.243"/>
+            </svg>
+        `;
+        
+        header.appendChild(clickable);
+        header.appendChild(configBtn);
+        
+        const content = document.createElement('div');
+        content.className = `router-content ${routerDetailsUI.expandedRouters.has(router.id) ? 'expanded' : 'collapsed'}`;
+        content.id = `router-content-${router.id}`;
+        
+        if (routerDetailsUI.expandedRouters.has(router.id)) {
+            content.innerHTML = routerDetailsUI.createRouterDetailsContent(router.id);
+        }
+        
+        card.appendChild(header);
+        card.appendChild(content);
+        
+        return card;
     }
 
 
