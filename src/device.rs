@@ -109,6 +109,8 @@ pub struct ICMPPacket {
     pub data: Vec<u8>,
     pub source_ip: String,
     pub destination_ip: String,
+    pub ttl: u8,  // Time To Live
+    pub original_packet: Option<Box<ICMPPacket>>,  // ICMPエラーメッセージ用
 }
 
 /// ICMPタイプ
@@ -131,6 +133,8 @@ impl ICMPPacket {
             data: vec![0; 32],  // 32バイトのダミーデータ
             source_ip: String::new(),
             destination_ip: String::new(),
+            ttl: 64,  // デフォルトTTL
+            original_packet: None,
         }
     }
 
@@ -144,6 +148,38 @@ impl ICMPPacket {
             data: vec![0; 32],  // 32バイトのダミーデータ
             source_ip: String::new(),
             destination_ip: String::new(),
+            ttl: 64,  // デフォルトTTL
+            original_packet: None,
+        }
+    }
+    
+    pub fn new_destination_unreachable(code: u8, original: ICMPPacket) -> Self {
+        ICMPPacket {
+            packet_type: ICMPType::DestinationUnreachable,
+            code,
+            checksum: 0,
+            identifier: 0,
+            sequence_number: 0,
+            data: Vec::new(),
+            source_ip: String::new(),
+            destination_ip: original.source_ip.clone(),
+            ttl: 64,
+            original_packet: Some(Box::new(original)),
+        }
+    }
+    
+    pub fn new_time_exceeded(original: ICMPPacket) -> Self {
+        ICMPPacket {
+            packet_type: ICMPType::TimeExceeded,
+            code: 0,  // 0 = TTL exceeded in transit
+            checksum: 0,
+            identifier: 0,
+            sequence_number: 0,
+            data: Vec::new(),
+            source_ip: String::new(),
+            destination_ip: original.source_ip.clone(),
+            ttl: 64,
+            original_packet: Some(Box::new(original)),
         }
     }
 
@@ -151,5 +187,24 @@ impl ICMPPacket {
         self.source_ip = source;
         self.destination_ip = destination;
         self
+    }
+    
+    pub fn with_ttl(mut self, ttl: u8) -> Self {
+        self.ttl = ttl;
+        self
+    }
+    
+    /// TTLをデクリメントし、0になったらNoneを返す
+    pub fn decrement_ttl(&mut self) -> Option<u8> {
+        if self.ttl > 0 {
+            self.ttl -= 1;
+            if self.ttl == 0 {
+                None
+            } else {
+                Some(self.ttl)
+            }
+        } else {
+            None
+        }
     }
 }

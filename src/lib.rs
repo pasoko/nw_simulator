@@ -27,6 +27,7 @@ mod virtual_link;
 mod route_aggregation;
 mod terminal_device;
 mod terminal_manager;
+mod enhanced_ping;
 mod protocol;
 mod simulation;
 mod ospf_engine;
@@ -150,6 +151,9 @@ mod route_aggregation_test;
 
 #[cfg(test)]
 mod terminal_device_test;
+
+#[cfg(test)]
+mod enhanced_ping_test;
 
 use simulation::NetworkSimulation;
 use ui_state::UIState;
@@ -556,5 +560,97 @@ impl NetworkSimulator {
             console_log!("Failed to update position for terminal {}", terminal_id);
             false
         }
+    }
+    
+    // ==========================================
+    // Enhanced Ping Management Methods
+    // ==========================================
+    
+    /// Start enhanced ping session
+    pub fn start_enhanced_ping(
+        &mut self,
+        source_id: u32,
+        source_ip: String,
+        destination_ip: String,
+        count: u32,
+        interval_seconds: f64,
+        packet_size: u32,
+        ttl: u8,
+    ) -> Result<u32, JsValue> {
+        use crate::enhanced_ping::PingSessionConfig;
+        
+        let config = PingSessionConfig {
+            packet_size: packet_size as usize,
+            initial_ttl: ttl,
+            timeout_seconds: 3.0,
+            interval_seconds,
+            count,
+            dont_fragment: false,
+            tos: 0,
+        };
+        
+        match self.simulation.start_enhanced_ping(source_id, source_ip, destination_ip, config) {
+            Ok(session_id) => {
+                console_log!("Started enhanced ping session {}", session_id);
+                Ok(session_id)
+            }
+            Err(e) => {
+                console_log!("Failed to start enhanced ping: {}", e);
+                Err(JsValue::from_str(&e))
+            }
+        }
+    }
+    
+    /// Send next ping in session
+    pub fn send_next_ping(&mut self, session_id: u32) -> bool {
+        match self.simulation.send_next_ping(session_id) {
+            Ok(sent) => {
+                if sent {
+                    console_log!("Sent next ping for session {}", session_id);
+                }
+                sent
+            }
+            Err(e) => {
+                console_log!("Error sending ping: {}", e);
+                false
+            }
+        }
+    }
+    
+    /// Stop ping session
+    pub fn stop_ping_session(&mut self, session_id: u32) -> String {
+        match self.simulation.stop_ping_session(session_id) {
+            Ok(summary) => {
+                serde_json::to_string(&summary).unwrap_or_default()
+            }
+            Err(e) => {
+                console_log!("Error stopping ping session: {}", e);
+                "{}".to_string()
+            }
+        }
+    }
+    
+    /// Get active ping sessions
+    pub fn get_active_ping_sessions(&self) -> String {
+        let sessions = self.simulation.get_active_ping_sessions();
+        serde_json::to_string(&sessions).unwrap_or_default()
+    }
+    
+    /// Get ping session details
+    pub fn get_ping_session_details(&self, session_id: u32) -> String {
+        match self.simulation.get_ping_session_details(session_id) {
+            Some(details) => details.to_string(),
+            None => "{}".to_string(),
+        }
+    }
+    
+    /// Get global ping statistics
+    pub fn get_ping_statistics(&self) -> String {
+        self.simulation.get_ping_statistics().to_string()
+    }
+    
+    /// Start traceroute
+    pub fn start_traceroute(&mut self, source_id: u32, source_ip: String, destination_ip: String, max_hops: u8) -> u32 {
+        self.simulation.start_traceroute(source_id, source_ip, destination_ip, max_hops)
     }
 }

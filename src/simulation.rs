@@ -9,6 +9,7 @@ use crate::stub_area::AreaType;
 use crate::route_calculator::RouteCalculator;
 use crate::router::{OSPFNeighborState, RoutingTableEntry};
 use crate::ping_manager::{PingManager, PingResult};
+use crate::enhanced_ping::{EnhancedPingManager, PingSessionConfig, PingSessionSummary};
 use crate::device::{ICMPPacket, ICMPType};
 use crate::terminal_manager::{TerminalManager, ManagerConfig};
 use crate::terminal_device::{TerminalDeviceInfo, TerminalConfig};
@@ -33,6 +34,7 @@ pub struct NetworkSimulation {
     failure_manager: FailureManager,
     route_calculator: RouteCalculator,
     ping_manager: PingManager,
+    enhanced_ping_manager: EnhancedPingManager,
     terminal_manager: TerminalManager,
     ospf_engines: BTreeMap<u32, OSPFEngine>,  // Use BTreeMap for deterministic iteration order
     spf_needed: Vec<u32>,  // Track routers needing SPF calculation
@@ -50,6 +52,7 @@ impl NetworkSimulation {
             failure_manager: FailureManager::new(),
             route_calculator: RouteCalculator::new(),
             ping_manager: PingManager::new(),
+            enhanced_ping_manager: EnhancedPingManager::new(),
             terminal_manager: TerminalManager::new(),
             ospf_engines: BTreeMap::new(),
             spf_needed: Vec::new(),
@@ -470,6 +473,9 @@ impl NetworkSimulation {
         // Process terminal device packet queues and update statistics
         self.process_terminal_packet_queues();
         self.update_terminal_statistics();
+        
+        // Check ping timeouts
+        self.check_ping_timeouts();
     }
     
     pub fn toggle_link_failure(&mut self, from_id: u32, to_id: u32) -> bool {
@@ -1274,7 +1280,37 @@ impl NetworkSimulation {
     }
 
     /// ICMPパケットの処理
-    fn process_icmp_packet(&mut self, packet: ICMPPacket, from_id: u32, to_id: u32) {
+    fn process_icmp_packet(&mut self, mut packet: ICMPPacket, from_id: u32, to_id: u32) {
+        // TTLをデクリメント（ルーター間転送の場合）
+        if self.topology.routers.contains_key(&to_id) && 
+           packet.packet_type == ICMPType::EchoRequest {
+            if let None = packet.decrement_ttl() {
+                // TTLが0になった場合、Time Exceededメッセージを送信
+                console_log!("ICMP packet TTL expired at router {}", to_id);
+                
+                let time_exceeded = ICMPPacket::new_time_exceeded(packet.clone());
+                let error_event = PacketEvent {
+                    timestamp: self.simulation_time + 0.001,
+                    from_router_id: to_id,
+                    to_router_id: from_id,
+                    packet: ProtocolPacket::ICMP(time_exceeded),
+                };
+                
+                self.protocol_engine.schedule_event(error_event);
+                
+                // 拡張pingマネージャーに通知
+                if let Ok(_) = self.enhanced_ping_manager.process_icmp_error(
+                    ICMPType::TimeExceeded,
+                    packet.identifier,
+                    packet.sequence_number,
+                    self.simulation_time,
+                ) {
+                    console_log!("TTL expiry recorded in ping session");
+                }
+                
+                return;
+            }
+        }
         match packet.packet_type {
             ICMPType::EchoRequest => {
                 // 端末デバイスで受信した場合
@@ -1296,10 +1332,11 @@ impl NetworkSimulation {
                 if let Some(host) = self.topology.hosts.get(&to_id) {
                     if !host.is_failed && host.ip_address == packet.destination_ip {
                         // 宛先が自分のIPアドレスの場合、Echo Replyを返す
-                        let reply = ICMPPacket::new_echo_reply(
+                        let mut reply = ICMPPacket::new_echo_reply(
                             packet.identifier,
                             packet.sequence_number
                         );
+                        reply.ttl = packet.ttl;  // TTLを保持（ホップ数計算用）
                         
                         let reply_event = PacketEvent {
                             timestamp: self.simulation_time + 0.001, // 1ms遅延
@@ -1319,10 +1356,11 @@ impl NetworkSimulation {
                     // 宛先IPがルーター自身のインターフェースの場合
                     for interface in router.interfaces.values() {
                         if interface.ip_address == packet.destination_ip {
-                            let reply = ICMPPacket::new_echo_reply(
+                            let mut reply = ICMPPacket::new_echo_reply(
                                 packet.identifier,
                                 packet.sequence_number
                             );
+                            reply.ttl = packet.ttl;  // TTLを保持（ホップ数計算用）
                             
                             let reply_event = PacketEvent {
                                 timestamp: self.simulation_time + 0.001,
@@ -1366,6 +1404,17 @@ impl NetworkSimulation {
                 // ホストで受信した場合
                 if self.topology.hosts.contains_key(&to_id) {
                     self.ping_manager.process_echo_reply(packet.identifier, self.simulation_time);
+                    
+                    // 拡張pingマネージャーにも通知
+                    if let Ok(_) = self.enhanced_ping_manager.process_echo_reply(
+                        packet.identifier,
+                        packet.sequence_number,
+                        packet.ttl,
+                        self.simulation_time,
+                    ) {
+                        console_log!("Echo reply recorded in enhanced ping session");
+                    }
+                    
                     return;
                 }
                 
@@ -1683,6 +1732,121 @@ impl NetworkSimulation {
     /// 端末マネージャーの統計を更新（シミュレーションステップで呼び出される）
     fn update_terminal_statistics(&mut self) {
         self.terminal_manager.update_statistics(self.simulation_time);
+    }
+    
+    // ==========================================
+    // Enhanced Ping Management Methods
+    // ==========================================
+    
+    /// 拡張pingセッションを開始
+    pub fn start_enhanced_ping(
+        &mut self,
+        source_id: u32,
+        source_ip: String,
+        destination_ip: String,
+        config: PingSessionConfig,
+    ) -> Result<u32, String> {
+        let session_id = self.enhanced_ping_manager.start_ping_session(
+            source_id,
+            source_ip.clone(),
+            destination_ip.clone(),
+            config,
+            self.simulation_time,
+        )?;
+        
+        console_log!(
+            "Started enhanced ping session {} from {} to {}",
+            session_id, source_ip, destination_ip
+        );
+        
+        Ok(session_id)
+    }
+    
+    /// 次のpingを生成して送信
+    pub fn send_next_ping(&mut self, session_id: u32) -> Result<bool, String> {
+        if let Some(packet) = self.enhanced_ping_manager.generate_next_ping(
+            session_id,
+            self.simulation_time,
+        )? {
+            // パケットを送信元から送信
+            if let Some(session) = self.enhanced_ping_manager.get_session_info(session_id) {
+                let packet_event = PacketEvent {
+                    timestamp: self.simulation_time + 0.001,
+                    from_router_id: session.source_id,
+                    to_router_id: session.source_id,  // 最初は自分自身から開始
+                    packet: ProtocolPacket::ICMP(packet),
+                };
+                
+                self.protocol_engine.schedule_event(packet_event);
+                Ok(true)
+            } else {
+                Err("Session not found".to_string())
+            }
+        } else {
+            Ok(false)  // これ以上送信するパケットがない
+        }
+    }
+    
+    /// pingセッションを停止
+    pub fn stop_ping_session(&mut self, session_id: u32) -> Result<PingSessionSummary, String> {
+        let summary = self.enhanced_ping_manager.stop_session(session_id)?;
+        
+        console_log!(
+            "Ping session {} stopped: {} sent, {} received, {:.1}% loss",
+            session_id, summary.packets_sent, summary.packets_received, summary.loss_percentage
+        );
+        
+        Ok(summary)
+    }
+    
+    /// アクティブなpingセッションを取得
+    pub fn get_active_ping_sessions(&self) -> Vec<u32> {
+        self.enhanced_ping_manager.get_active_sessions()
+            .iter()
+            .map(|session| session.session_id)
+            .collect()
+    }
+    
+    /// pingセッションの詳細情報を取得
+    pub fn get_ping_session_details(&self, session_id: u32) -> Option<serde_json::Value> {
+        self.enhanced_ping_manager.get_session_info(session_id)
+            .and_then(|session| serde_json::to_value(session).ok())
+    }
+    
+    /// ping統計情報を取得
+    pub fn get_ping_statistics(&self) -> serde_json::Value {
+        serde_json::to_value(self.enhanced_ping_manager.get_global_statistics())
+            .unwrap_or(serde_json::Value::Null)
+    }
+    
+    /// Traceroute機能を開始
+    pub fn start_traceroute(
+        &mut self,
+        source_id: u32,
+        source_ip: String,
+        destination_ip: String,
+        max_hops: u8,
+    ) -> u32 {
+        let session_id = self.enhanced_ping_manager.start_traceroute(
+            source_id,
+            source_ip.clone(),
+            destination_ip.clone(),
+            max_hops,
+            3,  // probes per hop
+            3.0,  // timeout seconds
+        );
+        
+        console_log!(
+            "Started traceroute session {} from {} to {} (max {} hops)",
+            session_id, source_ip, destination_ip, max_hops
+        );
+        
+        session_id
+    }
+    
+    /// シミュレーションステップでpingタイムアウトをチェック
+    fn check_ping_timeouts(&mut self) {
+        self.enhanced_ping_manager.check_timeouts(self.simulation_time);
     }
 }
 
