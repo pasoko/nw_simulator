@@ -29,6 +29,7 @@ mod terminal_device;
 mod terminal_manager;
 mod enhanced_ping;
 mod nbma_support;
+mod performance_tuning;
 mod protocol;
 mod simulation;
 mod ospf_engine;
@@ -158,6 +159,9 @@ mod enhanced_ping_test;
 
 #[cfg(test)]
 mod nbma_support_test;
+
+#[cfg(test)]
+mod performance_tuning_test;
 
 use simulation::NetworkSimulation;
 use ui_state::UIState;
@@ -722,5 +726,36 @@ impl NetworkSimulator {
     /// Get NBMA statistics
     pub fn get_nbma_statistics(&self) -> String {
         self.simulation.get_nbma_statistics()
+    }
+    
+    // ==========================================
+    // Performance Tuning Methods
+    // ==========================================
+    
+    /// Set performance profile
+    pub fn set_performance_profile(&mut self, profile_name: String) -> Result<(), JsValue> {
+        self.simulation.set_performance_profile(&profile_name)
+            .map_err(|e| JsValue::from_str(&e))
+    }
+    
+    /// Auto-tune performance based on network size
+    pub fn auto_tune_performance(&mut self) {
+        self.simulation.auto_tune_performance();
+    }
+    
+    /// Get performance metrics
+    pub fn get_performance_metrics(&self) -> String {
+        self.simulation.get_performance_metrics()
+    }
+    
+    /// Get performance recommendations
+    pub fn get_performance_recommendations(&self) -> String {
+        let recommendations = self.simulation.get_performance_recommendations();
+        serde_json::to_string(&recommendations).unwrap_or_default()
+    }
+    
+    /// Reset performance metrics
+    pub fn reset_performance_metrics(&mut self) {
+        self.simulation.reset_performance_metrics();
     }
 }

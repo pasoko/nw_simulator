@@ -23,6 +23,7 @@ use crate::stub_area::{StubAreaManager, AreaType};
 use crate::virtual_link::VirtualLinkManager;
 use crate::route_aggregation::RouteAggregationManager;
 use crate::nbma_support::{NBMAManager, NBMAInterfaceConfig, NBMANeighborConfig};
+use crate::performance_tuning::{PerformanceTuner, PerformanceProfile};
 use crate::console_log;
 
 /// Refactored OSPF Engine
@@ -86,6 +87,9 @@ pub struct OSPFEngine {
     
     // NBMA support
     nbma_manager: NBMAManager,
+    
+    // Performance tuning
+    performance_tuner: PerformanceTuner,
 }
 
 #[derive(Debug, Clone)]
@@ -135,6 +139,7 @@ impl OSPFEngine {
             virtual_link_manager: None,
             route_aggregation_manager: RouteAggregationManager::new(router_id.clone()),
             nbma_manager: NBMAManager::new(),
+            performance_tuner: PerformanceTuner::new(),
         }
     }
     
@@ -2117,6 +2122,45 @@ impl OSPFEngine {
     /// Get NBMA statistics
     pub fn get_nbma_statistics(&self) -> crate::nbma_support::NBMAStatistics {
         self.nbma_manager.get_statistics()
+    }
+    
+    // ========================================
+    // Performance Tuning Methods
+    // ========================================
+    
+    /// Set performance profile
+    pub fn set_performance_profile(&mut self, profile: PerformanceProfile) {
+        self.performance_tuner.set_profile(profile);
+        
+        // Apply profile settings to components
+        if let Some(profile_spf_delay) = self.performance_tuner.get_profile().spf_throttle_ms.checked_div(1000) {
+            self.spf_delay = profile_spf_delay as u16;
+        }
+    }
+    
+    /// Auto-tune performance based on network size
+    pub fn auto_tune_performance(&mut self, router_count: usize) {
+        self.performance_tuner.auto_tune(router_count);
+        
+        // Apply auto-tuned settings
+        if let Some(profile_spf_delay) = self.performance_tuner.get_profile().spf_throttle_ms.checked_div(1000) {
+            self.spf_delay = profile_spf_delay as u16;
+        }
+    }
+    
+    /// Get performance metrics
+    pub fn get_performance_metrics(&self) -> crate::performance_tuning::PerformanceMetrics {
+        self.performance_tuner.get_metrics().clone()
+    }
+    
+    /// Get performance recommendations
+    pub fn get_performance_recommendations(&self) -> Vec<String> {
+        self.performance_tuner.get_recommendations()
+    }
+    
+    /// Reset performance metrics
+    pub fn reset_performance_metrics(&mut self) {
+        self.performance_tuner.reset_metrics();
     }
     
     /// Handle NBMA-specific Hello packet generation

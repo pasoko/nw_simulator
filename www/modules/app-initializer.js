@@ -14,6 +14,7 @@ import eventLogger from './event-logger.js';
 import resizablePanel from './resizable-panel.js';
 import hostManager from './host-manager.js';
 import terminalManager from './terminal-manager.js';
+import performanceMonitor from './performance-monitor.js';
 
 class ApplicationInitializer {
     constructor() {
@@ -171,6 +172,9 @@ class ApplicationInitializer {
             
             console.log('- Initializing terminal manager...');
             terminalManager.init();
+            
+            console.log('- Initializing performance monitor...');
+            performanceMonitor.init(stateManager.simulator);
             
             // Setup event listeners for inter-module communication
             console.log('- Setting up event listeners...');

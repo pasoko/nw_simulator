@@ -1963,6 +1963,114 @@ impl NetworkSimulation {
         
         serde_json::to_string(&total_stats).unwrap_or_default()
     }
+    
+    // ==========================================
+    // Performance Tuning Methods
+    // ==========================================
+    
+    /// Set performance profile for all routers
+    pub fn set_performance_profile(&mut self, profile_name: &str) -> Result<(), String> {
+        let profile = match profile_name {
+            "small_network" => crate::performance_tuning::PerformanceProfiles::small_network(),
+            "medium_network" => crate::performance_tuning::PerformanceProfiles::medium_network(),
+            "large_network" => crate::performance_tuning::PerformanceProfiles::large_network(),
+            "real_time" => crate::performance_tuning::PerformanceProfiles::real_time(),
+            "default" => crate::performance_tuning::PerformanceProfile::default(),
+            _ => return Err(format!("Unknown performance profile: {}", profile_name)),
+        };
+        
+        // Apply profile to all OSPF engines
+        for engine in self.ospf_engines.values_mut() {
+            engine.set_performance_profile(profile.clone());
+        }
+        
+        console_log!("Applied performance profile '{}' to all routers", profile_name);
+        Ok(())
+    }
+    
+    /// Auto-tune performance based on current network size
+    pub fn auto_tune_performance(&mut self) {
+        let router_count = self.topology.routers.len();
+        
+        // Apply auto-tuning to all OSPF engines
+        for engine in self.ospf_engines.values_mut() {
+            engine.auto_tune_performance(router_count);
+        }
+        
+        console_log!("Auto-tuned performance for {} routers", router_count);
+    }
+    
+    /// Get aggregated performance metrics from all routers
+    pub fn get_performance_metrics(&self) -> String {
+        let mut metrics = serde_json::Map::new();
+        
+        // Aggregate metrics from all routers
+        let mut total_packets = 0u64;
+        let mut total_spf_calculations = 0u64;
+        let mut total_dropped_packets = 0u64;
+        let mut max_lsa_database_size = 0usize;
+        
+        for (router_id, engine) in &self.ospf_engines {
+            let router_metrics = engine.get_performance_metrics();
+            
+            total_packets += router_metrics.packets_processed;
+            total_spf_calculations += router_metrics.spf_calculations;
+            total_dropped_packets += router_metrics.dropped_packets;
+            max_lsa_database_size = max_lsa_database_size.max(router_metrics.lsa_database_size);
+            
+            if let Ok(router_metrics_json) = serde_json::to_value(&router_metrics) {
+                metrics.insert(format!("router_{}", router_id), router_metrics_json);
+            }
+        }
+        
+        // Add aggregate metrics
+        let mut aggregate = serde_json::Map::new();
+        aggregate.insert("total_packets_processed".to_string(), 
+            serde_json::Value::Number(serde_json::Number::from(total_packets)));
+        aggregate.insert("total_spf_calculations".to_string(), 
+            serde_json::Value::Number(serde_json::Number::from(total_spf_calculations)));
+        aggregate.insert("total_dropped_packets".to_string(), 
+            serde_json::Value::Number(serde_json::Number::from(total_dropped_packets)));
+        aggregate.insert("max_lsa_database_size".to_string(), 
+            serde_json::Value::Number(serde_json::Number::from(max_lsa_database_size)));
+        aggregate.insert("router_count".to_string(), 
+            serde_json::Value::Number(serde_json::Number::from(self.topology.routers.len())));
+        
+        metrics.insert("aggregate".to_string(), serde_json::Value::Object(aggregate));
+        
+        serde_json::to_string(&metrics).unwrap_or_else(|_| "{}".to_string())
+    }
+    
+    /// Get performance recommendations
+    pub fn get_performance_recommendations(&self) -> Vec<String> {
+        let mut all_recommendations = Vec::new();
+        
+        // Collect recommendations from all routers
+        for (router_id, engine) in &self.ospf_engines {
+            let recommendations = engine.get_performance_recommendations();
+            for rec in recommendations {
+                all_recommendations.push(format!("Router {}: {}", router_id, rec));
+            }
+        }
+        
+        // Add simulation-level recommendations
+        let router_count = self.topology.routers.len();
+        if router_count > 200 {
+            all_recommendations.push(
+                "Large network detected. Consider using the 'large_network' performance profile.".to_string()
+            );
+        }
+        
+        all_recommendations
+    }
+    
+    /// Reset performance metrics for all routers
+    pub fn reset_performance_metrics(&mut self) {
+        for engine in self.ospf_engines.values_mut() {
+            engine.reset_performance_metrics();
+        }
+        console_log!("Reset performance metrics for all routers");
+    }
 }
 
 #[cfg(test)]
