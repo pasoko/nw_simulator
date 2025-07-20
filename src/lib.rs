@@ -65,6 +65,16 @@ pub mod ospf_refactored;
 // WebAssembly interface for refactored code
 pub mod wasm_interface;
 
+// Export types for tests
+pub use crate::protocol::{ProtocolPacket, PacketEvent, ProtocolEngine, RoutingProtocol};
+pub use crate::terminal_device::{TerminalDevice, TerminalDeviceInfo, ip_to_u32};
+pub use crate::terminal_manager::{TerminalManager, PacketDelivery, ManagerConfig, ManagerStatistics};
+pub use crate::device::{ICMPPacket, ICMPType};
+pub use crate::event_manager::EventManager;
+pub use crate::ospf::{OSPFPacket, OSPFPacketType, OSPFPacketData, HelloPacket};
+pub use crate::ospf_auth::{AuthType, AuthData};
+pub use crate::ospf_options::OSPFOptions;
+
 #[cfg(test)]
 mod ospf_test;
 #[cfg(test)]

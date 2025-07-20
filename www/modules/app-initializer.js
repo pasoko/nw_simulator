@@ -1,6 +1,20 @@
 /**
  * Application Initializer Module
- * Handles WASM loading, app setup, and initialization
+ * 
+ * WebAssemblyの読み込み、アプリケーションのセットアップ、初期化を担当
+ * 
+ * 主な機能:
+ * - WebAssemblyモジュールの読み込み
+ * - ネットワークシミュレータの初期化
+ * - Canvas描画環境のセットアップ
+ * - UIコンポーネントの初期化
+ * - イベントリスナーの設定
+ * - 定期更新の開始（リアルタイムデータ表示用）
+ * - パフォーマンスモニターの初期化
+ * 
+ * 最近の改善 (2025-07):
+ * - periodicUpdateイベントを追加して確実な更新を実現
+ * - デバッグログを追加して更新タイミングを追跡可能に
  */
 
 import initWasm, { NetworkSimulator } from '../pkg/nw_simulator.js';
@@ -18,8 +32,8 @@ import performanceMonitor from './performance-monitor.js';
 
 class ApplicationInitializer {
     constructor() {
-        this.initialized = false;
-        this.updateInterval = null;
+        this.initialized = false;  // 初期化済みフラグ
+        this.updateInterval = null;  // 定期更新インターバルID
     }
 
     async init() {
@@ -145,6 +159,11 @@ class ApplicationInitializer {
         canvas.ondragstart = () => false;
     }
 
+    /**
+     * 各モジュールの初期化
+     * UIコンポーネント、イベントハンドラ、
+     * レンダラーなどを順番に初期化
+     */
     initializeModules() {
         try {
             console.log('Initializing individual modules...');
@@ -211,6 +230,12 @@ class ApplicationInitializer {
         });
     }
 
+    /**
+     * 定期更新の設定
+     * 2秒ごとにルーターリストを更新し、
+     * periodicUpdateイベントを発行して他のコンポーネントにも更新を通知
+     * これによりリアルタイムデータの表示が実現される
+     */
     setupPeriodicUpdates() {
         // Initial update
         console.log('[AppInitializer] Initial router list update');

@@ -1,6 +1,21 @@
 /**
  * Sidebar UI Module
- * Handles modern sidebar interactions and rendering
+ * 
+ * Handles modern sidebar interactions and rendering including:
+ * - Router list display with real-time updates
+ * - Router details panels with tab navigation
+ * - Event logging and export functionality
+ * - Router/terminal creation and management
+ * - Flicker-free differential DOM updates
+ * - Event delegation for dynamic content
+ * - Mode switching and visual feedback
+ * 
+ * Recent improvements (2025-07):
+ * - Differential updates to prevent screen flickering
+ * - Real-time data synchronization from WebAssembly simulator
+ * - Optimized rendering with requestAnimationFrame
+ * - Automatic updates without requiring user interaction
+ * - Event delegation to avoid event handler duplication
  */
 
 import stateManager from './state-manager.js';
@@ -9,10 +24,10 @@ import routerDetailsUI from './router-details-ui.js';
 
 class SidebarUI {
     constructor() {
-        this.collapsed = false;
-        this.updateDebounceTimer = null;
-        this.lastRoutersJson = null;
-        this.isMouseDown = false;
+        this.collapsed = false;  // サイドバーの折りたたみ状態
+        this.updateDebounceTimer = null;  // 更新デバウンス用タイマー
+        this.lastRoutersJson = null;  // 前回のルーター情報（未使用）
+        this.isMouseDown = false;  // マウスダウン状態の追跡
         this.modeIcons = {
             'add-router': '➕',
             'add-terminal': '🖥️',
@@ -198,6 +213,11 @@ class SidebarUI {
         });
     }
 
+    /**
+     * イベント委譲パターンの設定
+     * 動的に生成されるルーター要素に対して、
+     * イベントハンドラの重複を避けるため委譲を使用
+     */
     setupEventDelegation() {
         // Set up event delegation for router list
         const routerList = document.getElementById('router-list');
@@ -309,6 +329,11 @@ class SidebarUI {
         return names[mode] || 'Unknown';
     }
 
+    /**
+     * ルーターリスト表示の更新
+     * このメソッドは定期的（2秒ごと）およびオンデマンドで呼び出される
+     * デバウンス処理により高頻度の再描画を防止
+     */
     updateRoutersList() {
         // Clear any pending debounce timer
         if (this.updateDebounceTimer) {
@@ -321,6 +346,13 @@ class SidebarUI {
         }, 100);
     }
 
+    /**
+     * 実際のルーターリスト更新処理
+     * WebAssemblyシミュレータからデータを取得し、
+     * 差分更新を実行してちらつきを防止
+     * 
+     * @private
+     */
     _performRouterListUpdate() {
         const routerList = document.getElementById('router-list');
         const routerCount = document.getElementById('router-count');

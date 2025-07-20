@@ -211,7 +211,9 @@ impl TerminalManager {
         let terminal = self.terminals.get_mut(&terminal_id)
             .ok_or_else(|| format!("Terminal {} not found", terminal_id))?;
         
-        terminal.send_ping(destination_ip, current_time)
+        // 端末デバイスに対して ping を開始
+        let identifier = 10000 + terminal_id as u16; // 固定のベース値を使用
+        terminal.start_ping(destination_ip, 64, identifier, current_time)
     }
     
     /// 端末でICMPパケットを処理
@@ -292,7 +294,7 @@ impl TerminalManager {
         let terminal = self.terminals.get_mut(&terminal_id)
             .ok_or_else(|| format!("Terminal {} not found", terminal_id))?;
         
-        terminal.add_arp_entry(ip, mac);
+        terminal.add_arp_entry(&ip, &mac);
         Ok(())
     }
     
@@ -304,12 +306,12 @@ impl TerminalManager {
         netmask: String,
         gateway: String,
         metric: u32,
-        timestamp: f64,
+        _timestamp: f64,
     ) -> Result<(), String> {
         let terminal = self.terminals.get_mut(&terminal_id)
             .ok_or_else(|| format!("Terminal {} not found", terminal_id))?;
         
-        terminal.add_route(destination, netmask, gateway, metric, timestamp);
+        terminal.add_route(&destination, &netmask, &gateway, metric);
         Ok(())
     }
     

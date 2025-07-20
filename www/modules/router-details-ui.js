@@ -1,6 +1,20 @@
 /**
  * Router Details UI Module
- * Manages the detailed router information display in the sidebar
+ * 
+ * サイドバー内のルーター詳細情報表示を管理
+ * 
+ * 主な機能:
+ * - ルーター詳細情報の展開/折りたたみ
+ * - タブ切り替え（Summary/Interfaces/Routes/Areas/LSAs/Neighbors）
+ * - リアルタイムデータ更新（1秒ごと）
+ * - ルーター設定ダイアログ管理
+ * - スクロール位置保持
+ * 
+ * 最近の改善 (2025-07):
+ * - リアルタイム更新の自動化
+ * - periodicUpdateイベントによる確実な更新
+ * - requestAnimationFrameでスムーズな更新
+ * - ユーザー操作中でもデータ更新を継続
  */
 
 import stateManager from './state-manager.js';
@@ -8,10 +22,10 @@ import eventLogger from './event-logger.js';
 
 class RouterDetailsUI {
     constructor() {
-        this.expandedRouters = new Set();
-        this.activeTab = new Map(); // routerId -> activeTab
-        this.updateInterval = null;
-        this.isUpdating = false;
+        this.expandedRouters = new Set();  // 展開中のルーターIDセット
+        this.activeTab = new Map(); // routerId -> activeTabのマップ
+        this.updateInterval = null;  // 定期更新インターバルID
+        this.isUpdating = false;  // 更新中フラグ（未使用）
     }
 
     init() {
@@ -466,6 +480,13 @@ class RouterDetailsUI {
         `;
     }
 
+    /**
+     * OSPFネイバー情報の内容を取得
+     * ネイバーID、状態、IPアドレス、優先度、DR/BDR状態を表示
+     * 
+     * @param {number} routerId - ルーターID
+     * @returns {string} HTML文字列
+     */
     getNeighborsContent(routerId) {
         if (!stateManager.simulator) {
             console.error('stateManager.simulator is not initialized');

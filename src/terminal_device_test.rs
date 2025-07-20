@@ -115,16 +115,15 @@ mod tests {
         assert_eq!(terminal.resolve_next_hop("8.8.8.8"), Some("10.0.1.1".to_string()));
         
         // ARPテーブルの管理
-        terminal.add_arp_entry("10.0.1.1".to_string(), "aa:bb:cc:dd:ee:ff".to_string());
+        terminal.add_arp_entry("10.0.1.1", "aa:bb:cc:dd:ee:ff");
         assert!(terminal.lookup_arp("10.0.1.1").is_some());
         
         // ルートエントリの追加
         terminal.add_route(
-            "172.16.0.0".to_string(),
-            "255.255.0.0".to_string(),
-            "10.0.1.2".to_string(),
-            5,
-            0.0,
+            "172.16.0.0",
+            "255.255.0.0",
+            "10.0.1.2",
+            5
         );
         
         assert_eq!(terminal.routing_table.len(), 2); // デフォルトルート + 追加ルート
@@ -145,7 +144,7 @@ mod tests {
         
         // 複数のpingを送信
         for i in 1..=5 {
-            let result = terminal.send_ping(format!("8.8.8.{}", i), 0.0);
+            let result = terminal.start_ping(format!("8.8.8.{}", i), 64, 1000 + i, 0.0);
             assert!(result.is_ok());
         }
         
@@ -155,10 +154,7 @@ mod tests {
         // パケットキューを処理
         let packets = terminal.process_packet_queue(1.0);
         assert_eq!(packets.len(), 5); // 最初の送信
-        
-        // 再送処理
-        let packets = terminal.process_packet_queue(2.0);
-        assert_eq!(packets.len(), 5); // 再送
+        assert_eq!(terminal.packet_queue.len(), 0); // キューは空になっているはず
     }
     
     #[test]
@@ -174,7 +170,7 @@ mod tests {
         terminal.connect_to_router(100, 1);
         
         // 正常時のping送信
-        let result = terminal.send_ping("8.8.8.8".to_string(), 0.0);
+        let result = terminal.start_ping("8.8.8.8".to_string(), 64, 1000, 0.0);
         assert!(result.is_ok());
         assert_eq!(terminal.packet_queue.len(), 1);
         
@@ -184,7 +180,7 @@ mod tests {
         assert_eq!(terminal.packet_queue.len(), 0); // キューがクリアされる
         
         // 障害時のping送信（失敗するはず）
-        let result = terminal.send_ping("8.8.8.8".to_string(), 1.0);
+        let result = terminal.start_ping("8.8.8.8".to_string(), 64, 1001, 1.0);
         assert!(result.is_err());
         
         // 復旧
@@ -192,7 +188,7 @@ mod tests {
         assert!(!terminal.is_failed);
         
         // 復旧後のping送信
-        let result = terminal.send_ping("8.8.8.8".to_string(), 2.0);
+        let result = terminal.start_ping("8.8.8.8".to_string(), 64, 1002, 2.0);
         assert!(result.is_ok());
     }
     

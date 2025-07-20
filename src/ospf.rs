@@ -15,7 +15,7 @@ pub struct OSPFPacket {
     pub data: OSPFPacketData,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum OSPFPacketType {
     Hello = 1,
     DatabaseDescription = 2,
